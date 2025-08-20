@@ -1,0 +1,84 @@
+services:
+  postgresql:
+    image: postgis/postgis:14-3.5
+    container_name: postgresql
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+    volumes:
+      - ./data/postgresql:/bitnami/postgresql
+    networks:
+      default:
+        aliases:
+          - postgresql-server
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 1000M
+        reservations:
+          cpus: "0.05"
+          memory: 200M
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    networks:
+      default:
+        aliases:
+          - redis-server
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 500M
+        reservations:
+          cpus: "0.05"
+          memory: 200M
+  mongo:
+    image: mongo
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: example
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: shijiliuyun
+      ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/
+  node-red:
+    image: nodered/node-red
+    restart: always
+    privileged: true
+    volumes:
+      - ./data/node-red:/data
+    ports:
+      - 1880:1880
+    networks:
+      default:
+        aliases:
+          - node-red.server 
+  mysql:
+    image: mysql:8.0.21
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci #设置utf8字符集
+    restart: always
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    ports:
+      - "13306:3306"  # host物理直接映射端口为13306
+    environment:
+      MYSQL_DATABASE: 'phone-recording' # 初始化启动时要创建的数据库的名称
+      MYSQL_ROOT_PASSWORD: 'root' # root管理员用户密码
