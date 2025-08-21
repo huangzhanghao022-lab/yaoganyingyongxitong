@@ -80,10 +80,10 @@ export class FixedStorageService extends BaseService {
       if ('name' in params) {
         name = params.name;
         if (params.data) {
-          entityData = params.data;
+          entityData = { ...params.data, name };  // 保留 name 字段
         } else {
           const { name: _, ...rest } = params;
-          entityData = rest;
+          entityData = { ...rest, name };         // 保留 name 字段
         }
       } else {
         entityData = params;
@@ -97,6 +97,7 @@ export class FixedStorageService extends BaseService {
       throw err;
     }
   }
+  
   
   /** 更新 */
   async update(params: any) {
@@ -156,31 +157,29 @@ export class FixedStorageService extends BaseService {
   }
 
   /** 详情 */
-  async info(params: any) {
+  /** 获取详情（支持多表） */
+  async info(param: { id: number; name: number }) {
     try {
-      const { name = 0, id } = params;
+      const { id, name } = param;
       const repo = this.getCurrentRepo(name);
-      return await repo.findOne({ where: { id } });
+      const data = await repo.findOneBy({ id });
+      if (!data) throw new Error(`ID ${id} 不存在于表 ${repo.metadata.tableName}`);
+      return data;
     } catch (err) {
-      this.logger.error('[详情] 失败: %s', err.message, { stack: err.stack });
+      this.logger.error('[详情] 获取失败: %s | 参数: %j', err.message, param, { stack: err.stack });
       throw err;
     }
   }
 
-  /** 分页（已兼容官方 page 调用格式） */
+
   async page(params: any) {
     try {
       const { name = 0, ...query } = params;
       const repo = this.getCurrentRepo(name);
       const qb = repo.createQueryBuilder('a');
-
-      if (this.isValidField(repo, 'code')) {
-        qb.orderBy('a.code', 'ASC');
-      } else {
-        qb.orderBy('a.createTime', 'DESC');
-      }
-
-      Object.keys(query).forEach(key => {
+  
+      // ====== 条件（保持你原来的逻辑）======
+      Object.keys(query).forEach((key) => {
         if (!['page', 'size', 'sort', 'order'].includes(key)) {
           const value = query[key];
           if (key === 'imagingTimeRange' && Array.isArray(value)) {
@@ -192,13 +191,34 @@ export class FixedStorageService extends BaseService {
           }
         }
       });
-
+  
+      // ====== 排序（关键修复）======
+      const sortField = query.sort as string | undefined;
+      const sortOrder: 'ASC' | 'DESC' =
+        String(query.order || 'ASC').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+  
+      if (sortField === 'code') {
+        // 前端点了“编号”排序 -> 按数值排
+        qb.orderBy('a.code::int', sortOrder).addOrderBy('a.createTime', 'DESC');
+      } else if (!sortField && this.isValidField(repo, 'code')) {
+        // 默认排序：库有 code 字段就按数值升序
+        qb.orderBy('a.code::int', 'ASC').addOrderBy('a.createTime', 'DESC');
+      } else if (sortField && this.isValidField(repo, sortField)) {
+        qb.orderBy(`a.${sortField}`, sortOrder);
+      } else {
+        qb.orderBy('a.createTime', 'DESC');
+      }
+  
+      // ====== 分页 ======
+      const pageNo = Number(query.page) || 1;
+      const pageSize = Number(query.size) || 20;
+  
       const [list, total] = await qb
-        .skip((query.page - 1) * query.size)
-        .take(query.size)
+        .skip((pageNo - 1) * pageSize)
+        .take(pageSize)
         .getManyAndCount();
-
-      return { list, pagination: { page: query.page, size: query.size, total } };
+  
+      return { list, pagination: { page: pageNo, size: pageSize, total } };
     } catch (err) {
       this.logger.error('[分页] 失败: %s', err.message, { stack: err.stack });
       throw err;

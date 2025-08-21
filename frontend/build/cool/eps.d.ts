@@ -2339,7 +2339,7 @@ declare namespace Eps {
 
 	interface StarFixed_storage_table {
 		/**
-		 * 删除
+		 * delete
 		 */
 		delete(data?: any): Promise<any>;
 
@@ -2349,7 +2349,7 @@ declare namespace Eps {
 		update(data?: any): Promise<any>;
 
 		/**
-		 * 单个信息
+		 * info
 		 */
 		info(data?: any): Promise<as02payloadtableEntity>;
 
