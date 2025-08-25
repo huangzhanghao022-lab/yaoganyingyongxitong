@@ -99,9 +99,13 @@
   import { useCool } from "/@/cool";
   import { useI18n } from "vue-i18n";
   import { reactive, ref, computed } from "vue";
+  import dayjs from "dayjs";
+  import customParseFormat from "dayjs/plugin/customParseFormat";
+  dayjs.extend(customParseFormat);
   
   const { service } = useCool();
   const { t } = useI18n();
+  const lastRawInput = ref("");
   
   /** 当前选中的表（0~3） */
   const currentName = ref(0);
@@ -124,7 +128,7 @@
 	  { label: t("空"), value: 0, type: "info" },
 	  { label: t("待写入"), value: 1, type: "primary" },
 	  { label: t("已写入待数传"), value: 2, type: "warning" },
-	  { label: t("已数传待反馈"), value: 3, type: "warning" },
+	  { label: t("已数传待反馈"), value: 3, color: "#f78fb3" },
 	  { label: t("解析有问题"), value: 4, type: "danger" },
 	  { label: t("已重传待反馈"), value: 5, type: "danger" },
 	  { label: t("已数传待删除"), value: 6, type: "success" },
@@ -162,11 +166,35 @@
 		label: t("成像时间"),
 		prop: "imagingTime",
 		component: {
-		  name: "el-date-picker",
-		  props: { type: "datetime", valueFormat: "YYYY-MM-DD HH:mm:ss" },
+			name: "el-input",
+			props: {
+			placeholder: "请输入时间，如 2025/8/25 22:03:17",
+			clearable: true
+			},
+			on: {
+			blur: (e: FocusEvent) => {
+				const input = (e.target as HTMLInputElement)?.value?.trim();
+				if (!input) return;
+
+				const parsed = dayjs(input, [
+				"YYYY-MM-DD HH:mm:ss",
+				"YYYY/M/D H:mm:ss",
+				"YYYY/M/D HH:mm:ss",
+				"YYYY-MM-DDTHH:mm:ss",
+				]);
+
+				if (parsed.isValid()) {
+				const result = parsed.format("YYYY-MM-DD HH:mm:ss");
+				Upsert.value!.form.imagingTime = result;
+				} else {
+				Upsert.value!.form.imagingTime = null;
+				Crud.value?.app?.message?.warning?.("时间格式不合法，请使用 YYYY-MM-DD HH:mm:ss");
+				}
+			}
+			}
 		},
-		span: 12,
-	  },
+		span: 12
+		},
 	  {
 		label: t("起始文件号"),
 		prop: "startFileNo",
