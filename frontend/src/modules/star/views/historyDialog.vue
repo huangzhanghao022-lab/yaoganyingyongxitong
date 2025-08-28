@@ -18,7 +18,7 @@
 
 <script lang="ts" setup>
 import { ref, nextTick } from 'vue';
-import { useCool } from '/@/cool';
+import { useCool, BaseService } from '/@/cool';
 import { ElMessage } from 'element-plus';
 import { useCrud, useTable } from '@cool-vue/crud';
 import { config } from '/@/config';
@@ -52,10 +52,21 @@ const columns = [
 // 绑定 cl-table，让 cl-crud 驱动数据渲染
 const Table = useTable({ columns });
 
-// useCrud 自动管理分页、数据加载（保持与项目其它页面一致的顺序）
+// 自定义历史快照服务（使用 GET 以适配后端）
+const historyService = {
+  page(data: any) {
+    return request({
+      url: `${config.baseUrl}/admin/star/history_excel/page`,
+      method: 'post',
+      data
+    }) as unknown as Promise<{ list: any[]; pagination: any }>
+  }
+};
+
+// useCrud 自动管理分页、数据加载
 const Crud = useCrud(
   {
-    service: service.star.history_excel,
+    service: historyService as unknown as BaseService,
     onRefresh(params, { next }) {
       return next({ ...params, ...queryParams.value });
     },
@@ -75,13 +86,12 @@ async function download(row: any) {
     console.log('request url:', url, 'params:', { id, name });
 
     // 通过带鉴权的请求获取二进制，避免新窗口缺少 Authorization 头
-    const blob = await request({
+    const blob = (await request({
       url,
       method: 'get',
       params: id ? { id } : { name },
-      responseType: 'blob',
-      NProgress: true,
-    });
+      responseType: 'blob'
+    })) as unknown as Blob;
 
     console.log('blob:', blob, 'type:', (blob as any)?.type, 'size:', (blob as any)?.size);
 
@@ -124,4 +134,3 @@ function open(params?: Record<string, any>) {
 
 defineExpose({ open });
 </script>
-
