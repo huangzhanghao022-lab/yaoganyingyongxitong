@@ -21,7 +21,7 @@
   
 		<!-- 工具 -->
 		<cl-refresh-btn />
-		<cl-add-btn />
+		<!--cl-add-btn /-->
   
 		<!-- 批量编辑按钮 -->
 		<el-button
@@ -33,6 +33,25 @@
 		>
 		  批量编辑
 		</el-button>
+
+		<el-button type="primary" plain size="default" @click="openHistory" style="margin-left: 6px">
+			<el-icon style="margin-right: 4px"><document /></el-icon>
+			查看历史记录
+		</el-button>
+		<history-dialog ref="historyDialogRef" />
+
+
+
+		<!-- 提交OSS功能按钮 -->
+		
+		<!--el-button
+		type="primary"
+		size="default"
+		@click="exportAndUpload"
+		>
+		导出AS02/AS03并上传
+		</el-button -->
+
 	  </cl-row>
   
 	  <cl-row>
@@ -95,10 +114,13 @@
 	name: "star-fixed-storage-table",
   });
   
+  import { ElMessage } from 'element-plus'
   import { useCrud, useTable, useUpsert } from "@cool-vue/crud";
   import { useCool } from "/@/cool";
   import { useI18n } from "vue-i18n";
   import { reactive, ref, computed } from "vue";
+  import { Document } from '@element-plus/icons-vue';
+  import HistoryDialog from './historyDialog.vue';
   import dayjs from "dayjs";
   import customParseFormat from "dayjs/plugin/customParseFormat";
   dayjs.extend(customParseFormat);
@@ -106,6 +128,7 @@
   const { service } = useCool();
   const { t } = useI18n();
   const lastRawInput = ref("");
+  const historyDialogRef = ref<{ open: (params?: Record<string, any>) => void } | null>(null);
   
   /** 当前选中的表（0~3） */
   const currentName = ref(0);
@@ -310,12 +333,12 @@
 		type: "op",
 		buttons: [
 		  "edit",
-		  {
+		  /*{
 			label: t("删除"),
 			prop: "delete",
 			type: "danger",
 			props: { disabled: true }, // 仍然禁用删除
-		  },
+		  },*/
 		],
 	  },
 	],
@@ -409,5 +432,34 @@
 	  batchLoading.value = false;
 	}
   }
+
+  function openHistory() {
+    const inst = historyDialogRef.value;
+    if (!inst || typeof inst.open !== "function") {
+      console.warn("[fixed_storage_table] historyDialogRef not ready", inst);
+      return;
+    }
+
+    // 传入当前表筛选参数，便于后端按表过滤
+    const cur = currentName.value;
+    const tbl = options.name.find((n: any) => n.value === cur)?.label;
+    inst.open({ name: cur, table_name: tbl });
+  }
+
+  /* 提交OSS功能
+  async function exportAndUpload() {
+	try {
+		const res = await service.star.fixed_storage_table.exportToOss({ names: [0, 2] });
+
+		// 手动调用 Element Plus 弹窗组件
+		ElMessage.success(res?.data?.message ?? "导出成功！");
+	} catch (err) {
+		ElMessage.error("上传失败！");
+	}
+	}
+	*/
+
+
+
   </script>
   

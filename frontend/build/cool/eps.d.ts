@@ -1058,6 +1058,150 @@ declare namespace Eps {
 		[key: string]: any;
 	}
 
+	interface TaskAs02Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 成像目标点
+		 */
+		imagingTarget?: string;
+
+		/**
+		 * 经度
+		 */
+		longitude?: number;
+
+		/**
+		 * 纬度
+		 */
+		latitude?: number;
+
+		/**
+		 * 云量
+		 */
+		cloudCoverage?: number;
+
+		/**
+		 * 太阳高度角
+		 */
+		sunElevation?: number;
+
+		/**
+		 * 星历时间
+		 */
+		ephemerisTime?: Date;
+
+		/**
+		 * 成像时间
+		 */
+		imagingTime?: Date;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 成像缩略图地址链接
+		 */
+		thumbnailUrl?: string;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
+	interface TaskAs03Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 成像目标点
+		 */
+		imagingTarget?: string;
+
+		/**
+		 * 经度
+		 */
+		longitude?: number;
+
+		/**
+		 * 纬度
+		 */
+		latitude?: number;
+
+		/**
+		 * 云量
+		 */
+		cloudCoverage?: number;
+
+		/**
+		 * 太阳高度角
+		 */
+		sunElevation?: number;
+
+		/**
+		 * 星历时间
+		 */
+		ephemerisTime?: Date;
+
+		/**
+		 * 成像时间
+		 */
+		imagingTime?: Date;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 成像缩略图地址链接
+		 */
+		thumbnailUrl?: string;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
 	interface UserAddressEntity {
 		/**
 		 * ID
@@ -2399,6 +2543,168 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface StarHistory_excel {
+		/**
+		 * download
+		 */
+		download(data?: any): Promise<any>;
+
+		/**
+		 * page
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: any[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * info
+		 */
+		info(data?: any): Promise<any>;
+
+		/**
+		 * test
+		 */
+		test(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: { download: string; page: string; info: string; test: string };
+
+		/**
+		 * 权限状态
+		 */
+		_permission: { download: boolean; page: boolean; info: boolean; test: boolean };
+
+		request: Service["request"];
+	}
+
+	interface TaskAs02 {
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskAs02Entity>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskAs02Entity[]>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			delete: string;
+			update: string;
+			info: string;
+			list: string;
+			page: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			delete: boolean;
+			update: boolean;
+			info: boolean;
+			list: boolean;
+			page: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface TaskAs03 {
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskAs03Entity>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskAs03Entity[]>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			delete: string;
+			update: string;
+			info: string;
+			list: string;
+			page: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			delete: boolean;
+			update: boolean;
+			info: boolean;
+			list: boolean;
+			page: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
 	interface UserAddress {
 		/**
 		 * 删除
@@ -2562,7 +2868,8 @@ declare namespace Eps {
 		rs_image_request: { imageRequest: Rs_image_requestImageRequest };
 		rs_poi: { poi: Rs_poiPoi };
 		space: { info: SpaceInfo; type: SpaceType };
-		star: { fixed_storage_table: StarFixed_storage_table };
+		star: { fixed_storage_table: StarFixed_storage_table; history_excel: StarHistory_excel };
+		task: { as02: TaskAs02; as03: TaskAs03 };
 		user: { address: UserAddress; info: UserInfo };
 	};
 

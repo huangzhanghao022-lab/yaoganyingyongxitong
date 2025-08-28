@@ -30,5 +30,13 @@ export class AdminStarFixedStorageTableController extends BaseController {
     const data = await this.starFixedStorageTableService.info({ id, name });
     return this.ok(data);
   }
+
+  /*提交OSS功能接口
+  @Post("/exportToOss")
+  async exportToOss(@Body() body: { names: number[] }) {
+    await this.starFixedStorageTableService.exportToOss(body.names);
+    return this.ok({ message: '已成功上传至 OSS' });
+  }
+    */
   
 }

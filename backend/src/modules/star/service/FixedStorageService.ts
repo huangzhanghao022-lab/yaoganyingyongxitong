@@ -1,4 +1,4 @@
-// src/modules/star/service/fixed_storage_table.ts
+// src/modules/star/service/FixedStorageService.ts
 import { Provide, Inject } from '@midwayjs/core';
 import { BaseService } from '@cool-midway/core';
 import { DataSource, Repository, Between, In } from 'typeorm';
@@ -8,6 +8,8 @@ import { as03payloadtableEntity } from '../entity/as03_payload_table/as03_payloa
 import { as03platformtableEntity } from '../entity/as03_platform_table/as03_platform_table';
 import { ILogger } from '@midwayjs/logger';
 import { InjectDataSource, InjectEntityModel } from '@midwayjs/typeorm'; // 添加 InjectEntityModel 导入
+import { IMidwayContext } from '@midwayjs/core';
+import * as xlsx from "node-xlsx";
 
 @Provide()
 export class FixedStorageService extends BaseService {
@@ -16,6 +18,9 @@ export class FixedStorageService extends BaseService {
 
   @InjectDataSource()
   defaultDataSource: DataSource;
+
+  @Inject()
+  ctx: IMidwayContext;
 
   private repoMap: Map<number, Repository<any>> = new Map();
 
@@ -90,8 +95,9 @@ export class FixedStorageService extends BaseService {
       }
   
       const repo = this.getCurrentRepo(name);
-      this.logger.info('[新增] 表: %s | 数据: %j', repo.metadata.tableName, entityData);
       return await repo.save(entityData);
+      
+
     } catch (err) {
       this.logger.error('[新增] 失败: %s', err.message, { stack: err.stack });
       throw err;
@@ -121,8 +127,14 @@ export class FixedStorageService extends BaseService {
       const entity = await repo.findOne({ where: { id: entityData.id } });
       if (!entity) throw new Error(`ID ${entityData.id} 不存在`);
       Object.assign(entity, entityData);
+
+      const operator = (this.ctx as any).user?.username || 'unknown';
+      await this.exportSnapshotExcel(name,  operator);
+      
   
       return await repo.save(entity);
+      
+
     } catch (err) {
       this.logger.error('[更新] 失败: %s', err.message, { stack: err.stack });
       throw err;
@@ -146,10 +158,9 @@ export class FixedStorageService extends BaseService {
       // 1. 获取目标表
       const repo = this.getCurrentRepo(name);
       this.logger.info('[删除] 操作表: %s | IDs: %j', repo.metadata.tableName, idList);
-      
-      // 2. 执行删除
       await repo.delete({ id: In(idList) });
-      this.logger.info('[删除] 成功 | 数量: %d', idList.length);
+      
+
     } catch (err) {
       this.logger.error('[删除] 失败: %s | 参数: %j', err.message, param, { stack: err.stack });
       throw err;
@@ -224,4 +235,60 @@ export class FixedStorageService extends BaseService {
       throw err;
     }
   }
+
+  /* 快照功能函数，用于将增删改信息录入进各自固存表的历史固存表中*/
+  async exportSnapshotExcel(name: number, operator: string) {
+    const tableMap = {
+      0: 'as02_payload_table',
+      1: 'as02_platform_table',
+      2: 'as03_payload_table',
+      3: 'as03_platform_table'
+    };
+  
+    const tableName = tableMap[name];
+    if (!tableName) {
+      this.logger.warn('[快照导出] 无效的表名编号: %d', name);
+      return;
+    }
+  
+    const rows = await this.defaultDataSource.query(`SELECT * FROM ${tableName}`);
+    if (!rows.length) return;
+  
+    const header = Object.keys(rows[0]);
+    const data = [
+      [`固存表名: ${tableName}`],
+      header,
+      ...rows.map((row) => header.map((key) => row[key])),
+      []
+    ];
+  
+    const buffer = xlsx.build([
+      {
+        name: tableName,
+        data,
+        options: {} // ✅ 必填项
+      }
+    ]);
+    
+    const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
+    const filename = `${operator}-${timestamp}.xlsx`;
+  
+    // 插入到 PostgreSQL
+    await this.defaultDataSource.query(`
+      INSERT INTO history_excel (name, table_code, table_name, operator, snapshot_time, file_data)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [
+      filename,
+      name,
+      tableName,
+      operator,
+      new Date(),
+      buffer
+    ]);
+  
+    this.logger.info('[快照导出] 已保存快照文件至 PostgreSQL: %s', filename);
+  }
+  
+
+  
 }

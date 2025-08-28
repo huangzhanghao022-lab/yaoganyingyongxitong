@@ -1,0 +1,91 @@
+<template>
+    <cl-dialog v-model="visible" title="历史快照记录" width="960px">
+      <cl-crud ref="Crud" :options="crudOptions">
+        <cl-row>
+          <cl-refresh-btn />
+        </cl-row>
+        <cl-row>
+          <cl-table :columns="columns" :data="Crud.data" />
+        </cl-row>
+        <cl-row>
+        <cl-flex1 />
+        <cl-pagination
+            v-model:page="Crud.pagination.value.page"
+            v-model:size="Crud.pagination.value.size"
+            :total="Crud.pagination.value.total"
+            @change="Crud.refresh"
+        />
+        </cl-row>
+
+      </cl-crud>
+    </cl-dialog>
+  </template>
+  
+  <script lang="ts" setup>
+  import { ref, reactive } from "vue";
+  import { useCool } from "/@/cool";
+  import { ElMessage } from "element-plus";
+  import { useCrud } from "@cool-vue/crud";
+  
+  const { service } = useCool();
+  const visible = ref(false);
+  
+  // useCrud 自动管理分页、数据加�?
+  const Crud = useCrud(
+    {
+      service: service.star.history_excel,
+    },
+    (app) => {
+      app.refresh(); // 打开弹窗时自动刷�?
+    }
+  );
+  
+  const crudOptions = reactive({
+    service: service.star.history_excel,
+  });
+  
+  const columns = [
+    { label: "文件�?, prop: "name", minWidth: 240 },
+    { label: "表名", prop: "table_name", minWidth: 160 },
+    { label: "操作�?, prop: "operator", minWidth: 120 },
+    { label: "快照时间", prop: "snapshot_time", minWidth: 180 },
+    {
+      label: "操作",
+      type: "op",
+      buttons: [
+        {
+          label: "下载",
+          type: "primary",
+          onClick: (row: any) => download(row),
+        },
+      ],
+    },
+  ];
+  
+  async function download(row: any) {
+    try {
+      const res = await service.star.history_excel.info({ id: row.id });
+  
+      const blob = new Blob([res.file_data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+  
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = row.name.endsWith(".xlsx") ? row.name : `${row.name}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      ElMessage.error("下载失败");
+    }
+  }
+  
+  function open() {
+    console.log("[HistoryDialog] open called");
+    visible.value = true;
+  }
+  
+  defineExpose({ open });
+  </script>
+  
