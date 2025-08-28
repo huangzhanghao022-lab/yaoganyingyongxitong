@@ -2543,44 +2543,6 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
-	interface StarHistory_excel {
-		/**
-		 * download
-		 */
-		download(data?: any): Promise<any>;
-
-		/**
-		 * page
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: any[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * info
-		 */
-		info(data?: any): Promise<any>;
-
-		/**
-		 * test
-		 */
-		test(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: { download: string; page: string; info: string; test: string };
-
-		/**
-		 * 权限状态
-		 */
-		_permission: { download: boolean; page: boolean; info: boolean; test: boolean };
-
-		request: Service["request"];
-	}
-
 	interface TaskAs02 {
 		/**
 		 * 删除
@@ -2868,7 +2830,7 @@ declare namespace Eps {
 		rs_image_request: { imageRequest: Rs_image_requestImageRequest };
 		rs_poi: { poi: Rs_poiPoi };
 		space: { info: SpaceInfo; type: SpaceType };
-		star: { fixed_storage_table: StarFixed_storage_table; history_excel: StarHistory_excel };
+		star: { fixed_storage_table: StarFixed_storage_table };
 		task: { as02: TaskAs02; as03: TaskAs03 };
 		user: { address: UserAddress; info: UserInfo };
 	};
