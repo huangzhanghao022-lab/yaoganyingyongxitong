@@ -40,18 +40,6 @@
 		</el-button>
 		<history-dialog ref="historyDialogRef" />
 
-
-
-		<!-- 提交OSS功能按钮 -->
-		
-		<!--el-button
-		type="primary"
-		size="default"
-		@click="exportAndUpload"
-		>
-		导出AS02/AS03并上传
-		</el-button -->
-
 	  </cl-row>
   
 	  <cl-row>
@@ -445,19 +433,6 @@
     const tbl = options.name.find((n: any) => n.value === cur)?.label;
     inst.open({ name: cur, table_name: tbl });
   }
-
-  /* 提交OSS功能
-  async function exportAndUpload() {
-	try {
-		const res = await service.star.fixed_storage_table.exportToOss({ names: [0, 2] });
-
-		// 手动调用 Element Plus 弹窗组件
-		ElMessage.success(res?.data?.message ?? "导出成功！");
-	} catch (err) {
-		ElMessage.error("上传失败！");
-	}
-	}
-	*/
 
 
 
