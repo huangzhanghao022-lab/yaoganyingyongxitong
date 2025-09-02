@@ -31,6 +31,13 @@ export class AdminStarFixedStorageTableController extends BaseController {
     return this.ok(data);
   }
 
+  // 批量更新：一次快照
+  @Post('/batchUpdate')
+  async batchUpdate(@Body() body: { ids: number[]; name: number; data: Record<string, any> }) {
+    const ret = await this.starFixedStorageTableService.batchUpdate(body);
+    return this.ok(ret);
+  }
+
   /*提交OSS功能接口
   @Post("/exportToOss")
   async exportToOss(@Body() body: { names: number[] }) {

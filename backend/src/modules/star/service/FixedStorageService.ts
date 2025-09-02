@@ -140,6 +140,31 @@ export class FixedStorageService extends BaseService {
       throw err;
     }
   }
+
+  /** 批量更新（一次快照） */
+  async batchUpdate(param: { ids: number[]; name: number; data: Record<string, any> }) {
+    try {
+      const { ids = [], name = 0, data = {} } = param || {} as any;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        throw new Error('ids 不能为空');
+      }
+
+      const repo = this.getCurrentRepo(name);
+      // 统一补上更新时间
+      const patch = { ...data, updateTime: new Date() };
+
+      await repo.update({ id: In(ids) }, patch);
+
+      // 统一导出一次快照
+      const operator = (this.ctx as any).user?.username || 'unknown';
+      await this.exportSnapshotExcel(name, operator);
+
+      return { affected: ids.length };
+    } catch (err) {
+      this.logger.error('[批量更新] 失败: %s | 参数: %j', err.message, param, { stack: err.stack });
+      throw err;
+    }
+  }
   
 
   /**
