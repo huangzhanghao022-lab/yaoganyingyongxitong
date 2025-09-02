@@ -447,24 +447,22 @@
 	batchLoading.value = true;
 	const name = currentName.value;
 
-	try {
-	  // 当状态被设置为“空”(0) 时，自动清空对应的名称与时间
-	  const clearFields = batchForm.status === 0;
+  try {
+    // 当状态被设置为“空”(0) 时，自动清空对应的名称与时间
+    const clearFields = batchForm.status === 0;
 
-	  await Promise.all(
-		selection.value.map((row) =>
-		  service.star.fixed_storage_table.update({
-			id: row.id,
-			status: batchForm.status!,
-			name,
-			...(clearFields
-			  ? (isPayload.value
-				  ? { targetName: null, imagingTime: null }
-				  : { fileName: null, executingTime: null })
-			  : {}),
-		  })
-		)
-	  );
+    const ids = selection.value.map((row) => row.id);
+    const data = {
+      status: batchForm.status!,
+      ...(clearFields
+        ? (isPayload.value
+            ? { targetName: null, imagingTime: null }
+            : { fileName: null, executingTime: null })
+        : {}),
+    } as any;
+
+    // 调用后端批量更新接口，只生成一次快照
+    await service.star.fixed_storage_table.batchUpdate({ ids, name, data });
 
 	  batchVisible.value = false;
 	  // @ts-ignore

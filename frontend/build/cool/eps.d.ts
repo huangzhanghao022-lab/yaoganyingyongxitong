@@ -2483,6 +2483,11 @@ declare namespace Eps {
 
 	interface StarFixed_storage_table {
 		/**
+		 * batchUpdate
+		 */
+		batchUpdate(data?: any): Promise<any>;
+
+		/**
 		 * delete
 		 */
 		delete(data?: any): Promise<any>;
@@ -2520,6 +2525,7 @@ declare namespace Eps {
 		 * 权限标识
 		 */
 		permission: {
+			batchUpdate: string;
 			delete: string;
 			update: string;
 			info: string;
@@ -2532,6 +2538,7 @@ declare namespace Eps {
 		 * 权限状态
 		 */
 		_permission: {
+			batchUpdate: boolean;
 			delete: boolean;
 			update: boolean;
 			info: boolean;
