@@ -1015,7 +1015,17 @@ declare namespace Eps {
 		/**
 		 * 编号
 		 */
-		code?: string;
+		code?: number;
+
+		/**
+		 * 成像时间
+		 */
+		imagingTime?: timestamp;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
 
 		/**
 		 * 目标名称
@@ -1023,24 +1033,14 @@ declare namespace Eps {
 		targetName?: string;
 
 		/**
-		 * 成像时间
-		 */
-		imagingTime?: Date;
-
-		/**
 		 * 起始文件号
 		 */
-		startFileNo?: string;
+		startFileNo?: number;
 
 		/**
 		 * 结束文件号
 		 */
-		endFileNo?: string;
-
-		/**
-		 * 状态
-		 */
-		status?: number;
+		endFileNo?: number;
 
 		/**
 		 * 创建时间

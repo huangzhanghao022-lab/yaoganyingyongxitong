@@ -13,7 +13,7 @@ export default {
         host: 'localhost',
         port: 5432,
         username: 'postgres',
-        password: '123456',
+        password: 'postgres',
         database: 'postgres',
         // 自动建表 注意：线上部署的时候不要使用，有可能导致数据丢失
         synchronize: true,

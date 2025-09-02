@@ -271,7 +271,7 @@ export class FixedStorageService extends BaseService {
     ]);
     
     const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
-    const filename = `${operator}-${timestamp}.xlsx`;
+    const filename = `${timestamp}.xlsx`;
   
     // 插入到 PostgreSQL
     await this.defaultDataSource.query(`

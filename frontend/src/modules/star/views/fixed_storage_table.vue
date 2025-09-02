@@ -16,13 +16,13 @@
 			{{ item.label }}
 		  </el-radio-button>
 		</el-radio-group>
-  
+
 		<cl-flex1 />
-  
+
 		<!-- 工具 -->
 		<cl-refresh-btn />
 		<!--cl-add-btn /-->
-  
+
 		<!-- 批量编辑按钮 -->
 		<el-button
 		  type="success"
@@ -41,18 +41,18 @@
 		<history-dialog ref="historyDialogRef" />
 
 	  </cl-row>
-  
+
 	  <cl-row>
 		<cl-table ref="Table" @selection-change="onSelectionChange" />
 	  </cl-row>
-  
+
 	  <cl-row>
 		<cl-flex1 />
 		<cl-pagination />
 	  </cl-row>
-  
+
 	  <cl-upsert ref="Upsert" />
-  
+
 	  <!-- 批量编辑对话框 -->
 	  <el-dialog
 		v-model="batchVisible"
@@ -64,16 +64,16 @@
 		  <el-form-item label="选中行数">
 			<el-tag>{{ selection.length }}</el-tag>
 		  </el-form-item>
-  
-		  <!-- 提示：当状态为“空”时会自动清空目标名称与成像时间 -->
+
+		  <!-- 提示：当状态为“空”时会自动清空名称与时间字段 -->
 		  <el-alert
 			show-icon
 			type="info"
 			style="margin-bottom: 8px"
 			:closable="false"
-			description="当状态选择为【空】时，将同时清空所选数据的【目标名称】与【成像时间】。"
+			description="当状态选择为【空】时，将清空所选数据的名称与时间字段（载荷：目标名称/成像时间；平台：平台文件名称/写入时间）"
 		  />
-  
+
 		  <el-form-item label="状态">
 			<el-radio-group v-model="batchForm.status">
 			  <el-radio
@@ -86,7 +86,7 @@
 			</el-radio-group>
 		  </el-form-item>
 		</el-form>
-  
+
 		<template #footer>
 		  <el-button @click="batchVisible = false">取消</el-button>
 		  <el-button type="primary" :loading="batchLoading" @click="submitBatch">
@@ -96,12 +96,12 @@
 	  </el-dialog>
 	</cl-crud>
   </template>
-  
+
   <script lang="ts" setup>
   defineOptions({
 	name: "star-fixed-storage-table",
   });
-  
+
   import { ElMessage } from 'element-plus'
   import { useCrud, useTable, useUpsert } from "@cool-vue/crud";
   import { useCool } from "/@/cool";
@@ -112,21 +112,23 @@
   import dayjs from "dayjs";
   import customParseFormat from "dayjs/plugin/customParseFormat";
   dayjs.extend(customParseFormat);
-  
+
   const { service } = useCool();
   const { t } = useI18n();
   const lastRawInput = ref("");
   const historyDialogRef = ref<{ open: (params?: Record<string, any>) => void } | null>(null);
-  
-  /** 当前选中的表（0~3） */
+
+  /** 当前选中的表（0~3）*/
   const currentName = ref(0);
-  
-  /** 根据 currentName 动态控制显示/标题 */
-  const startFileNoLabel = computed(() =>
-	currentName.value === 0 ? t("起始文件号") : t("文件号")
-  );
+
+  // 区分载荷/平台表，用于动态显示字段
+  const isPayload = computed(() => currentName.value === 0 || currentName.value === 2);
+  const isPlatform = computed(() => !isPayload.value);
+
+  /** 根据 currentName 动态控制显示标题 */
+  const startFileNoLabel = computed(() => (currentName.value === 0 ? t("起始文件号") : t("文件号")));
   const endFileNoHidden = computed(() => currentName.value !== 0);
-  
+
   /** 字典 */
   const options = reactive({
 	name: [
@@ -145,8 +147,8 @@
 	  { label: t("已数传待删除"), value: 6, type: "success" },
 	],
   });
-  
-  /** Upsert（新增/编辑） */
+
+  /** Upsert（新增/编辑）*/
   const Upsert = useUpsert({
 	items: [
 	  {
@@ -172,6 +174,14 @@
 		prop: "targetName",
 		component: { name: "el-input", props: { clearable: true } },
 		span: 12,
+			hidden: () => isPlatform.value,
+	  },
+	  {
+		label: t("平台文件名称"),
+		prop: "fileName",
+		component: { name: "el-input", props: { clearable: true } },
+		span: 12,
+			hidden: () => isPayload.value,
 	  },
 	  {
 		label: t("成像时间"),
@@ -179,33 +189,70 @@
 		component: {
 			name: "el-input",
 			props: {
-			placeholder: "请输入时间，如 2025/8/25 22:03:17",
-			clearable: true
+			  placeholder: "请输入时间，例如：2025/8/25 22:03:17",
+			  clearable: true
 			},
 			on: {
-			blur: (e: FocusEvent) => {
+			  blur: (e: FocusEvent) => {
 				const input = (e.target as HTMLInputElement)?.value?.trim();
 				if (!input) return;
 
 				const parsed = dayjs(input, [
-				"YYYY-MM-DD HH:mm:ss",
-				"YYYY/M/D H:mm:ss",
-				"YYYY/M/D HH:mm:ss",
-				"YYYY-MM-DDTHH:mm:ss",
+				  "YYYY-MM-DD HH:mm:ss",
+				  "YYYY/M/D H:mm:ss",
+				  "YYYY/M/D HH:mm:ss",
+				  "YYYY-MM-DDTHH:mm:ss",
 				]);
 
 				if (parsed.isValid()) {
-				const result = parsed.format("YYYY-MM-DD HH:mm:ss");
-				Upsert.value!.form.imagingTime = result;
+				  const result = parsed.format("YYYY-MM-DD HH:mm:ss");
+				  (Upsert.value as any)!.form.imagingTime = result;
 				} else {
-				Upsert.value!.form.imagingTime = null;
-				Crud.value?.app?.message?.warning?.("时间格式不合法，请使用 YYYY-MM-DD HH:mm:ss");
+				  (Upsert.value as any)!.form.imagingTime = null;
+				  // @ts-ignore
+				  Crud.value?.app?.message?.warning?.("时间格式不合法，请使用 YYYY-MM-DD HH:mm:ss");
 				}
-			}
+			  }
 			}
 		},
-		span: 12
+		span: 12,
+			hidden: () => isPlatform.value,
+	  },
+	  {
+		label: t("写入时间"),
+		prop: "executingTime",
+		component: {
+			name: "el-input",
+			props: {
+			  placeholder: "请输入时间，例如：2025/8/25 22:03:17",
+			  clearable: true
+			},
+			on: {
+			  blur: (e: FocusEvent) => {
+				const input = (e.target as HTMLInputElement)?.value?.trim();
+				if (!input) return;
+
+				const parsed = dayjs(input, [
+				  "YYYY-MM-DD HH:mm:ss",
+				  "YYYY/M/D H:mm:ss",
+				  "YYYY/M/D HH:mm:ss",
+				  "YYYY-MM-DDTHH:mm:ss",
+				]);
+
+				if (parsed.isValid()) {
+				  const result = parsed.format("YYYY-MM-DD HH:mm:ss");
+				  (Upsert.value as any)!.form.executingTime = result;
+				} else {
+				  (Upsert.value as any)!.form.executingTime = null;
+				  // @ts-ignore
+				  Crud.value?.app?.message?.warning?.("时间格式不合法，请使用 YYYY-MM-DD HH:mm:ss");
+				}
+			  }
+			}
 		},
+		span: 12,
+			hidden: () => isPayload.value,
+	  },
 	  {
 		label: t("起始文件号"),
 		prop: "startFileNo",
@@ -221,6 +268,7 @@
 		component: { name: "el-input-number", props: { min: 0 } },
 		span: 12,
 		required: true,
+			hidden: () => endFileNoHidden.value,
 	  },
 	  {
 		label: t("状态"),
@@ -230,7 +278,7 @@
 		required: true,
 	  },
 	],
-  
+
 	onOpen: ((...args: any[]) => {
 		const ctx = (args[0] || {}) as any;
 		const { type, form, scope } = ctx;
@@ -240,14 +288,14 @@
 			form.name = scope?.row?.name ?? form.name ?? currentName.value;
 		}
 	}) as any,
-  
+
 	onSubmit(form, { next }) {
 	  const name = form?.name ?? currentName.value ?? 0;
 	  return next({ ...form, name });
 	},
   });
-  
-  /** —— 关键补丁：让 info 总携带 name —— */
+
+  /** ——— 关键补丁：让 info 总携带 name ——— */
   {
 	const api: any = service.star.fixed_storage_table;
 	const rawInfo = api?.info?.bind(api);
@@ -262,18 +310,18 @@
 	  };
 	}
   }
-  
+
   /** 批量编辑状态 */
   const batchVisible = ref(false);
   const batchLoading = ref(false);
-  /** 注意不要用 null，Element Plus RadioGroup 不接受 null */
+  /** 注意不要用 null，Element Plus RadioGroup 不接收 null */
   const batchForm = reactive<{ status: number | undefined }>({
 	status: undefined,
   });
-  
+
   /** 选中行收集 */
   const selection = ref<any[]>([]);
-  
+
   /** 表格 */
   const Table = useTable({
 	columns: [
@@ -284,15 +332,31 @@
 		prop: "targetName",
 		minWidth: 140,
 		formatter: (row: any) => row?.targetName || "-",
+		hidden: isPlatform,
+	  },
+	  {
+		label: t("平台文件名称"),
+		prop: "fileName",
+		minWidth: 140,
+		formatter: (row: any) => row?.fileName || "-",
+			hidden: isPayload,
 	  },
 	  {
 		label: t("成像时间"),
 		prop: "imagingTime",
 		minWidth: 170,
 		formatter: (row: any) => row?.imagingTime || "-",
+			hidden: isPlatform,
 	  },
 	  {
-		label: startFileNoLabel,
+		label: t("写入时间"),
+		prop: "executingTime",
+		minWidth: 170,
+		formatter: (row: any) => row?.executingTime || "-",
+			hidden: isPayload,
+	  },
+	  {
+			label: startFileNoLabel.value,
 		prop: "startFileNo",
 		minWidth: 140,
 		sortable: "custom",
@@ -302,7 +366,7 @@
 		prop: "endFileNo",
 		minWidth: 140,
 		sortable: "custom",
-		hidden: endFileNoHidden,
+			hidden: endFileNoHidden,
 	  },
 	  {
 		label: t("状态"),
@@ -321,26 +385,20 @@
 		type: "op",
 		buttons: [
 		  "edit",
-		  /*{
-			label: t("删除"),
-			prop: "delete",
-			type: "danger",
-			props: { disabled: true }, // 仍然禁用删除
-		  },*/
 		],
 	  },
 	],
   });
-  
+
   /** CRUD */
   const Crud = useCrud(
 	{
 	  service: service.star.fixed_storage_table,
-  
+
 	  onRefresh(params, { next }) {
 		return next({ ...params, name: currentName.value });
 	  },
-  
+
 	  onDelete(selectionRows, { next }) {
 		const ids = selectionRows.map((r: any) => r.id);
 		const uniq = Array.from(new Set(selectionRows.map((r: any) => r.name)));
@@ -356,28 +414,28 @@
 	  app.refresh();
 	}
   );
-  
+
   /** 手动刷新 */
   function refresh(params?: any) {
 	Crud.value?.refresh(params);
   }
-  
+
   /** 收集多选 */
   function onSelectionChange(rows: any[]) {
 	selection.value = rows || [];
   }
-  
+
   /** 打开批量编辑 */
   function openBatchEdit() {
 	if (!selection.value.length) {
 	  // @ts-ignore
-	  Crud.value?.app?.message?.warning?.("请先选择要编辑的行");
+	  Crud.value?.app?.message?.warning?.("请先选择要编辑的项");
 	  return;
 	}
 	batchForm.status = selection.value[0]?.status ?? 1; // 安全默认值
 	batchVisible.value = true;
   }
-  
+
   /** 提交批量编辑 */
   async function submitBatch() {
 	if (batchForm.status === undefined) {
@@ -385,14 +443,14 @@
 	  Crud.value?.app?.message?.warning?.("请选择要设置的状态");
 	  return;
 	}
-  
+
 	batchLoading.value = true;
 	const name = currentName.value;
-  
+
 	try {
-	  // 当状态被设置为“空”(0) 时，自动清空目标名称和成像时间
+	  // 当状态被设置为“空”(0) 时，自动清空对应的名称与时间
 	  const clearFields = batchForm.status === 0;
-  
+
 	  await Promise.all(
 		selection.value.map((row) =>
 		  service.star.fixed_storage_table.update({
@@ -400,15 +458,14 @@
 			status: batchForm.status!,
 			name,
 			...(clearFields
-			  ? {
-				  targetName: null,
-				  imagingTime: null,
-				}
+			  ? (isPayload.value
+				  ? { targetName: null, imagingTime: null }
+				  : { fileName: null, executingTime: null })
 			  : {}),
 		  })
 		)
 	  );
-  
+
 	  batchVisible.value = false;
 	  // @ts-ignore
 	  Crud.value?.app?.message?.success?.("批量编辑成功");
@@ -434,7 +491,4 @@
     inst.open({ name: cur, table_name: tbl });
   }
 
-
-
   </script>
-  
