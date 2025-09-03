@@ -7,6 +7,7 @@
           <el-space>
             <el-button type="primary" @click="generateJson">生成 JSON</el-button>
             <el-button @click="copyJson">复制 JSON</el-button>
+            <el-button type="success" :loading="posting" @click="callForecastApi">进行预报</el-button>
           </el-space>
         </div>
       </template>
@@ -35,6 +36,8 @@
           <el-select v-model="form.pushKind" placeholder="选择模式" style="width: 160px">
             <el-option label="直通" value="0" />
             <el-option label="压缩" value="1" />
+			<el-option label="推扫" value="2" />
+			<el-option label="凝视" value="3" />
           </el-select>
         </el-form-item>
 
@@ -43,13 +46,9 @@
             <el-button :type="targetPickMode === 'manual' ? 'primary' : 'default'" @click="setPickMode('manual')">特定目标点</el-button>
             <el-button :type="targetPickMode === 'all' ? 'primary' : 'default'" @click="setPickMode('all')">全数据库</el-button>
           </el-button-group>
-          <el-button v-if="targetPickMode === 'all'" class="ml8" plain @click="loadAllTargets">加载全库目标</el-button>
         </el-form-item>
 
         <template v-if="targetPickMode === 'manual'">
-          <el-form-item>
-            <el-button @click="openDbDialog">从数据库选取</el-button>
-          </el-form-item>
 
           <el-form-item label="已选目标点" class="full-row">
             <el-table :data="form.targetList" size="small" style="width: 100%" empty-text="暂无目标">
@@ -83,6 +82,29 @@
         </div>
       </template>
       <el-input v-model="jsonPreview" type="textarea" :autosize="{ minRows: 10 }" readonly />
+    </el-card>
+
+    <el-card v-if="apiResponse" shadow="never" class="mb16">
+      <template #header>
+        <div class="card-header">
+          <span>接口返回</span>
+          <el-tag type="success">{{ apiResponse?.message || '成功' }}</el-tag>
+        </div>
+      </template>
+      <el-table :data="apiResponse?.result || []" size="small" style="width: 100%">
+        <el-table-column type="index" width="60" label="#" />
+        <el-table-column prop="name" label="名称" min-width="140" />
+        <el-table-column prop="satellite" label="卫星" width="90" />
+        <el-table-column prop="long" label="经度" width="120" />
+        <el-table-column prop="lat" label="纬度" width="120" />
+        <el-table-column prop="push_kind" label="模式" width="100" />
+        <el-table-column prop="priority" label="优先级" width="90" />
+        <el-table-column prop="cloud" label="云量" width="100" />
+        <el-table-column prop="roll_angle" label="滚转角" width="100" />
+        <el-table-column prop="solar_angle" label="太阳高角" width="110" />
+        <el-table-column prop="t0_beijing" label="开始(北京)" min-width="160" />
+        <el-table-column prop="end_beijing" label="结束(北京)" min-width="160" />
+      </el-table>
     </el-card>
 
     <el-dialog v-model="dbDialog.visible" title="选择数据库目标点" width="820px">
@@ -138,6 +160,8 @@ const form = reactive({
 const targetPickMode = ref<'manual' | 'all'>('manual');
 
 const jsonPreview = ref('');
+const posting = ref(false);
+const apiResponse = ref<any | null>(null);
 
 function mapTargetList(list: TargetItem[]) {
   return list
@@ -189,8 +213,15 @@ function removeTarget(index: number) {
   generateJson();
 }
 
-function setPickMode(mode: 'manual' | 'all') {
+async function setPickMode(mode: 'manual' | 'all') {
   targetPickMode.value = mode;
+  if (mode === 'manual') {
+    openDbDialog();
+  } else if (mode === 'all') {
+    if (!dbAllLoaded.value) {
+      await loadAllTargets();
+    }
+  }
   generateJson();
 }
 
@@ -296,6 +327,27 @@ watch(
 );
 
 generateJson();
+
+async function callForecastApi() {
+  try {
+    posting.value = true;
+    const payload = await normalizePayload();
+    const res = await fetch('http://172.16.10.86:9025/as_image_forecast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const data = await res.json();
+    apiResponse.value = data;
+    ElMessage.success('接口调用成功');
+  } catch (e: any) {
+    apiResponse.value = null;
+    ElMessage.error(`接口调用失败: ${e?.message || e}`);
+  } finally {
+    posting.value = false;
+  }
+}
 </script>
 
 <style scoped>
@@ -328,4 +380,3 @@ generateJson();
 
 
 </style>
-
