@@ -42,8 +42,14 @@
         <el-form-item label="成像时长(秒)">
           <el-input-number v-model="form.imageTime" :min="1" :step="1" />
         </el-form-item>
+		
+		<el-form-item label="成像模式">
+            <el-select v-model="draftTarget.push_kind" placeholder="选择模式" style="width: 180px">
+              <el-option label="直通(0)" value="0" />
+              <el-option label="压缩(1)" value="1" />
+            </el-select>
+        </el-form-item>
 
-        <el-divider content-position="left">目标点选取</el-divider>
 
         <el-form-item label="选取方式">
           <el-radio-group v-model="targetPickMode">
@@ -59,50 +65,26 @@
         </el-form-item>
 
         <template v-if="targetPickMode === 'manual'">
-          <el-form-item label="目标名称">
-            <el-input v-model="draftTarget.name" placeholder="例如：唐山港陆钢铁厂" clearable />
-          </el-form-item>
-          <el-form-item label="经度 long">
-            <el-input-number v-model="draftTarget.long" :step="0.000001" :precision="6" :min="-180" :max="180" />
-          </el-form-item>
-          <el-form-item label="纬度 lat">
-            <el-input-number v-model="draftTarget.lat" :step="0.000001" :precision="6" :min="-90" :max="90" />
-          </el-form-item>
-          <el-form-item label="海拔 alt">
-            <el-input-number v-model="draftTarget.alt" :step="1" :precision="0" :min="0" />
-          </el-form-item>
-          <el-form-item label="成像模式">
-            <el-select v-model="draftTarget.push_kind" placeholder="选择模式" style="width: 180px">
-              <el-option label="直通(0)" value="0" />
-              <el-option label="压缩(1)" value="1" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="优先级">
-            <el-select v-model="draftTarget.priority" placeholder="选择优先级" style="width: 180px">
-              <el-option label="1" value="1" />
-              <el-option label="2" value="2" />
-              <el-option label="3" value="3" />
-            </el-select>
-            <el-button type="primary" class="ml8" @click="addTarget">添加目标</el-button>
-          </el-form-item>
-        </template>
 
-        <el-form-item label="已选目标">
-          <el-table :data="form.targetList" size="small" style="width: 100%" empty-text="暂无目标">
-            <el-table-column type="index" label="#" width="60" />
-            <el-table-column prop="name" label="名称" min-width="160" />
-            <el-table-column prop="long" label="经度" width="120" />
-            <el-table-column prop="lat" label="纬度" width="120" />
-            <el-table-column prop="alt" label="海拔" width="100" />
-            <el-table-column prop="push_kind" label="模式" width="100" />
-            <el-table-column prop="priority" label="优先级" width="100" />
-            <el-table-column label="操作" width="100">
-              <template #default="{ $index }">
-                <el-button type="danger" text size="small" @click="removeTarget($index)">移除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-form-item>
+            <el-button class="ml8" @click="openDbDialog">从数据库选取</el-button>
+        
+			<el-form-item label="已选目标">
+			<el-table :data="form.targetList" size="small" style="width: 100%" empty-text="暂无目标">
+				<el-table-column type="index" label="#" width="60" />
+				<el-table-column prop="name" label="名称" min-width="160" />
+				<el-table-column prop="long" label="经度" width="120" />
+				<el-table-column prop="lat" label="纬度" width="120" />
+				<el-table-column prop="alt" label="海拔" width="100" />
+				<el-table-column prop="push_kind" label="模式" width="100" />
+				<el-table-column prop="priority" label="优先级" width="100" />
+				<el-table-column label="操作" width="100">
+				<template #default="{ $index }">
+					<el-button type="danger" text size="small" @click="removeTarget($index)">移除</el-button>
+				</template>
+				</el-table-column>
+			</el-table>
+			</el-form-item>
+	    </template>
       </el-form>
     </el-card>
 
@@ -115,6 +97,46 @@
       </template>
       <el-input v-model="jsonPreview" type="textarea" :autosize="{ minRows: 10 }" readonly />
     </el-card>
+
+    <!-- 数据库目标选择对话框 -->
+    <el-dialog v-model="dbDialog.visible" title="选择数据库目标点" width="800px">
+      <div class="mb16">
+        <el-input
+          v-model="dbDialog.keyword"
+          placeholder="按名称搜索"
+          clearable
+          style="width: 240px"
+          @keyup.enter="fetchDb(1)"
+        />
+        <el-button class="ml8" type="primary" @click="fetchDb(1)">搜索</el-button>
+      </div>
+      <el-table
+        :data="dbDialog.list"
+        v-loading="dbDialog.loading"
+        @selection-change="onDbSelectionChange"
+        height="400px"
+      >
+        <el-table-column type="selection" width="50" />
+        <el-table-column prop="name" label="名称" min-width="220" />
+        <el-table-column prop="area_lon" label="经度" width="120" />
+        <el-table-column prop="area_lat" label="纬度" width="120" />
+        <el-table-column prop="level" label="优先级" width="100" />
+      </el-table>
+      <div class="mt8" style="display:flex;justify-content:flex-end;">
+        <el-pagination
+          background
+          layout="prev, pager, next, jumper, ->, total"
+          :current-page="dbDialog.page"
+          :page-size="dbDialog.size"
+          :total="dbDialog.total"
+          @current-change="(p:number)=>fetchDb(p)"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="dbDialog.visible = false">取消</el-button>
+        <el-button type="primary" @click="confirmDbSelection">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -157,25 +179,42 @@ const draftTarget = reactive<TargetItem>({
 
 const jsonPreview = ref("");
 
-function normalizePayload() {
+function mapTargetList(list: TargetItem[]) {
+  return list
+    .filter((t) =>
+      t && t.name && Number.isFinite(Number(t.long)) && Number.isFinite(Number(t.lat))
+    )
+    .map((t) => ({
+      name: t.name,
+      long: Number(t.long),
+      lat: Number(t.lat),
+      alt: Number(t.alt ?? 0),
+      push_kind: String(t.push_kind ?? "0"),
+      priority: String(t.priority ?? "1"),
+    }));
+}
+
+async function normalizePayload() {
+  let targetList: TargetItem[] = [];
+  if (targetPickMode.value === "all") {
+    if (!dbAllLoaded.value) {
+      await loadAllTargets();
+    }
+    targetList = dbAllTargets.value.map(poiToTarget);
+  } else {
+    targetList = form.targetList.slice();
+  }
   return {
     satellite: form.satellite,
     startAt: form.startAt || "",
     endAt: form.endAt || "",
     imageTime: String(form.imageTime ?? ""),
-    targetList: form.targetList.map((t) => ({
-      name: t.name,
-      long: Number(t.long),
-      lat: Number(t.lat),
-      alt: Number(t.alt ?? 0),
-      push_kind: String(t.push_kind),
-      priority: String(t.priority),
-    })),
+    targetList: mapTargetList(targetList),
   };
 }
 
-function generateJson() {
-  const payload = normalizePayload();
+async function generateJson() {
+  const payload = await normalizePayload();
   jsonPreview.value = JSON.stringify(payload, null, 2);
 }
 
@@ -216,10 +255,13 @@ function removeTarget(index: number) {
 }
 
 async function loadAllTargets() {
-  // 预留：如后端提供“全库目标点”接口，可在此处调用
-  // 例如：const list = await service.rs_image_forecast?.target?.all?.();
-  // 这里先给出提示，并不阻塞使用者通过“特定目标点”添加
-  ElMessage.info("暂未接入后端全库接口，请先使用特定目标点添加");
+  try {
+    dbAllTargets.value = await fetchAllPois();
+    dbAllLoaded.value = true;
+    ElMessage.success(`已加载全库目标 ${dbAllTargets.value.length} 条`);
+  } catch (e) {
+    ElMessage.error("加载全库目标失败");
+  }
 }
 
 // 自动刷新预览
@@ -231,6 +273,99 @@ watch(
 
 // 初始化一次预览
 generateJson();
+
+// ====== 数据库选择逻辑 ======
+type Poi = {
+  id: number;
+  name: string;
+  area_lon?: string;
+  area_lat?: string;
+  level?: number;
+};
+
+const dbDialog = reactive({
+  visible: false,
+  loading: false,
+  keyword: "",
+  list: [] as Poi[],
+  page: 1,
+  size: 10,
+  total: 0,
+  selection: [] as Poi[],
+});
+
+const dbAllTargets = ref<Poi[]>([]);
+const dbAllLoaded = ref(false);
+
+function openDbDialog() {
+  dbDialog.visible = true;
+  if (!dbDialog.list.length) fetchDb(1);
+}
+
+async function fetchDb(page = 1) {
+  dbDialog.loading = true;
+  try {
+    const api: any = (service as any).rs_poi?.poi;
+    const res = await api?.page?.({ page, size: dbDialog.size, keyWord: dbDialog.keyword });
+    // cool-admin page 一般返回 { list, pagination: { page, size, total } }
+    const list = res?.list || res?.data?.list || [];
+    const pg = res?.pagination || res?.data?.pagination || { page, size: dbDialog.size, total: list.length };
+    dbDialog.list = list;
+    dbDialog.page = pg.page ?? page;
+    dbDialog.size = pg.size ?? dbDialog.size;
+    dbDialog.total = pg.total ?? list.length;
+  } catch (e) {
+    ElMessage.error("查询数据库目标失败");
+  } finally {
+    dbDialog.loading = false;
+  }
+}
+
+function onDbSelectionChange(rows: Poi[]) {
+  dbDialog.selection = rows || [];
+}
+
+function poiToTarget(p: Poi): TargetItem {
+  const lon = Number(p.area_lon);
+  const lat = Number(p.area_lat);
+  return {
+    name: p.name,
+    long: Number.isFinite(lon) ? lon : undefined,
+    lat: Number.isFinite(lat) ? lat : undefined,
+    alt: 0,
+    push_kind: "0",
+    priority: String(p.level ?? 1),
+  };
+}
+
+function confirmDbSelection() {
+  if (!dbDialog.selection.length) {
+    ElMessage.warning("请先选择目标点");
+    return;
+  }
+  const targets = dbDialog.selection.map(poiToTarget);
+  targets.forEach((t) => form.targetList.push(t));
+  dbDialog.visible = false;
+  generateJson();
+}
+
+async function fetchAllPois(): Promise<Poi[]> {
+  const api: any = (service as any).rs_poi?.poi;
+  const size = 200;
+  let page = 1;
+  let total = 0;
+  const acc: Poi[] = [];
+  while (true) {
+    const res = await api?.page?.({ page, size });
+    const list = res?.list || res?.data?.list || [];
+    const pg = res?.pagination || res?.data?.pagination || { total: list.length };
+    acc.push(...list);
+    total = pg.total ?? acc.length;
+    if (acc.length >= total || list.length === 0) break;
+    page += 1;
+  }
+  return acc;
+}
 </script>
 
 <style scoped>
