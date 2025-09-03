@@ -133,7 +133,7 @@
 <script lang="ts" setup>
 defineOptions({ name: 'rs-image-forecast-forecast' });
 
-import { reactive, ref, watch } from 'vue';
+import { reactive, ref, watch, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useCool } from '/@/cool';
 
@@ -162,6 +162,11 @@ const targetPickMode = ref<'manual' | 'all'>('manual');
 const jsonPreview = ref('');
 const posting = ref(false);
 const apiResponse = ref<any | null>(null);
+
+const pushKindLabel = computed(() => {
+  const m: Record<string, string> = { '0': '直通', '1': '压缩', '2': '推扫', '3': '凝视' };
+  return m[form.pushKind] ?? String(form.pushKind ?? '');
+});
 
 function mapTargetList(list: TargetItem[]) {
   return list
@@ -327,6 +332,22 @@ watch(
 );
 
 generateJson();
+
+// 根据卫星选择设置默认成像时长与成像模式
+watch(
+  () => form.satellite,
+  (sat) => {
+    if (sat === 'AS02') {
+      form.imageTime = 10;
+      form.pushKind = '0'; // 直通
+    } else if (sat === 'AS03') {
+      form.imageTime = 30;
+      form.pushKind = '2'; // 推扫
+    }
+    generateJson();
+  },
+  { immediate: true }
+);
 
 async function callForecastApi() {
   try {
