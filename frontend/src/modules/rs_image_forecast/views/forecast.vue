@@ -91,19 +91,19 @@
           <el-tag type="success">{{ apiResponse?.message || '成功' }}</el-tag>
         </div>
       </template>
-      <el-table :data="apiResponse?.result || []" size="small" style="width: 100%">
-        <el-table-column type="index" width="60" label="#" />
-        <el-table-column prop="name" label="名称" min-width="140" />
-        <el-table-column prop="satellite" label="卫星" width="90" />
-        <el-table-column prop="long" label="经度" width="120" />
-        <el-table-column prop="lat" label="纬度" width="120" />
-        <el-table-column prop="push_kind" label="模式" width="100" />
-        <el-table-column prop="priority" label="优先级" width="90" />
-        <el-table-column prop="cloud" label="云量" width="100" />
-        <el-table-column prop="roll_angle" label="滚转角" width="100" />
-        <el-table-column prop="solar_angle" label="太阳高角" width="110" />
-        <el-table-column prop="t0_beijing" label="开始(北京)" min-width="160" />
-        <el-table-column prop="end_beijing" label="结束(北京)" min-width="160" />
+      <el-table :data="apiResponse?.result || []" size="small" style="width: 100%" :fit="true" class="results-table">
+        <el-table-column type="index" width="20" label="#" />
+        <el-table-column prop="satellite" label="卫星" width="50" />
+        <el-table-column prop="name" label="目标点名称" min-width="100" />
+        <el-table-column prop="long" label="经度" width="100" />
+        <el-table-column prop="lat" label="纬度" width="100" />
+        <el-table-column prop="priority" label="优先级" width="70" />
+        <el-table-column prop="cloud" label="云量" width="70" />
+        <el-table-column prop="roll_angle" label="侧摆角" width="70" />
+        <el-table-column prop="solar_angle" label="太阳高度角" width="90" />
+        <el-table-column prop="push_kind" label="模式" width="50" />
+        <el-table-column prop="t0_beijing" label="开始时间" min-width="120" />
+        <el-table-column prop="end_beijing" label="结束时间" min-width="160" />
       </el-table>
     </el-card>
 
@@ -381,7 +381,7 @@ async function callForecastApi() {
   --cmp-h: 32px;          /* 控件目标高度（常用：32/36/40） */
   --cmp-radius: 8px;      /* 统一圆角 */
   --label-w: 90px;        /* el-form 的 label 宽度（和模板一致） */
-  --font-size: 13px;      /* 基础字号 */
+  --font-size: 15px;      /* 基础字号 */
 }
 .forecast-form {
   display: flex;
@@ -433,5 +433,27 @@ async function callForecastApi() {
 .bottom-spacer {
   height: 120px; /* ensure wheel can reach the very bottom */
 }
+
+/* 压缩结果表格的左右间距，减少横向占用 */
+.results-table { font-size: 12px; }
+.results-table :deep(.el-table__cell),
+.results-table :deep(.cell) {
+  padding-left: 2px !important;
+  padding-right: 2px !important;
+  white-space: nowrap;
+}
+
+/* 强制压缩部分列宽以避免横向滚动 */
+.results-table colgroup col:nth-child(1) { width: 50px !important; }
+.results-table colgroup col:nth-child(3) { width: 70px !important; }
+.results-table colgroup col:nth-child(4) { width: 110px !important; }
+.results-table colgroup col:nth-child(5) { width: 110px !important; }
+.results-table colgroup col:nth-child(6) { width: 70px !important; }
+.results-table colgroup col:nth-child(7) { width: 70px !important; }
+.results-table colgroup col:nth-child(8) { width: 70px !important; }
+.results-table colgroup col:nth-child(9) { width: 90px !important; }
+.results-table colgroup col:nth-child(10) { width: 90px !important; }
+.results-table colgroup col:nth-child(11) { width: 150px !important; }
+.results-table colgroup col:nth-child(12) { width: 150px !important; }
 
 </style>
