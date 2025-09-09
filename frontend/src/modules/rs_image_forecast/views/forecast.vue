@@ -123,8 +123,8 @@
         <el-table-column v-if="isAS03" label="是否重新加载表" width="140">
           <template #default="{ $index }">
             <el-select v-model="reloadMap[$index]" size="small" style="width: 70px">
-              <el-option label="是" value="0" />
-              <el-option label="否" value="1" />
+              <el-option label="是" value="1" />
+              <el-option label="否" value="0" />
             </el-select>
           </template>
         </el-table-column>
@@ -135,6 +135,9 @@
     </el-card>
 
     <!-- 防止底部内容被裁切的占位 -->
+    <div v-if="apiResponse && isAS03" style="text-align:right; margin-top:8px;">
+      <el-button type="primary" :loading="creating" @click="createWithTemplateAS03">AS03 提交</el-button>
+    </div>
     <div class="bottom-spacer"></div>
 
     <el-dialog v-model="dbDialog.visible" title="选择数据库目标点" width="820px">
@@ -504,6 +507,89 @@ async function createWithTemplate() {
     }
 
     ElMessage.success(`已提交 ${ok}/${idxs.length} 条成像信息`);
+  } catch (e: any) {
+    ElMessage.error(`提交失败: ${e?.message || e}`);
+  } finally {
+    creating.value = false;
+  }
+}
+
+// AS03 专用：一次性提交三条模板请求
+async function createWithTemplateAS03() {
+  try {
+    const list: any[] = apiResponse.value?.result || [];
+    const idxs = getSelectedIdxs();
+    if (!idxs.length) {
+      ElMessage.warning('请先勾选需要提交的记录');
+      return;
+    }
+    const missing = idxs.filter((i) => !startFileNoMap[i]);
+    if (missing.length) {
+      ElMessage.warning('请填写选中项的起始绝对延时指令号');
+      return;
+    }
+
+    creating.value = true;
+    const token = await getToken();
+
+    let ok = 0;
+    let total = 0;
+    for (const i of idxs) {
+      const row: any = list[i] || {};
+      const sat = String(row.satellite || form.satellite || '');
+      if (sat !== 'AS03') continue;
+
+      const name = String(row.name || '');
+      const t0 = toIsoString(row.t0_beijing || row.t0);
+      const tf = toIsoString(row.end_beijing || row.tf);
+      const baseSeq = Number(startFileNoMap[i] ?? '') || 0;
+      const resetSeq = String((reloadMap as any)?.[i] ?? '1');
+
+      const bodies = [
+        {
+          spacecraftCode: sat,
+          templateId: '673c2d9049b1f446adc4623c',
+          folderId: '6731755b08e123893cf92878',
+          name,
+          reset_seq: resetSeq,
+          start_seq: String(baseSeq),
+          tf,
+        },
+        {
+          spacecraftCode: sat,
+          templateId: '673c2d8f49b1f446adc46230',
+          folderId: '6731755b08e123893cf92878',
+          name,
+          t0,
+          start_seq: String(baseSeq + 14),
+        },
+        {
+          spacecraftCode: sat,
+          templateId: '673c2d9049b1f446adc4623f',
+          folderId: '6731755b08e123893cf92878',
+          name,
+          start_seq: String(baseSeq + 47),
+          t0,
+          side_swipe_angle: String(row.roll_angle ?? ''),
+          tf,
+        },
+      ];
+
+      for (const body of bodies) {
+        total += 1;
+        const resp = await fetch('http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-web-token': token,
+          },
+          body: JSON.stringify(body),
+        });
+        if (resp.ok) ok += 1;
+      }
+    }
+
+    ElMessage.success(`AS03 已提交 ${ok}/${total} 条请求`);
   } catch (e: any) {
     ElMessage.error(`提交失败: ${e?.message || e}`);
   } finally {
