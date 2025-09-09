@@ -115,6 +115,9 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="mt8" style="text-align:right;">
+        <el-button type="success" @click="createWithTemplate" :loading="creating">生成提交成像信息</el-button>
+      </div>
     </el-card>
 
     <!-- 防止底部内容被裁切的占位 -->
@@ -175,6 +178,7 @@ const targetPickMode = ref<'' | 'manual' | 'all'>('');
 const jsonPreview = ref('');
 const posting = ref(false);
 const apiResponse = ref<any | null>(null);
+const creating = ref(false);
 
 // 多选与起始号映射
 const selectedMap = reactive<Record<number, boolean>>({});
@@ -395,6 +399,96 @@ async function callForecastApi() {
     ElMessage.error(`接口调用失败: ${e?.message || e}`);
   } finally {
     posting.value = false;
+  }
+}
+
+// ======== 生成提交成像信息（按模板创建）========
+function toIsoString(input: any): string {
+  if (!input) return '';
+  try {
+    const s = String(input).replace(' ', 'T');
+    return new Date(s).toISOString();
+  } catch {
+    return '';
+  }
+}
+
+function toScanModeValue(v: any): string {
+  const s = String(v ?? '');
+  if (/^[0-3]$/.test(s)) return s;
+  const map: Record<string, string> = { '直通': '0', '压缩': '1', '条扫': '2', '汇聚': '3' };
+  return map[s] ?? '0';
+}
+
+async function getToken(): Promise<string> {
+  const res = await fetch('http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: '02ptemplate@yinhe.ht', password: '123456', loginType: 2 }),
+  });
+  const data = await res.json();
+  const token = data?.data?.token;
+  if (!token) throw new Error('获取登录 token 失败');
+  return token;
+}
+
+function getSelectedIdxs(): number[] {
+  return Object.keys(selectedMap)
+    .filter((k) => (selectedMap as any)[k])
+    .map((k) => Number(k))
+    .sort((a, b) => a - b);
+}
+
+async function createWithTemplate() {
+  try {
+    const list: any[] = apiResponse.value?.result || [];
+    const idxs = getSelectedIdxs();
+    if (!idxs.length) {
+      ElMessage.warning('请先勾选需要提交的记录');
+      return;
+    }
+    // 校验起始号
+    const missing = idxs.filter((i) => !startFileNoMap[i]);
+    if (missing.length) {
+      ElMessage.warning('请填写选中项的起始文件号');
+      return;
+    }
+
+    creating.value = true;
+    const token = await getToken();
+
+    let ok = 0;
+    for (const i of idxs) {
+      const row: any = list[i] || {};
+      const body = {
+        spacecraftCode: String(row.satellite || form.satellite || ''),
+        templateId: '689d78a65526542523548b0f',
+        folderId: '6731752608e123893cf92873',
+        name: String(row.name || ''),
+        scanMode: toScanModeValue(row.push_kind ?? form.pushKind),
+        rollAng: String(row.roll_angle ?? ''),
+        startAt: toIsoString(row.t0_beijing || row.t0),
+        endAt: toIsoString(row.end_beijing || row.tf),
+        solarAng: String(row.solar_angle ?? ''),
+        fileStart: String(startFileNoMap[i] ?? ''),
+      } as any;
+
+      const resp = await fetch('http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-web-token': token,
+        },
+        body: JSON.stringify(body),
+      });
+      if (resp.ok) ok += 1;
+    }
+
+    ElMessage.success(`已提交 ${ok}/${idxs.length} 条成像信息`);
+  } catch (e: any) {
+    ElMessage.error(`提交失败: ${e?.message || e}`);
+  } finally {
+    creating.value = false;
   }
 }
 </script>
