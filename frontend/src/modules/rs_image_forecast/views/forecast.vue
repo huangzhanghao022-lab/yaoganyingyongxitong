@@ -91,20 +91,20 @@
           <el-tag type="success">{{ apiResponse?.message || '成功' }}</el-tag>
         </div>
       </template>
-      <el-table :data="apiResponse?.result || []" size="small" style="width: 100%" :fit="true" class="results-table">
+      <el-table :data="apiResponse?.result || []" size="small" style="width: 100%" :fit="true" :class="['results-table', { as03: isAS03 }]">
         <el-table-column type="index" width="20" label="#" />
         <el-table-column prop="satellite" label="卫星" width="50" />
         <el-table-column prop="name" label="目标点名称" min-width="100" />
         <el-table-column prop="long" label="经度" width="70" />
         <el-table-column prop="lat" label="纬度" width="70" />
-        <el-table-column prop="priority" label="优先级" width="70" />
+        <el-table-column prop="priority" label="优先级" width="50" />
         <el-table-column prop="cloud" label="云量" width="70" />
         <el-table-column prop="roll_angle" label="侧摆角" width="70" />
         <el-table-column prop="solar_angle" label="太阳高度角" width="90" />
-        <el-table-column prop="push_kind" label="模式" width="70" />
-        <el-table-column prop="t0_beijing" label="开始时间" min-width="160" />
-        <el-table-column prop="end_beijing" label="结束时间" min-width="160" />
-        <el-table-column label="选择" width="70">
+        <el-table-column prop="push_kind" label="模式" width="50" />
+        <el-table-column prop="t0_beijing" label="开始时间" min-width="140" />
+        <el-table-column prop="end_beijing" label="结束时间" min-width="140" />
+        <el-table-column label="选择" width="50">
           <template #default="{ $index }">
             <el-checkbox v-model="selectedMap[$index]" />
           </template>
@@ -112,6 +112,20 @@
         <el-table-column label="起始文件号" width="70">
           <template #default="{ $index }">
             <el-input v-model="startFileNoMap[$index]" size="small" placeholder="请输入" />
+          </template>
+        </el-table-column>
+        <!-- AS03 专用列：起始绝对延时指令号 + 是否重新加载表 -->
+        <el-table-column v-if="isAS03" :label="startLabel" width="110">
+          <template #default="{ $index }">
+            <el-input v-model="startFileNoMap[$index]" size="small" placeholder="请输入" />
+          </template>
+        </el-table-column>
+        <el-table-column v-if="isAS03" label="是否重新加载表" width="140">
+          <template #default="{ $index }">
+            <el-select v-model="reloadMap[$index]" size="small" style="width: 70px">
+              <el-option label="是" value="0" />
+              <el-option label="否" value="1" />
+            </el-select>
           </template>
         </el-table-column>
       </el-table>
@@ -180,9 +194,13 @@ const posting = ref(false);
 const apiResponse = ref<any | null>(null);
 const creating = ref(false);
 
+const isAS03 = computed(() => form.satellite === 'AS03');
+const startLabel = computed(() => (isAS03.value ? '起始绝对延时指令号' : '起始文件号'));
+
 // 多选与起始号映射
 const selectedMap = reactive<Record<number, boolean>>({});
 const startFileNoMap = reactive<Record<number, string>>({});
+const reloadMap = reactive<Record<number, string>>({}); // 0=是, 1=否，仅 AS03 使用
 
 // 结果变动时清空已选与起始号
 watch(
@@ -190,6 +208,7 @@ watch(
   () => {
     Object.keys(selectedMap).forEach((k) => delete (selectedMap as any)[k]);
     Object.keys(startFileNoMap).forEach((k) => delete (startFileNoMap as any)[k]);
+    Object.keys(reloadMap).forEach((k) => delete (reloadMap as any)[k]);
   }
 );
 
@@ -574,5 +593,11 @@ async function createWithTemplate() {
 .results-table colgroup col:nth-child(12) { width: 150px !important; }
 .results-table colgroup col:nth-child(13) { width: 70px !important; }
 .results-table colgroup col:nth-child(14) { width: 120px !important; }
+/* 当 AS03 时，隐藏旧的“起始文件号”列（第14列），并为新增的两列预留宽度 */
+.results-table.as03 colgroup col:nth-child(14) { display: none !important; width: 0 !important; }
+.results-table.as03 :deep(th:nth-child(14)),
+.results-table.as03 :deep(td:nth-child(14)) { display: none !important; }
+.results-table.as03 colgroup col:nth-child(15) { width: 110px !important; }
+.results-table.as03 colgroup col:nth-child(16) { width: 140px !important; }
 
 </style>
