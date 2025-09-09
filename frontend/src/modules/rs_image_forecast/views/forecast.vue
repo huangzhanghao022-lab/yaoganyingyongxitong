@@ -130,14 +130,12 @@
         </el-table-column>
       </el-table>
       <div class="mt8" style="text-align:right;">
-        <el-button type="success" @click="createWithTemplate" :loading="creating">生成提交成像信息</el-button>
+        <el-button type="success" @click="submitSelectedUnified" :loading="creating">生成提交成像信息</el-button>
       </div>
     </el-card>
 
     <!-- 防止底部内容被裁切的占位 -->
-    <div v-if="apiResponse && isAS03" style="text-align:right; margin-top:8px;">
-      <el-button type="primary" :loading="creating" @click="createWithTemplateAS03">AS03 提交</el-button>
-    </div>
+    <!-- 合并按钮：改为统一按钮，按卫星分支提交，单独 AS03 按钮移除 -->
     <div class="bottom-spacer"></div>
 
     <el-dialog v-model="dbDialog.visible" title="选择数据库目标点" width="820px">
@@ -594,6 +592,16 @@ async function createWithTemplateAS03() {
     ElMessage.error(`提交失败: ${e?.message || e}`);
   } finally {
     creating.value = false;
+  }
+}
+
+// 统一入口：根据卫星选择 AS02 或 AS03 提交逻辑
+async function submitSelectedUnified() {
+  const sat = form.satellite || apiResponse.value?.result?.[0]?.satellite || '';
+  if (sat === 'AS03') {
+    await createWithTemplateAS03();
+  } else {
+    await createWithTemplate();
   }
 }
 </script>
