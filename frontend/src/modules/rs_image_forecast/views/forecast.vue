@@ -2,8 +2,7 @@
   <div class="forecast-page">
     <el-card 
          shadow="never"
-         :body-style="{ padding: '12px 12px 8px 12px' }"
-         style="min-height: 160px;">
+         style="min-height: 100px;">
       <template #header>
         <div class="card-header">
           <span>成像预报</span>
@@ -85,7 +84,7 @@
     </el-card>
 
 
-    <el-card v-if="apiResponse" shadow="never" >
+    <el-card v-if="apiResponse" shadow="never" class="mb16">
       <template #header>
         <div class="card-header">
           <span>成像预报结果</span>
@@ -107,6 +106,9 @@
         <el-table-column prop="end_beijing" label="结束(北京)" min-width="160" />
       </el-table>
     </el-card>
+
+    <!-- 防止底部内容被裁切的占位 -->
+    <div class="bottom-spacer"></div>
 
     <el-dialog v-model="dbDialog.visible" title="选择数据库目标点" width="820px">
       <div >
@@ -150,7 +152,7 @@ type TargetItem = {
 };
 
 const form = reactive({
-  satellite: 'AS02' as 'AS02' | 'AS03',
+  satellite: '' as '' | 'AS02' | 'AS03',
   startAt: '' as string | '',
   endAt: '' as string | '',
   imageTime: 10 as number,
@@ -158,7 +160,7 @@ const form = reactive({
   targetList: [] as TargetItem[],
 });
 
-const targetPickMode = ref<'manual' | 'all'>('manual');
+const targetPickMode = ref<'' | 'manual' | 'all'>('');
 
 const jsonPreview = ref('');
 const posting = ref(false);
@@ -293,6 +295,8 @@ function confirmDbSelection() {
     return;
   }
   const targets = dbDialog.selection.map(poiToTarget);
+  // 清空已选，再重新填充
+  form.targetList.length = 0;
   targets.forEach((t) => form.targetList.push(t));
   dbDialog.visible = false;
   generateJson();
@@ -417,5 +421,17 @@ async function callForecastApi() {
 }
 
 
+
+/* Ensure page can scroll naturally */
+.forecast-page {
+  padding: 8px 8px 96px; /* extra bottom space to reveal last row */
+  height: 100vh;         /* occupy viewport height */
+  overflow-y: auto;      /* enable vertical scrolling */
+  box-sizing: border-box;
+}
+
+.bottom-spacer {
+  height: 120px; /* ensure wheel can reach the very bottom */
+}
 
 </style>
