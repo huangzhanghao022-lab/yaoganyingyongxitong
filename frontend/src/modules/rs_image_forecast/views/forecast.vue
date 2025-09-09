@@ -1,12 +1,13 @@
 <template>
   <div class="forecast-page">
-    <el-card shadow="never" class="mb16">
+    <el-card 
+         shadow="never"
+         :body-style="{ padding: '12px 12px 8px 12px' }"
+         style="min-height: 160px;">
       <template #header>
         <div class="card-header">
           <span>成像预报</span>
           <el-space>
-            <el-button type="primary" @click="generateJson">生成 JSON</el-button>
-            <el-button @click="copyJson">复制 JSON</el-button>
             <el-button type="success" :loading="posting" @click="callForecastApi">进行预报</el-button>
           </el-space>
         </div>
@@ -33,7 +34,7 @@
         </el-form-item>
 
         <el-form-item label="成像模式">
-          <el-select v-model="form.pushKind" placeholder="选择模式" style="width: 160px">
+          <el-select v-model="form.pushKind" placeholder="选择模式" style="width: 130px">
             <el-option label="直通" value="0" />
             <el-option label="压缩" value="1" />
 			<el-option label="推扫" value="2" />
@@ -41,12 +42,21 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="选取方式">
-          <el-button-group>
-            <el-button :type="targetPickMode === 'manual' ? 'primary' : 'default'" @click="setPickMode('manual')">特定目标点</el-button>
-            <el-button :type="targetPickMode === 'all' ? 'primary' : 'default'" @click="setPickMode('all')">全数据库</el-button>
-          </el-button-group>
-        </el-form-item>
+        <el-form-item label="选取方式" class="pick-item">
+            <div class="btn-group-wrap">
+              <el-button-group class="pick-group">
+                <el-button
+                  :type="targetPickMode === 'manual' ? 'primary' : 'default'"
+                  @click="setPickMode('manual')"
+                >特定目标点</el-button>
+                <el-button
+                  :type="targetPickMode === 'all' ? 'primary' : 'default'"
+                  @click="setPickMode('all')"
+                >全数据库</el-button>
+              </el-button-group>
+            </div>
+          </el-form-item>
+
 
         <template v-if="targetPickMode === 'manual'">
 
@@ -74,20 +84,11 @@
       </el-form>
     </el-card>
 
-    <el-card shadow="never" class="mb16">
-      <template #header>
-        <div class="card-header">
-          <span>JSON 预览</span>
-          <el-tag type="info">只读</el-tag>
-        </div>
-      </template>
-      <el-input v-model="jsonPreview" type="textarea" :autosize="{ minRows: 10 }" readonly />
-    </el-card>
 
-    <el-card v-if="apiResponse" shadow="never" class="mb16">
+    <el-card v-if="apiResponse" shadow="never" >
       <template #header>
         <div class="card-header">
-          <span>接口返回</span>
+          <span>成像预报结果</span>
           <el-tag type="success">{{ apiResponse?.message || '成功' }}</el-tag>
         </div>
       </template>
@@ -108,7 +109,7 @@
     </el-card>
 
     <el-dialog v-model="dbDialog.visible" title="选择数据库目标点" width="820px">
-      <div class="mb16">
+      <div >
         <el-input v-model="dbDialog.keyword" placeholder="按名称搜索" clearable style="width: 240px" @keyup.enter="fetchDb(1)" />
         <el-button class="ml8" type="primary" @click="fetchDb(1)">搜索</el-button>
       </div>
@@ -144,7 +145,7 @@ type TargetItem = {
   long: number | undefined;
   lat: number | undefined;
   alt: number | undefined;
-  push_kind?: '0' | '1' | string;
+  push_kind?: '0' | '1' | '2' | '3';
   priority?: '1' | '2' | '3' | string;
 };
 
@@ -153,7 +154,7 @@ const form = reactive({
   startAt: '' as string | '',
   endAt: '' as string | '',
   imageTime: 10 as number,
-  pushKind: '0' as '0' | '1',
+  pushKind: '0' as '0' | '1' | '2' | '3',
   targetList: [] as TargetItem[],
 });
 
@@ -372,16 +373,17 @@ async function callForecastApi() {
 </script>
 
 <style scoped>
-.forecast-page {
-  height: 100vh;
-  overflow-y: auto;
-  padding: 8px;
+.forecast-page{
+  --cmp-h: 32px;          /* 控件目标高度（常用：32/36/40） */
+  --cmp-radius: 8px;      /* 统一圆角 */
+  --label-w: 90px;        /* el-form 的 label 宽度（和模板一致） */
+  --font-size: 13px;      /* 基础字号 */
 }
 .forecast-form {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  column-gap: 12px;
+  column-gap: 16px;   /* 同行组件的间距（左右） */
+  row-gap: 14px;      /* 上一行到下一行的间距（上下） */
 }
 .forecast-form :deep(.el-form-item) {
   margin-right: 8px;
@@ -398,6 +400,22 @@ async function callForecastApi() {
   flex: 0 0 100%;
   width: 50%;
 }
+
+/* 给内容区一个可控的宽度 */
+.pick-item :deep(.btn-group-wrap){
+  width: 200px;        /* 想多宽改这里 */
+  max-width: 100%;
+}
+
+/* 让 group 横向撑满，两个按钮等分 */
+.pick-item :deep(.pick-group){
+  display: flex;
+  width: 100%;
+}
+.pick-item :deep(.pick-group .el-button){
+  flex: 1;
+}
+
 
 
 </style>
