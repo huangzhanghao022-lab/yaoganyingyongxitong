@@ -6,8 +6,8 @@ import { Column, Entity, Index } from 'typeorm';
  */
 @Entity('rs_poi')
 export class RsPoiEntity extends BaseEntity {
-  @Index()
-  @Column({ comment: '成像名称', length: 255 })
+  @Index({ unique: true })
+  @Column({ comment: '成像名称', length: 255, unique: true })
   name: string;
 
   @Column({ 

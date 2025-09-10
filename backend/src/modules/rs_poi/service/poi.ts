@@ -58,6 +58,8 @@ export class RsPoiPoiService extends BaseService {
     const uniqueData = Array.from(
       new Map(validatedData.map(item => [item.name, item])).values());
 
+    // 使用合并导入策略，避免不同卫星覆盖
+    return await this.mergePoiByName(uniqueData);
     try {
       // 冲突更新逻辑改为基于unique key (name)
       return await this.rsPoiEntity
@@ -80,6 +82,35 @@ export class RsPoiPoiService extends BaseService {
       });
       throw new Error(`导入失败: ${error.message}`);
     }
+  }
+
+  /**
+   * 合并导入：以 name 作为唯一键，卫星代号并集，优先级取较小值
+   */
+  private async mergePoiByName(rows: any[]) {
+    const toTokens = (s: any) => String(s || '')
+      .split(/[\s,|;]+/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const uniqJoin = (a: string, b: string) => Array.from(new Set([...toTokens(a), ...toTokens(b)])).join(',');
+
+    for (const item of rows) {
+      const exist = await this.rsPoiEntity.findOne({ where: { name: item.name } });
+      if (!exist) {
+        await this.rsPoiEntity.save(item);
+        continue;
+      }
+      const merged: any = {
+        ...exist,
+        area_lon: item.area_lon ?? exist.area_lon,
+        area_lat: item.area_lat ?? exist.area_lat,
+        satellites: uniqJoin(exist.satellites, item.satellites),
+        level: Math.min(Number(exist.level ?? 9999), Number(item.level ?? 9999)),
+      };
+      await this.rsPoiEntity.save(merged);
+    }
+
+    return { affected: rows.length } as any;
   }
 
   async listByName(name: string) {

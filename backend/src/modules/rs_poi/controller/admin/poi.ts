@@ -1,4 +1,4 @@
-import { Body, Inject, Post } from '@midwayjs/core';
+﻿import { Body, Inject, Post } from '@midwayjs/core';
 import { CoolController, BaseController } from '@cool-midway/core';
 import { RsPoiEntity } from '../../entity/poi';
 import { RsPoiPoiService } from '../../service/poi';
@@ -62,4 +62,32 @@ export class AdminRsPoiPoiController extends BaseController {
       return this.fail(err.message);
     }
   }
+
+  /**
+   * 自定义分页：按 level 升序，名称升序，支持关键字
+   * 覆盖默认 page。路径与入参保持兼容。
+   */
+  @Post('/page')
+  async pageOrder(@Body() body?: any) {
+    const page = Number(body?.page ?? 1) || 1;
+    const size = Number(body?.size ?? 10) || 10;
+    const keyWord = String(body?.keyWord ?? body?.keyword ?? '').trim();
+
+    const repo = this.rsPoiPoiService.rsPoiEntity;
+    const qb = repo.createQueryBuilder('a');
+    if (keyWord) {
+      // Postgres ILIKE（不区分大小写）；若为其他库可替换为 LIKE
+      qb.where('a.name ILIKE :kw', { kw: `%${keyWord}%` });
+    }
+
+    qb.orderBy('a.level', 'ASC').addOrderBy('a.name', 'ASC');
+
+    const [list, total] = await qb
+      .skip((page - 1) * size)
+      .take(size)
+      .getManyAndCount();
+
+    return this.ok({ list, pagination: { page, size, total } });
+  }
 }
+
