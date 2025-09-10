@@ -269,6 +269,11 @@ function removeTarget(index: number) {
 }
 
 async function setPickMode(mode: 'manual' | 'all') {
+  if (!form.satellite) {
+    ElMessage.warning('请先选择卫星');
+    targetPickMode.value = '' as any;
+    return;
+  }
   targetPickMode.value = mode;
   if (mode === 'manual') {
     openDbDialog();
@@ -305,14 +310,22 @@ function openDbDialog() {
 async function fetchDb(page = 1) {
   dbDialog.loading = true;
   try {
-    const api: any = (service as any).rs_poi?.poi;
-    const res = await api?.page?.({ page, size: dbDialog.size, keyWord: dbDialog.keyword });
-    const list = res?.list || res?.data?.list || [];
-    const pg = res?.pagination || res?.data?.pagination || { page, size: dbDialog.size, total: list.length };
-    dbDialog.list = list;
-    dbDialog.page = pg.page ?? page;
-    dbDialog.size = pg.size ?? dbDialog.size;
-    dbDialog.total = pg.total ?? list.length;
+    const sat = (form.satellite || '').toString();
+    if (!sat) {
+      ElMessage.warning('请先选择卫星');
+      dbDialog.list = [];
+      dbDialog.total = 0;
+      dbDialog.page = 1;
+      return;
+    }
+    // 全量拉取，按卫星过滤，统一排序后再做本地分页
+    const all = await fetchAllPois(dbDialog.keyword || '', sat);
+    const total = all.length;
+    const size = dbDialog.size;
+    const start = (page - 1) * size;
+    dbDialog.list = all.slice(start, start + size);
+    dbDialog.page = page;
+    dbDialog.total = total;
   } catch {
     ElMessage.error('查询数据库目标失败');
   } finally {
@@ -349,14 +362,14 @@ function confirmDbSelection() {
   generateJson();
 }
 
-async function fetchAllPois(): Promise<Poi[]> {
+async function fetchAllPois(keyword = '', satFilter = ''): Promise<Poi[]> {
   const api: any = (service as any).rs_poi?.poi;
   const size = 200;
   let page = 1;
   let total = 0;
   const acc: Poi[] = [];
   while (true) {
-    const res = await api?.page?.({ page, size });
+    const res = await api?.page?.({ page, size, keyWord: keyword });
     const list = res?.list || res?.data?.list || [];
     const pg = res?.pagination || res?.data?.pagination || { total: list.length };
     acc.push(...list);
@@ -364,7 +377,25 @@ async function fetchAllPois(): Promise<Poi[]> {
     if (acc.length >= total || list.length === 0) break;
     page += 1;
   }
-  return acc;
+  // 按卫星过滤（后端存 0:AS02, 1:AS03，亦兼容逗号分隔）
+  const filtered = satFilter
+    ? acc.filter((p: any) => {
+        const s = String(p?.satellites ?? '').trim();
+        if (!s) return false;
+        const tokens = s.split(/[\s,|;]+/).map((x: string) => x.trim());
+        const code = /AS03/i.test(satFilter) ? '1' : /AS02/i.test(satFilter) ? '0' : satFilter.replace(/[^01]/g, '');
+        return tokens.includes(code);
+      })
+    : acc;
+  // 统一按照优先级升序返回
+  return filtered.sort((a: any, b: any) => {
+    const la = Number(a?.level);
+    const lb = Number(b?.level);
+    const va = Number.isFinite(la) ? la : Infinity;
+    const vb = Number.isFinite(lb) ? lb : Infinity;
+    if (va !== vb) return va - vb;
+    return String(a?.name || '').localeCompare(String(b?.name || ''));
+  });
 }
 
 async function loadAllTargets() {
@@ -399,6 +430,25 @@ watch(
     generateJson();
   },
   { immediate: true }
+);
+
+// 卫星切换后，重置缓存并刷新当前选取方式的数据
+watch(
+  () => form.satellite,
+  async () => {
+    dbAllLoaded.value = false;
+    dbAllTargets.value = [];
+    dbDialog.page = 1;
+    dbDialog.total = 0;
+    dbDialog.list = [] as any;
+    dbDialog.selection = [] as any;
+    if (targetPickMode.value === 'all') {
+      await loadAllTargets();
+    } else if (dbDialog.visible) {
+      await fetchDb(1);
+    }
+  },
+  { immediate: false }
 );
 
 async function callForecastApi() {
@@ -480,16 +530,30 @@ async function createWithTemplate() {
     let ok = 0;
     for (const i of idxs) {
       const row: any = list[i] || {};
+      // AS02 提交前将太阳高度角映射为十六进制码
+      const sun = Number(row.solar_angle ?? row.solarAng ?? NaN);
+      let solarMapped = '';
+      if (!Number.isNaN(sun)) {
+        if (sun >= 20 && sun < 30) solarMapped = '0x1111';
+        else if (sun >= 30 && sun < 40) solarMapped = '0x2222';
+        else if (sun >= 40 && sun < 50) solarMapped = '0x3333';
+        else if (sun >= 50 && sun < 60) solarMapped = '0x4444';
+        else if (sun >= 60 && sun < 70) solarMapped = '0x5555';
+      }
+      // 扫描模式映射：直通->0x02，压缩->0x01，其它保持原码
+      const smNorm = toScanModeValue(row.push_kind ?? form.pushKind);
+      const scanModeMapped = smNorm === '0' ? '0x02' : smNorm === '1' ? '0x01' : smNorm;
+
       const body = {
         spacecraftCode: String(row.satellite || form.satellite || ''),
         templateId: '689d78a65526542523548b0f',
         folderId: '6731752608e123893cf92873',
         name: String(row.name || ''),
-        scanMode: toScanModeValue(row.push_kind ?? form.pushKind),
+        scanMode: scanModeMapped,
         rollAng: String(row.roll_angle ?? ''),
         startAt: toIsoString(row.t0_beijing || row.t0),
         endAt: toIsoString(row.end_beijing || row.tf),
-        solarAng: String(row.solar_angle ?? ''),
+        solarAng: solarMapped || String(row.solar_angle ?? ''),
         fileStart: String(startFileNoMap[i] ?? ''),
       } as any;
 

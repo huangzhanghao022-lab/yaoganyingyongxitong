@@ -2297,6 +2297,15 @@ declare namespace Eps {
 		update(data?: any): Promise<any>;
 
 		/**
+		 * page
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: RsPoiEntity[];
+			[key: string]: any;
+		}>;
+
+		/**
 		 * 单个信息
 		 */
 		info(data?: any): Promise<RsPoiEntity>;
@@ -2305,15 +2314,6 @@ declare namespace Eps {
 		 * 列表查询
 		 */
 		list(data?: any): Promise<RsPoiEntity[]>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: RsPoiEntity[];
-			[key: string]: any;
-		}>;
 
 		/**
 		 * 新增
@@ -2331,9 +2331,9 @@ declare namespace Eps {
 			import: string;
 			delete: string;
 			update: string;
+			page: string;
 			info: string;
 			list: string;
-			page: string;
 			add: string;
 		};
 
@@ -2348,9 +2348,9 @@ declare namespace Eps {
 			import: boolean;
 			delete: boolean;
 			update: boolean;
+			page: boolean;
 			info: boolean;
 			list: boolean;
-			page: boolean;
 			add: boolean;
 		};
 
