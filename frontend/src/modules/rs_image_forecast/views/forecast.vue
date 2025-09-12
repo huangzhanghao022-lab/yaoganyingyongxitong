@@ -90,7 +90,7 @@
           <span>AS02 载荷固存表空文件号</span>
           <el-space>
             <el-tag type="info">共 {{ as02EmptyFileNos.length }} 个</el-tag>
-            <el-button size="small" @click="navigator.clipboard.writeText(as02EmptyFileNos.join(',')).then(()=>ElMessage.success('已复制')).catch(()=>ElMessage.error('复制失败'))">复制</el-button>
+            <el-button size="small" @click="copyAs02EmptyFileNos">复制</el-button>
           </el-space>
         </div>
       </template>
@@ -494,7 +494,7 @@ async function callForecastApi() {
     apiResponse.value = null;
     ElMessage.error(`接口调用失败: ${e?.message || e}`);
   } finally {
-    posting.value = false;
+  posting.value = false;
   }
 }
 
@@ -614,6 +614,13 @@ async function createWithTemplate() {
         body: JSON.stringify(body),
       });
       if (resp.ok) ok += 1;
+
+      // 同步写入 AS02 载荷固存表：根据起始文件号回填目标名/成像时间，并将状态改为“待写入”(2)
+      try {
+        await updateAs02FixedStorage(String(body.fileStart || ''), row);
+      } catch (e) {
+        console.warn('[AS02] 固存表回填失败: ', e);
+      }
     }
 
     ElMessage.success(`已提交 ${ok}/${idxs.length} 条成像信息`);
@@ -622,6 +629,47 @@ async function createWithTemplate() {
   } finally {
     creating.value = false;
   }
+}
+
+// 复制 AS02 空文件号到剪贴板
+async function copyAs02EmptyFileNos() {
+  const text = as02EmptyFileNos.value.join(',');
+  if (!text) {
+    ElMessage.warning('无可复制的文件号');
+    return;
+  }
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    ElMessage.success('已复制');
+  } catch (e) {
+    ElMessage.error('复制失败');
+  }
+}
+
+// 根据起始文件号更新 AS02 载荷固存表（name=0）：回填目标名、成像时间，状态置为待写入(1)
+async function updateAs02FixedStorage(fileStart: string, srcRow: any) {
+  if (!fileStart) return;
+  const api: any = (service as any)?.star?.fixed_storage_table;
+  if (!api?.page || !api?.update) return;
+  const name = 0; // AS02 payload
+  // 先查出对应记录的 id
+  const res = await api.page({ page: 1, size: 1, name, startFileNo: Number(fileStart) });
+  const row = (res?.list || res?.data?.list || [])[0];
+  if (!row?.id) return;
+  const id = row.id;
+  const targetName = String(srcRow?.name || row?.targetName || '');
+  const imagingTime = String(srcRow?.t0_beijing || row?.imagingTime || '');
+  const status = 1; // 待写入
+  await api.update({ name, data: { id, targetName, imagingTime, status } });
 }
 
 // AS03 专用：一次性提交三条模板请求
@@ -644,6 +692,10 @@ async function createWithTemplateAS03() {
 
     let ok = 0;
     let total = 0;
+
+    // 为固存同步准备足量的空槽（AS03 载荷 name=2，status=0），按 startFileNo 升序
+    const emptySlots = await fetchAs03EmptySlots(idxs.length);
+    let slotPtr = 0;
     for (const i of idxs) {
       const row: any = list[i] || {};
       const sat = String(row.satellite || form.satellite || '');
@@ -697,6 +749,18 @@ async function createWithTemplateAS03() {
         });
         if (resp.ok) ok += 1;
       }
+
+      // 同步写入 AS03 载荷固存表：从最小空固存号开始依次写入
+      const slot = emptySlots[slotPtr++];
+      if (slot && slot.id) {
+        try {
+          await updateAs03FixedStorage(slot.id, row);
+        } catch (e) {
+          console.warn('[AS03] 固存表回填失败: ', e);
+        }
+      } else {
+        console.warn('[AS03] 固存槽不足，无法回填固存记录');
+      }
     }
 
     ElMessage.success(`AS03 已提交 ${ok}/${total} 条请求`);
@@ -705,6 +769,45 @@ async function createWithTemplateAS03() {
   } finally {
     creating.value = false;
   }
+}
+
+// 拉取 AS03 载荷固存表的若干空槽（返回按 startFileNo 升序的记录，包含 id/startFileNo）
+async function fetchAs03EmptySlots(expect = 1): Promise<any[]> {
+  const api: any = (service as any)?.star?.fixed_storage_table;
+  if (!api?.page) return [];
+  const name = 2; // AS03 payload
+  const status = 0; // 空
+  const size = 200;
+  let page = 1;
+  let acc: any[] = [];
+  while (acc.length < expect) {
+    const res = await api.page({ page, size, name, status, sort: 'startFileNo', order: 'ASC' });
+    const list = res?.list || res?.data?.list || [];
+    if (!list.length) break;
+    acc.push(...list);
+    page += 1;
+  }
+  // 去重并按 startFileNo 升序
+  const seen = new Set<number>();
+  acc = acc.filter((r) => {
+    const n = Number(r?.startFileNo);
+    if (!Number.isFinite(n) || seen.has(n)) return false;
+    seen.add(n);
+    return true;
+  }).sort((a, b) => Number(a.startFileNo) - Number(b.startFileNo));
+  return acc.slice(0, expect);
+}
+
+// 根据 id 更新 AS03 载荷固存表：回填目标名、成像时间，状态置为待写入(1)
+async function updateAs03FixedStorage(id: number, srcRow: any) {
+  if (!id) return;
+  const api: any = (service as any)?.star?.fixed_storage_table;
+  if (!api?.update) return;
+  const name = 2;
+  const targetName = String(srcRow?.name || '');
+  const imagingTime = String(srcRow?.t0_beijing || '');
+  const status = 1; // 待写入
+  await api.update({ name, data: { id, targetName, imagingTime, status } });
 }
 
 // 统一入口：根据卫星选择 AS02 或 AS03 提交逻辑
