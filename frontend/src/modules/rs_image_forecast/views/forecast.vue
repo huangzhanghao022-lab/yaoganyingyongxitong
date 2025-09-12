@@ -83,6 +83,20 @@
       </el-form>
     </el-card>
 
+    <!-- AS02 载荷固存表空文件号提示 -->
+    <el-card v-if="form.satellite === 'AS02' && as02EmptyFileNos.length" shadow="never" class="mb16">
+      <template #header>
+        <div class="card-header">
+          <span>AS02 载荷固存表空文件号</span>
+          <el-space>
+            <el-tag type="info">共 {{ as02EmptyFileNos.length }} 个</el-tag>
+            <el-button size="small" @click="navigator.clipboard.writeText(as02EmptyFileNos.join(',')).then(()=>ElMessage.success('已复制')).catch(()=>ElMessage.error('复制失败'))">复制</el-button>
+          </el-space>
+        </div>
+      </template>
+      <div style="line-height: 1.8; word-break: break-all;">{{ as02EmptyFileNos.join(', ') }}</div>
+    </el-card>
+
 
     <el-card v-if="apiResponse" shadow="never" class="mb16">
       <template #header>
@@ -193,6 +207,8 @@ const targetPickMode = ref<'' | 'manual' | 'all'>('');
 const jsonPreview = ref('');
 const posting = ref(false);
 const apiResponse = ref<any | null>(null);
+// AS02 载荷固存表空文件号
+const as02EmptyFileNos = ref<number[]>([]);
 const creating = ref(false);
 
 const isAS03 = computed(() => form.satellite === 'AS03');
@@ -464,12 +480,44 @@ async function callForecastApi() {
     const data = await res.json();
     apiResponse.value = data;
     ElMessage.success('接口调用成功');
+    // 若当前为 AS02，则在获取结果后，额外获取载荷固存表的空文件号
+    if (form.satellite === 'AS02') {
+      try {
+        as02EmptyFileNos.value = await fetchAs02EmptyFileNos();
+      } catch (e) {
+        console.warn('[forecast] 获取AS02空文件号失败', e);
+      }
+    } else {
+      as02EmptyFileNos.value = [];
+    }
   } catch (e: any) {
     apiResponse.value = null;
     ElMessage.error(`接口调用失败: ${e?.message || e}`);
   } finally {
     posting.value = false;
   }
+}
+
+// 获取 AS02 载荷固存表的空数据文件号（status=0, name=0）
+async function fetchAs02EmptyFileNos(): Promise<number[]> {
+  const api: any = (service as any)?.star?.fixed_storage_table;
+  if (!api?.page) return [];
+  const name = 0; // 0: AS02 payload
+  const status = 0; // 0: 空
+  const size = 200;
+  let page = 1;
+  let total = 0;
+  const acc: number[] = [];
+  while (true) {
+    const res = await api.page({ page, size, name, status, sort: 'startFileNo', order: 'ASC' });
+    const list = res?.list || res?.data?.list || [];
+    const pg = res?.pagination || res?.data?.pagination || { total: list.length };
+    acc.push(...(list.map((r: any) => Number(r?.startFileNo)).filter((n: any) => Number.isFinite(n))));
+    total = pg.total ?? acc.length;
+    if (acc.length >= total || list.length === 0) break;
+    page += 1;
+  }
+  return Array.from(new Set(acc)).sort((a, b) => a - b);
 }
 
 // ======== 生成提交成像信息（按模板创建）========
