@@ -36,8 +36,8 @@
           <el-select v-model="form.pushKind" placeholder="选择模式" style="width: 130px">
             <el-option label="直通" value="0" />
             <el-option label="压缩" value="1" />
-			<el-option label="推扫" value="2" />
-			<el-option label="凝视" value="3" />
+            <el-option label="推扫" value="2" />
+            <el-option label="凝视" value="3" />
           </el-select>
         </el-form-item>
 
