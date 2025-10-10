@@ -83,6 +83,32 @@
 			</el-card>
 		</cl-row>
 
+		<el-card v-if="confirmedStorage.payload.length || confirmedStorage.platform.length" shadow="never" class="selection-card">
+			<template #header>
+				<div class="selection-header">已选择数传文件</div>
+			</template>
+			<el-row :gutter="16">
+				<el-col :span="12">
+					<h4 class="selection-title">载荷固存表</h4>
+					<el-table :data="confirmedStorage.payload" size="small" border empty-text="未选择" height="200">
+						<el-table-column type="index" width="50" label="#" />
+						<el-table-column prop="display" label="目标/文件" min-width="140" show-overflow-tooltip />
+						<el-table-column prop="startFileNo" label="开始文件号" width="120" />
+						<el-table-column prop="statusLabel" label="状态" width="100" />
+					</el-table>
+				</el-col>
+				<el-col :span="12">
+					<h4 class="selection-title">平台固存表</h4>
+					<el-table :data="confirmedStorage.platform" size="small" border empty-text="未选择" height="200">
+						<el-table-column type="index" width="50" label="#" />
+						<el-table-column prop="display" label="目标/文件" min-width="140" show-overflow-tooltip />
+						<el-table-column prop="startFileNo" label="开始文件号" width="120" />
+						<el-table-column prop="statusLabel" label="状态" width="100" />
+					</el-table>
+				</el-col>
+			</el-row>
+		</el-card>
+
 		<el-dialog
 			v-model="storageDialog.visible"
 			title="固存表状态"
@@ -160,27 +186,13 @@
 				<el-space>
 					<el-tag type="info">载荷已选 {{ storageDialog.selectedPayload.length }} 条</el-tag>
 					<el-tag type="info">平台已选 {{ storageDialog.selectedPlatform.length }} 条</el-tag>
+					<el-button type="primary" :disabled="!storageDialog.selectedPayload.length && !storageDialog.selectedPlatform.length" @click="confirmStorageSelection">确认</el-button>
 					<el-button @click="storageDialog.visible = false">关闭</el-button>
 				</el-space>
 			</template>
 		</el-dialog>
 
-		<cl-row>
-			<cl-refresh-btn />
-			<cl-flex1 />
-			<cl-search ref="Search" />
-		</cl-row>
 
-		<cl-row>
-			<cl-table ref="Table" />
-		</cl-row>
-
-		<cl-row>
-			<cl-flex1 />
-			<cl-pagination />
-		</cl-row>
-
-		<cl-upsert ref="Upsert" />
 	</cl-crud>
 </template>
 
@@ -273,6 +285,11 @@ const storageDialog = reactive({
 	platform: [] as StorageRow[],
 	selectedPayload: [] as StorageRow[],
 	selectedPlatform: [] as StorageRow[],
+});
+
+const confirmedStorage = reactive({
+	payload: [] as StorageRow[],
+	platform: [] as StorageRow[],
 });
 
 function resetStationDetail() {
@@ -420,6 +437,12 @@ async function openStorageStatus() {
 	}
 }
 
+function confirmStorageSelection() {
+	confirmedStorage.payload = storageDialog.selectedPayload.map(item => ({ ...item }));
+	confirmedStorage.platform = storageDialog.selectedPlatform.map(item => ({ ...item }));
+	storageDialog.visible = false;
+}
+
 onMounted(() => {
 	fetchStationOptions();
 });
@@ -450,5 +473,18 @@ const Search = useSearch();
 
 .form-actions {
 	margin-top: 8px;
+}
+
+.selection-card {
+	margin-top: 16px;
+}
+
+.selection-header {
+	font-weight: 600;
+}
+
+.selection-title {
+	margin: 0 0 8px 0;
+	font-size: 14px;
 }
 </style>
