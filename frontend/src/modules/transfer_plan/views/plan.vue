@@ -87,6 +87,17 @@
 			<template #header>
 				<div class="selection-header">已选择数传文件</div>
 			</template>
+			<el-space style="margin-bottom: 12px" align="center">
+				<el-button
+					type="success"
+					@click="integrateStorage"
+					:disabled="!confirmedStorage.payload.length && !confirmedStorage.platform.length"
+				>
+					整合数传信息
+				</el-button>
+				<el-button type="primary" @click="addIntegratedGroup">新增整合组</el-button>
+				<el-tag v-if="integratedGroups.length" type="info">当前共 {{ integratedGroups.length }} 组</el-tag>
+			</el-space>
 			<el-row :gutter="16">
 				<el-col :span="12">
 					<h4 class="selection-title">载荷固存表</h4>
@@ -107,6 +118,38 @@
 					</el-table>
 				</el-col>
 			</el-row>
+			<div v-if="integratedGroups.length" class="integrated-groups">
+				<h4 class="selection-title">整合数传信息</h4>
+				<div
+					v-for="(group, index) in integratedGroups"
+					:key="group.id"
+					class="integrated-group"
+				>
+					<h5 class="group-title">整合组 {{ index + 1 }}（包含 {{ group.count }} 个文件）</h5>
+					<el-form :model="group" inline class="integrated-form">
+						<el-form-item label="固存号范围">
+							<el-input v-model="group.startNo" class="range-input" />
+							<span class="range-sep">~</span>
+							<el-input v-model="group.endNo" class="range-input" />
+						</el-form-item>
+						<el-form-item label="传输时长(s)">
+							<el-input-number v-model="group.duration" :min="0" :step="10" />
+						</el-form-item>
+						<el-form-item label="文件数">
+							<el-tag type="info">{{ group.count }}</el-tag>
+						</el-form-item>
+						<el-form-item label="类型">
+							<el-radio-group v-model="group.type">
+								<el-radio-button label="payload">载荷</el-radio-button>
+								<el-radio-button label="platform">平台</el-radio-button>
+							</el-radio-group>
+						</el-form-item>
+						<el-form-item>
+							<el-button type="danger" link @click="removeIntegratedGroup(index)">删除整合组</el-button>
+						</el-form-item>
+					</el-form>
+				</div>
+			</div>
 		</el-card>
 
 		<el-dialog
@@ -201,7 +244,7 @@ defineOptions({
 	name: "transfer-plan-plan",
 });
 
-import { useTable, useUpsert, useSearch } from "@cool-vue/crud";
+
 import { useI18n } from "vue-i18n";
 import { reactive, computed, ref, onMounted } from "vue";
 import { ElMessage } from "element-plus";
@@ -291,6 +334,19 @@ const confirmedStorage = reactive({
 	payload: [] as StorageRow[],
 	platform: [] as StorageRow[],
 });
+
+type SelectionSource = 'payload' | 'platform';
+
+type IntegratedGroup = {
+	id: string;
+	startNo: string;
+	endNo: string;
+	count: number;
+	duration: number;
+	type: SelectionSource;
+};
+
+const integratedGroups = ref<IntegratedGroup[]>([]);
 
 function resetStationDetail() {
 	form.stationName = "";
@@ -440,16 +496,104 @@ async function openStorageStatus() {
 function confirmStorageSelection() {
 	confirmedStorage.payload = storageDialog.selectedPayload.map(item => ({ ...item }));
 	confirmedStorage.platform = storageDialog.selectedPlatform.map(item => ({ ...item }));
+	integratedGroups.value = [];
 	storageDialog.visible = false;
 }
 
+function integrateStorage() {
+	if (!confirmedStorage.payload.length && !confirmedStorage.platform.length) {
+		ElMessage.warning("请先在固存表内选择需要整合的数传文件");
+		return;
+	}
+
+	const satellite = form.satellite;
+	const perFileDuration = satellite === "AS02" ? 90 : 30;
+
+	const buildGroups = (source: StorageRow[], type: SelectionSource): IntegratedGroup[] => {
+		if (!source.length) return [];
+		const numbers = Array.from(
+			new Set(
+				source
+					.map(item => Number(item.startFileNo))
+					.filter(num => Number.isFinite(num))
+			)
+		).sort((a, b) => a - b);
+
+		if (!numbers.length) {
+			return [];
+		}
+
+		const stepForType = satellite === "AS03" || type === "platform" ? 1 : 8;
+		const chunkSizeForType = satellite === "AS03" || type === "platform" ? 1 : 8;
+
+		const segments: number[][] = [];
+		let current: number[] = [];
+
+		numbers.forEach(num => {
+			if (!current.length) {
+				current.push(num);
+				return;
+			}
+
+			const last = current[current.length - 1];
+			if (num - last === stepForType) {
+				current.push(num);
+			} else {
+				segments.push(current);
+				current = [num];
+			}
+		});
+
+		if (current.length) {
+			segments.push(current);
+		}
+
+		return segments.map(group => {
+			const start = group[0];
+			const span = group.length * chunkSizeForType;
+			const end = start + span - 1;
+			return {
+				id: `${type}-${start}-${end}-${group.length}`,
+				startNo: String(start),
+				endNo: String(end),
+				count: group.length,
+				duration: perFileDuration * group.length,
+				type,
+			};
+		});
+	};
+
+	const merged: IntegratedGroup[] = [
+		...buildGroups(confirmedStorage.payload, "payload"),
+		...buildGroups(confirmedStorage.platform, "platform"),
+	];
+
+	if (!merged.length) {
+		ElMessage.warning("选中的数传文件缺少有效的固存号");
+		return;
+	}
+
+	integratedGroups.value = merged;
+}
+
+function addIntegratedGroup() {
+	integratedGroups.value.push({
+		id: `custom-${Date.now()}-${integratedGroups.value.length}`,
+		startNo: "",
+		endNo: "",
+		count: 0,
+		duration: 0,
+		type: confirmedStorage.payload.length && !confirmedStorage.platform.length ? "payload" : "platform",
+	});
+}
+
+function removeIntegratedGroup(index: number) {
+	integratedGroups.value.splice(index, 1);
+}
 onMounted(() => {
 	fetchStationOptions();
 });
 
-const Upsert = useUpsert({ items: [] });
-const Table = useTable({ columns: [{ label: t("#"), type: "index" }] });
-const Search = useSearch();
 </script>
 
 <style scoped>
@@ -486,5 +630,31 @@ const Search = useSearch();
 .selection-title {
 	margin: 0 0 8px 0;
 	font-size: 14px;
+}
+
+.integrated-groups {
+	margin-top: 16px;
+}
+
+.integrated-group {
+	padding: 12px;
+	border: 1px dashed var(--el-border-color-base, #dcdfe6);
+	border-radius: 6px;
+	margin-bottom: 12px;
+}
+
+.group-title {
+	margin: 0 0 8px 0;
+	font-size: 13px;
+	color: #606266;
+}
+
+.integrated-form .range-input {
+	width: 120px;
+}
+
+.range-sep {
+	margin: 0 8px;
+	color: #909399;
 }
 </style>
