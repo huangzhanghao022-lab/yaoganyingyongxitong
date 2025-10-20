@@ -624,6 +624,112 @@ function normalizeDuration(value: number | string | undefined, fallback: number)
 	return String(fallback);
 }
 
+function parseDateTime(value: string): number | null {
+	if (!value) return null;
+	const normalized = String(value).replace(' ', 'T');
+	const time = new Date(normalized).getTime();
+	return Number.isNaN(time) ? null : time;
+}
+
+function computeGroupFallbackDuration(group: IntegratedGroup, satellite: string | undefined): number {
+	const raw = Number(group.duration);
+	if (Number.isFinite(raw) && raw >= 0) {
+		return raw;
+	}
+	const perFile =
+		group.type === 'platform'
+			? 30
+			: satellite === 'AS02'
+			? 90
+			: 30;
+	const count = Number(group.count);
+	const safeCount = Number.isFinite(count) && count > 0 ? count : 1;
+	return perFile * safeCount;
+}
+
+function validateTransferParams(): boolean {
+	const satellite = form.satellite;
+	const groups = integratedGroups.value;
+
+	const formDurationNum = Number(form.duration);
+	if (Number.isFinite(formDurationNum) && formDurationNum > 400) {
+		ElMessage.error('数传时间过长');
+		return false;
+	}
+
+	const totalDuration = groups.reduce((sum, group) => sum + computeGroupFallbackDuration(group, satellite), 0);
+	if (totalDuration > 400) {
+		ElMessage.error('数传时间过长');
+		return false;
+	}
+
+	const t0Time = parseDateTime(form.transferT0);
+	if (t0Time != null && t0Time < Date.now()) {
+		ElMessage.error('不可执行历史时间的数传任务');
+		return false;
+	}
+
+	for (const group of groups) {
+		const start = Number(group.startNo);
+		const end = Number(group.endNo);
+		console.log({satellite, type: group.type, start, end})
+		if (!Number.isFinite(start) || !Number.isFinite(end)) {
+			ElMessage.error('数传文件号异常');
+			return false;
+		}
+		if (!Number.isInteger(start) || !Number.isInteger(end)) {
+			ElMessage.error('数传文件号异常');
+			return false;
+		}
+		if (end <= start) {
+			ElMessage.error('数传文件号异常');
+			return false;
+		}
+
+		if (satellite === 'AS02') {
+			if (group.type === 'payload') {
+				const startOffset = start - 1;
+				if (startOffset < 0 || startOffset % 8 !== 0) {
+					ElMessage.error('数传文件号异常');
+					return false;
+				}
+				const n = startOffset / 8;
+				if (n < 0 || n > 30) {
+					ElMessage.error('数传文件号异常');
+					return false;
+				}
+				if (end % 8 !== 0) {
+					ElMessage.error('数传文件号异常');
+					return false;
+				}
+				const span = end - start + 1;
+				if (span <= 0 || span % 8 !== 0) {
+					ElMessage.error('数传文件号异常');
+					return false;
+				}
+				const blockCount = span / 8;
+				const lastBlock = n + blockCount - 1;
+				if (lastBlock > 30) {
+					ElMessage.error('数传文件号异常');
+					return false;
+				}
+			} else {
+				if (start < 1 || end < 1 || start > 16 || end > 16) {
+					ElMessage.error('数传文件号异常');
+					return false;
+				}
+			}
+		} else if (satellite === 'AS03') {
+			if (start < 0 || end < 0 || start > 127 || end > 127) {
+				ElMessage.error('数传文件号异常');
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 	const stationLabel = form.stationName || form.station || '';
 	const transferLabel = form.transferT0 ? String(form.transferT0) : new Date().toISOString();
@@ -763,6 +869,10 @@ async function submitTransferTask() {
 	}
 	if (!form.transferT0) {
 		ElMessage.warning('请填写数传T0时间');
+		return;
+	}
+
+	if (!validateTransferParams()) {
 		return;
 	}
 
