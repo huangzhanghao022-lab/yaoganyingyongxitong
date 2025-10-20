@@ -14,8 +14,8 @@
 					</el-form-item>
 					<el-form-item label="是否重新加载表" >
 						<el-radio-group v-model="form.reloadTable">
-							<el-radio-button label="1">是</el-radio-button>
-							<el-radio-button label="0">否</el-radio-button>
+							<el-radio-button label=true>是</el-radio-button>
+							<el-radio-button label=false>否</el-radio-button>
 						</el-radio-group>
 					</el-form-item>
 					<el-form-item label="开始绝对延时指令号" label-width="160px">
@@ -289,7 +289,7 @@ const statusTagMap: Record<number, TagStyle> = {
 
 const form = reactive({
 	satellite: "AS02" as "AS02" | "AS03",
-	reloadTable: "0",
+	reloadTable: false,
 	startCommand: "",
 	station: "",
 	stationName: "",
@@ -625,15 +625,14 @@ function normalizeDuration(value: number | string | undefined, fallback: number)
 }
 
 function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
+	const stationLabel = form.stationName || form.station || '';
+	const transferLabel = form.transferT0 ? String(form.transferT0) : new Date().toISOString();
+	const composedName = `${stationLabel}数传任务-${transferLabel}`;
 	const body: Record<string, string> = {
 		spacecraftCode: String(form.satellite ?? ''),
 		templateId: TRANSFER_TEMPLATE_ID,
 		folderId: TRANSFER_FOLDER_ID,
-		name: form.stationName
-			? String(form.stationName)
-			: form.station
-			? String(form.station)
-			: `数传任务-${new Date().toISOString()}`,
+		name: composedName,
 		start_seq: String(form.startCommand ?? ''),
 		reset_seq: String(form.reloadTable ?? ''),
 		t0: toIsoString(form.transferT0),
