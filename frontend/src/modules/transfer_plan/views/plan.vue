@@ -628,8 +628,71 @@ function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 	const stationLabel = form.stationName || form.station || '';
 	const transferLabel = form.transferT0 ? String(form.transferT0) : new Date().toISOString();
 	const composedName = `${stationLabel}数传任务-${transferLabel}`;
+	const satellite = form.satellite;
+
+	if (satellite === 'AS03') {
+		const body: Record<string, string> = {
+			spacecraftCode: String(satellite ?? ''),
+			templateId: '673c2d9049b1f446adc4623b',
+			folderId: '6731755b08e123893cf92878',
+			name: composedName,
+			start_seq: String(form.startCommand ?? ''),
+			reset_seq: String(form.reloadTable ?? ''),
+			duration: String(form.duration ?? ''),
+			t0: toIsoString(form.transferT0),
+			trans_count: String(groups.length),
+			long: String(form.longitude ?? ''),
+			lat: String(form.latitude ?? ''),
+			alt: String(form.altitude ?? ''),
+		};
+
+		const indexRange = [1, 2, 3, 4, 5, 6];
+		indexRange.forEach(idx => {
+			body[`start_file${idx}`] = '';
+			body[`end_file${idx}`] = '';
+			body[`module${idx}`] = '';
+			if (idx <= 5) {
+				body[`trans_time${idx}`] = '';
+			}
+		});
+
+		const payloadPerFile = 30;
+		const platformPerFile = 30;
+		let accumulatedDuration = 0;
+
+		groups.forEach((group, groupIndex) => {
+			const slot = groupIndex + 1;
+			if (slot > indexRange.length) return;
+			const startKey = `start_file${slot}`;
+			const endKey = `end_file${slot}`;
+			const moduleKey = `module${slot}`;
+			const timeKey = slot <= 5 ? `trans_time${slot}` : null;
+			const perFileForType = group.type === 'platform' ? platformPerFile : payloadPerFile;
+			const fallbackDuration = perFileForType * Math.max(1, Number(group.count) || 0);
+			const normalizedDuration = normalizeDuration(group.duration, fallbackDuration);
+
+			body[startKey] = String(group.startNo ?? '');
+			body[endKey] = String(group.endNo ?? '');
+			body[moduleKey] = mapTransferType(group.type);
+			if (timeKey) {
+				body[timeKey] = normalizedDuration;
+			}
+
+			const parsedDuration = Number(normalizedDuration);
+			if (Number.isFinite(parsedDuration)) {
+				accumulatedDuration += parsedDuration;
+			}
+		});
+
+		if (accumulatedDuration > 0) {
+			body.duration = String(accumulatedDuration);
+		}
+
+		return body;
+	}
+
 	const body: Record<string, string> = {
-		spacecraftCode: String(form.satellite ?? ''),
+		spacecraftCode: String(satellite ?? ''),
 		templateId: TRANSFER_TEMPLATE_ID,
 		folderId: TRANSFER_FOLDER_ID,
 		name: composedName,
@@ -656,7 +719,6 @@ function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 		body[`trans_time${suffix}`] = '';
 	});
 
-	const satellite = form.satellite;
 	const payloadPerFile = satellite === 'AS02' ? 90 : 30;
 	const platformPerFile = 30;
 	let accumulatedDuration = 0;
