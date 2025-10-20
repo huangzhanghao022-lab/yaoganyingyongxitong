@@ -96,6 +96,9 @@
 					整合数传信息
 				</el-button>
 				<el-button type="primary" @click="addIntegratedGroup">新增整合组</el-button>
+				<el-button type="danger" @click="submitTransferTask" :disabled="!integratedGroups.length" :loading="transferSubmitting">
+					提交数传任务
+				</el-button>
 				<el-tag v-if="integratedGroups.length" type="info">当前共 {{ integratedGroups.length }} 组</el-tag>
 			</el-space>
 			<el-row :gutter="16">
@@ -346,7 +349,15 @@ type IntegratedGroup = {
 	type: SelectionSource;
 };
 
+const TRANSFER_TEMPLATE_ID = '673c2d9049b1f446adc4623e';
+const TRANSFER_FOLDER_ID = '6731752608e123893cf92873';
+const TRANSFER_API_URL = 'http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template';
+const TRANSFER_TYPE_MAP: Record<SelectionSource, string> = { payload: '1', platform: '0' };
+const START_END_TYPE_SUFFIXES = ['', '1', '2', '3', '4', '5', '6', '7', '8'];
+const TRANS_TIME_SUFFIXES = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+
 const integratedGroups = ref<IntegratedGroup[]>([]);
+const transferSubmitting = ref(false);
 
 function resetStationDetail() {
 	form.stationName = "";
@@ -507,7 +518,8 @@ function integrateStorage() {
 	}
 
 	const satellite = form.satellite;
-	const perFileDuration = satellite === "AS02" ? 90 : 30;
+	const payloadPerFile = satellite === "AS02" ? 90 : 30;
+	const platformPerFile = 30;
 
 	const buildGroups = (source: StorageRow[], type: SelectionSource): IntegratedGroup[] => {
 		if (!source.length) return [];
@@ -525,6 +537,7 @@ function integrateStorage() {
 
 		const stepForType = satellite === "AS03" || type === "platform" ? 1 : 8;
 		const chunkSizeForType = satellite === "AS03" || type === "platform" ? 1 : 8;
+		const perFileForType = type === "platform" ? platformPerFile : payloadPerFile;
 
 		const segments: number[][] = [];
 		let current: number[] = [];
@@ -557,7 +570,7 @@ function integrateStorage() {
 				startNo: String(start),
 				endNo: String(end),
 				count: group.length,
-				duration: perFileDuration * group.length,
+				duration: perFileForType * group.length,
 				type,
 			};
 		});
@@ -576,14 +589,166 @@ function integrateStorage() {
 	integratedGroups.value = merged;
 }
 
+function toIsoString(input: any): string {
+	if (!input) return '';
+	try {
+		const normalized = String(input).replace(' ', 'T');
+		return new Date(normalized).toISOString();
+	} catch {
+		return '';
+	}
+}
+
+async function acquireToken(): Promise<string> {
+	const res = await axios.post(TOKEN_URL, {
+		username: '02ptemplate@yinhe.ht',
+		password: '123456',
+		loginType: 2,
+	});
+	const token = res?.data?.data?.token;
+	if (!token) {
+		throw new Error('获取登录 token 失败');
+	}
+	return token;
+}
+
+function mapTransferType(type: SelectionSource): string {
+	return TRANSFER_TYPE_MAP[type] ?? '0';
+}
+
+function normalizeDuration(value: number | string | undefined, fallback: number): string {
+	const num = Number(value);
+	if (Number.isFinite(num) && num >= 0) {
+		return String(num);
+	}
+	return String(fallback);
+}
+
+function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
+	const body: Record<string, string> = {
+		spacecraftCode: String(form.satellite ?? ''),
+		templateId: TRANSFER_TEMPLATE_ID,
+		folderId: TRANSFER_FOLDER_ID,
+		name: form.stationName
+			? String(form.stationName)
+			: form.station
+			? String(form.station)
+			: `数传任务-${new Date().toISOString()}`,
+		start_seq: String(form.startCommand ?? ''),
+		reset_seq: String(form.reloadTable ?? ''),
+		t0: toIsoString(form.transferT0),
+		duration: String(form.duration ?? ''),
+		trans_count: String(groups.length),
+		long: String(form.longitude ?? ''),
+		lat: String(form.latitude ?? ''),
+		alt: String(form.altitude ?? ''),
+	};
+
+	START_END_TYPE_SUFFIXES.forEach((suffix) => {
+		const startKey = `start_file${suffix}`;
+		const endKey = `end_file${suffix}`;
+		const typeKey = `trans_type${suffix}`;
+		body[startKey] = '';
+		body[endKey] = '';
+		body[typeKey] = '';
+	});
+
+	TRANS_TIME_SUFFIXES.forEach((suffix) => {
+		body[`trans_time${suffix}`] = '';
+	});
+
+	const satellite = form.satellite;
+	const payloadPerFile = satellite === 'AS02' ? 90 : 30;
+	const platformPerFile = 30;
+	let accumulatedDuration = 0;
+
+	groups.forEach((group, index) => {
+		if (index >= START_END_TYPE_SUFFIXES.length) return;
+		const startSuffix = START_END_TYPE_SUFFIXES[index];
+		const timeSuffix = TRANS_TIME_SUFFIXES[index];
+		const startKey = `start_file${startSuffix}`;
+		const endKey = `end_file${startSuffix}`;
+		const typeKey = `trans_type${startSuffix}`;
+		const timeKey = `trans_time${timeSuffix}`;
+		const perFileForType = group.type === 'platform' ? platformPerFile : payloadPerFile;
+		const fallbackDuration = perFileForType * Math.max(1, Number(group.count) || 0);
+		const normalizedDuration = normalizeDuration(group.duration, fallbackDuration);
+		body[startKey] = String(group.startNo ?? '');
+		body[endKey] = String(group.endNo ?? '');
+		body[timeKey] = normalizedDuration;
+		body[typeKey] = mapTransferType(group.type);
+		const parsedDuration = Number(normalizedDuration);
+		if (Number.isFinite(parsedDuration)) {
+			accumulatedDuration += parsedDuration;
+		}
+	});
+
+	if (accumulatedDuration > 0) {
+		body.duration = String(accumulatedDuration);
+	}
+
+	return body;
+}
+
+async function submitTransferTask() {
+	const satellite = form.satellite;
+	if (!satellite) {
+		ElMessage.warning('请先选择卫星');
+		return;
+	}
+	if (!integratedGroups.value.length) {
+		ElMessage.warning('请先整合数传信息');
+		return;
+	}
+	if (!form.transferT0) {
+		ElMessage.warning('请填写数传T0时间');
+		return;
+	}
+
+	const incomplete = integratedGroups.value.some((group) => !group.startNo || !group.endNo);
+	if (incomplete) {
+		ElMessage.warning('请完善整合组的固存号范围');
+		return;
+	}
+
+	transferSubmitting.value = true;
+	try {
+		const token = await acquireToken();
+		const body = buildTransferBody(integratedGroups.value);
+		console.log('[transfer-plan] submit payload:', body);
+		const resp = await fetch(TRANSFER_API_URL, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'x-web-token': token,
+			},
+			body: JSON.stringify(body),
+		});
+		if (!resp.ok) {
+			const errText = await resp.text();
+			throw new Error(errText || `HTTP ${resp.status}`);
+		}
+		ElMessage.success('数传任务提交成功');
+	} catch (err: any) {
+		ElMessage.error(`数传任务提交失败: ${err?.message || err}`);
+	} finally {
+		transferSubmitting.value = false;
+	}
+}
+
 function addIntegratedGroup() {
+	const defaultType: SelectionSource = confirmedStorage.payload.length
+		? "payload"
+		: confirmedStorage.platform.length
+		? "platform"
+		: "payload";
 	integratedGroups.value.push({
 		id: `custom-${Date.now()}-${integratedGroups.value.length}`,
 		startNo: "",
 		endNo: "",
 		count: 0,
 		duration: 0,
-		type: confirmedStorage.payload.length && !confirmedStorage.platform.length ? "payload" : "platform",
+		type: defaultType,
 	});
 }
 
