@@ -271,7 +271,7 @@ const Table = useTable({
 			buttons: [
 				{
 					label: t('详情'),
-					props: { type: 'primary', link: true },
+					props: { type: 'primary', text: true, size: 'medium' },
 					onClick(ctx: { scope?: { row?: Record<string, any> } }) {
 						const row = ctx?.scope?.row ?? {};
 						openDetail(row);

@@ -306,6 +306,11 @@ const Search = useSearch({
 			prop: 'transferUID',
 			component: { name: 'el-input', props: { clearable: true, placeholder: t('支持部分匹配') } },
 		},
+		{
+			label: t('状态'),
+			prop: 'status',
+			component: { name: 'el-select', options: options.status, props: { clearable: true } },
+		},
 	],
 });
 

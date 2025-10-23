@@ -113,6 +113,11 @@
         <el-table-column prop="lat" label="纬度" width="70" />
         <el-table-column prop="priority" label="优先级" width="50" />
         <el-table-column prop="cloud" label="云量" width="70" />
+        <el-table-column label="星历时间" min-width="150">
+          <template #default="{ row }">
+            {{ formatDisplayTime(row.ephemeris_time || row.t0_beijing || row.t0) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="roll_angle" label="侧摆角" width="70" />
         <el-table-column prop="solar_angle" label="太阳高度角" width="90" />
         <el-table-column prop="push_kind" label="模式" width="50" />
@@ -228,6 +233,50 @@ watch(
     Object.keys(reloadMap).forEach((k) => delete (reloadMap as any)[k]);
   }
 );
+
+const UID_EPOCH = new Date('2025-01-01T00:00:00Z').getTime();
+const UID_TIMESTAMP_BITS = 41;
+const UID_MACHINE_BITS = 10;
+const UID_PID_BITS = 6;
+const UID_SEQUENCE_BITS = 7;
+const UID_TIMESTAMP_MOD = Math.pow(2, UID_TIMESTAMP_BITS);
+const UID_MACHINE_ID = Math.floor(Math.random() * Math.pow(2, UID_MACHINE_BITS));
+const UID_PID = Math.floor(Math.random() * Math.pow(2, UID_PID_BITS));
+let uidSequence = 0;
+let uidLastTimestamp = -1;
+
+function generateImagingUid(): string {
+  let timestamp = Date.now() - UID_EPOCH;
+  if (timestamp === uidLastTimestamp) {
+    const maxSeq = Math.pow(2, UID_SEQUENCE_BITS) - 1;
+    uidSequence = (uidSequence + 1) & maxSeq;
+    if (uidSequence === 0) {
+      timestamp = waitNextMillis(timestamp);
+    }
+  } else {
+    uidSequence = 0;
+  }
+  uidLastTimestamp = timestamp;
+
+  const timestampPart = padBase36(timestamp % UID_TIMESTAMP_MOD, Math.ceil(UID_TIMESTAMP_BITS / 5));
+  const machinePart = padBase36(UID_MACHINE_ID, Math.ceil(UID_MACHINE_BITS / 5));
+  const pidPart = padBase36(UID_PID, Math.ceil(UID_PID_BITS / 5));
+  const seqPart = padBase36(uidSequence, Math.ceil(UID_SEQUENCE_BITS / 5));
+  return `${timestampPart}${machinePart}${pidPart}${seqPart}`;
+}
+
+function waitNextMillis(current: number): number {
+  let ts = Date.now() - UID_EPOCH;
+  while (ts <= current) {
+    ts = Date.now() - UID_EPOCH;
+  }
+  return ts;
+}
+
+function padBase36(value: number, length: number): string {
+  const text = Math.max(0, value).toString(36);
+  return text.padStart(length, '0').slice(-length);
+}
 
 const pushKindLabel = computed(() => {
   const m: Record<string, string> = { '0': '直通', '1': '压缩', '2': '推扫', '3': '凝视' };
@@ -531,6 +580,25 @@ function toIsoString(input: any): string {
   }
 }
 
+function formatDisplayTime(value: any): string {
+  if (!value) return '-';
+  const iso = toIsoString(value);
+  if (!iso) {
+    return String(value ?? '-');
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return String(value ?? '-');
+  }
+  const yyyy = date.getFullYear();
+  const mm = (date.getMonth() + 1).toString().padStart(2, '0');
+  const dd = date.getDate().toString().padStart(2, '0');
+  const hh = date.getHours().toString().padStart(2, '0');
+  const mi = date.getMinutes().toString().padStart(2, '0');
+  const ss = date.getSeconds().toString().padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+}
+
 function toScanModeValue(v: any): string {
   const s = String(v ?? '');
   if (/^[0-3]$/.test(s)) return s;
@@ -566,19 +634,22 @@ async function createWithTemplate() {
       return;
     }
     // 校验起始号
-    const missing = idxs.filter((i) => !startFileNoMap[i]);
-    if (missing.length) {
-      ElMessage.warning('请填写选中项的起始文件号');
-      return;
-    }
+  const missing = idxs.filter((i) => !startFileNoMap[i]);
+  if (missing.length) {
+    ElMessage.warning('请填写选中项的起始文件号');
+    return;
+  }
 
-    creating.value = true;
-    const token = await getToken();
+  creating.value = true;
+  const token = await getToken();
 
-    let ok = 0;
-    for (const i of idxs) {
-      const row: any = list[i] || {};
-      // AS02 提交前将太阳高度角映射为十六进制码
+  let ok = 0;
+  const tasksToRecord: ForecastTaskPayload[] = [];
+  for (const i of idxs) {
+    const row: any = list[i] || {};
+    const generatedUid = generateImagingUid();
+    (row as any).__imagingUid = generatedUid;
+    // AS02 提交前将太阳高度角映射为十六进制码
       const sun = Number(row.solar_angle ?? row.solarAng ?? NaN);
       let solarMapped = '';
       if (!Number.isNaN(sun)) {
@@ -613,14 +684,21 @@ async function createWithTemplate() {
         },
         body: JSON.stringify(body),
       });
-      if (resp.ok) ok += 1;
-
-      // 同步写入 AS02 载荷固存表：根据起始文件号回填目标名/成像时间，并将状态改为“待写入”(2)
-      try {
-        await updateAs02FixedStorage(String(body.fileStart || ''), row);
-      } catch (e) {
-        console.warn('[AS02] 固存表回填失败: ', e);
+      if (resp.ok) {
+        ok += 1;
+        try {
+          await updateAs02FixedStorage(String(body.fileStart || ''), row);
+        } catch (e) {
+          console.warn('[AS02] 固存表回填失败: ', e);
+        }
+        tasksToRecord.push(buildTaskRecord(row, 'AS02', generatedUid));
+      } else {
+        console.warn('[AS02] 模板提交失败', await safeReadText(resp));
       }
+    }
+
+    if (tasksToRecord.length) {
+      await recordImagingTasks('AS02', tasksToRecord);
     }
 
     ElMessage.success(`已提交 ${ok}/${idxs.length} 条成像信息`);
@@ -669,7 +747,10 @@ async function updateAs02FixedStorage(fileStart: string, srcRow: any) {
   const targetName = String(srcRow?.name || row?.targetName || '');
   const imagingTime = String(srcRow?.t0_beijing || row?.imagingTime || '');
   const status = 1; // 待写入
-  await api.update({ name, data: { id, targetName, imagingTime, status } });
+  const imagingUid = String(srcRow?.__imagingUid || row?.imagingUid || row?.imaging_uid || '');
+  const payload: Record<string, any> = { id, targetName, imagingTime, status };
+  if (imagingUid) payload.imagingUid = imagingUid;
+  await api.update({ name, data: payload });
 }
 
 // AS03 专用：一次性提交三条模板请求
@@ -682,16 +763,17 @@ async function createWithTemplateAS03() {
       return;
     }
     const missing = idxs.filter((i) => !startFileNoMap[i]);
-    if (missing.length) {
-      ElMessage.warning('请填写选中项的起始绝对延时指令号');
-      return;
-    }
+  if (missing.length) {
+    ElMessage.warning('请填写选中项的起始绝对延时指令号');
+    return;
+  }
 
     creating.value = true;
     const token = await getToken();
 
     let ok = 0;
     let total = 0;
+    const tasksToRecord: ForecastTaskPayload[] = [];
 
     // 为固存同步准备足量的空槽（AS03 载荷 name=2，status=0），按 startFileNo 升序
     const emptySlots = await fetchAs03EmptySlots(idxs.length);
@@ -700,6 +782,8 @@ async function createWithTemplateAS03() {
       const row: any = list[i] || {};
       const sat = String(row.satellite || form.satellite || '');
       if (sat !== 'AS03') continue;
+      const generatedUid = generateImagingUid();
+      (row as any).__imagingUid = generatedUid;
 
       const name = String(row.name || '');
       const t0 = toIsoString(row.t0_beijing || row.t0);
@@ -737,6 +821,7 @@ async function createWithTemplateAS03() {
         },
       ];
 
+      let rowSuccess = true;
       for (const body of bodies) {
         total += 1;
         const resp = await fetch('http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template', {
@@ -747,20 +832,31 @@ async function createWithTemplateAS03() {
           },
           body: JSON.stringify(body),
         });
-        if (resp.ok) ok += 1;
+        if (resp.ok) {
+          ok += 1;
+        } else {
+          rowSuccess = false;
+          console.warn('[AS03] 模板提交失败', await safeReadText(resp));
+        }
       }
 
-      // 同步写入 AS03 载荷固存表：从最小空固存号开始依次写入
-      const slot = emptySlots[slotPtr++];
-      if (slot && slot.id) {
-        try {
-          await updateAs03FixedStorage(slot.id, row);
-        } catch (e) {
-          console.warn('[AS03] 固存表回填失败: ', e);
+      if (rowSuccess) {
+        const slot = emptySlots[slotPtr++];
+        if (slot && slot.id) {
+          try {
+            await updateAs03FixedStorage(slot.id, row);
+          } catch (e) {
+            console.warn('[AS03] 固存表回填失败: ', e);
+          }
+        } else {
+          console.warn('[AS03] 固存槽不足，无法回填固存记录');
         }
-      } else {
-        console.warn('[AS03] 固存槽不足，无法回填固存记录');
+        tasksToRecord.push(buildTaskRecord(row, 'AS03', generatedUid));
       }
+    }
+
+    if (tasksToRecord.length) {
+      await recordImagingTasks('AS03', tasksToRecord);
     }
 
     ElMessage.success(`AS03 已提交 ${ok}/${total} 条请求`);
@@ -807,7 +903,10 @@ async function updateAs03FixedStorage(id: number, srcRow: any) {
   const targetName = String(srcRow?.name || '');
   const imagingTime = String(srcRow?.t0_beijing || '');
   const status = 1; // 待写入
-  await api.update({ name, data: { id, targetName, imagingTime, status } });
+  const imagingUid = String(srcRow?.__imagingUid || '');
+  const payload: Record<string, any> = { id, targetName, imagingTime, status };
+  if (imagingUid) payload.imagingUid = imagingUid;
+  await api.update({ name, data: payload });
 }
 
 // 统一入口：根据卫星选择 AS02 或 AS03 提交逻辑
@@ -818,6 +917,92 @@ async function submitSelectedUnified() {
   } else {
     await createWithTemplate();
   }
+}
+
+async function safeReadText(resp: Response): Promise<string> {
+  try {
+    return await resp.text();
+  } catch {
+    return resp.statusText || 'unknown error';
+  }
+}
+
+type ForecastTaskPayload = {
+  satelliteCode?: string;
+  imagingTarget?: string;
+  longitude?: number;
+  latitude?: number;
+  cloudCoverage?: number;
+  sunElevation?: number;
+  ephemerisTime?: string;
+  imagingTime?: string;
+  imagingUID?: string;
+  transferName?: string;
+  transferTime?: string;
+  status?: number;
+};
+
+function buildTaskRecord(row: any, satellite: string, imagingUid?: string): ForecastTaskPayload {
+  const payload: ForecastTaskPayload = {
+    satelliteCode: satellite,
+  };
+  if (row?.name) payload.imagingTarget = String(row.name);
+
+  const lon = Number(row?.long);
+  if (Number.isFinite(lon)) payload.longitude = lon;
+  const lat = Number(row?.lat);
+  if (Number.isFinite(lat)) payload.latitude = lat;
+  const cloud = Number(row?.cloud ?? row?.cloud_cover);
+  if (Number.isFinite(cloud)) payload.cloudCoverage = cloud;
+  const sun = Number(row?.solar_angle ?? row?.solarAng);
+  if (Number.isFinite(sun)) payload.sunElevation = sun;
+
+  const ephemerisSource = row?.ephemeris_time || row?.ephemerisTime || row?.t0;
+  if (ephemerisSource) payload.ephemerisTime = toIsoString(ephemerisSource);
+
+  const imagingSource = row?.t0_beijing || row?.t0 || row?.start_at;
+  if (imagingSource) payload.imagingTime = toIsoString(imagingSource);
+
+  if (imagingUid) payload.imagingUID = imagingUid;
+
+  const transferName = row?.transfer_name || row?.ground_station || row?.station || row?.transferName;
+  if (transferName) payload.transferName = String(transferName);
+  const transferTimeSource = row?.transfer_time || row?.transferTime;
+  if (transferTimeSource) payload.transferTime = toIsoString(transferTimeSource);
+
+  return payload;
+}
+
+async function recordImagingTasks(satellite: string, tasks: ForecastTaskPayload[]) {
+  if (!Array.isArray(tasks) || !tasks.length) return;
+  try {
+    const svc = satellite === 'AS03' ? (service as any)?.task?.as03 : (service as any)?.task?.as02;
+    if (!svc?.add) return;
+    for (const task of tasks) {
+      const payload: Record<string, any> = {
+        satelliteCode: task.satelliteCode ?? satellite,
+        imagingTarget: task.imagingTarget ?? '',
+        imagingUID: task.imagingUID ?? generateImagingUid(),
+        longitude: normalizeDecimal(task.longitude, 0),
+        latitude: normalizeDecimal(task.latitude, 0),
+        cloudCoverage: normalizeDecimal(task.cloudCoverage, 0),
+        sunElevation: normalizeDecimal(task.sunElevation, 0),
+        status: 0,
+      };
+      if (task.ephemerisTime) payload.ephemerisTime = task.ephemerisTime;
+      if (task.imagingTime) payload.imagingTime = task.imagingTime;
+      if (task.transferName) payload.transferName = task.transferName;
+      if (task.transferTime) payload.transferTime = task.transferTime;
+      await svc.add(payload);
+    }
+  } catch (err) {
+    console.warn('[forecast] 任务记录失败', err);
+  }
+}
+
+function normalizeDecimal(value: unknown, fallback: number): number {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
 }
 </script>
 

@@ -1043,6 +1043,11 @@ declare namespace Eps {
 		endFileNo?: number;
 
 		/**
+		 * 成像UID
+		 */
+		imagingUid?: string;
+
+		/**
 		 * 创建时间
 		 */
 		createTime?: timestamp;
@@ -2634,6 +2639,16 @@ declare namespace Eps {
 
 	interface TaskAs02 {
 		/**
+		 * createFromForecast
+		 */
+		createFromForecast(data?: any): Promise<any>;
+
+		/**
+		 * nextUid
+		 */
+		nextUid(data?: any): Promise<any>;
+
+		/**
 		 * 删除
 		 */
 		delete(data?: any): Promise<any>;
@@ -2671,6 +2686,8 @@ declare namespace Eps {
 		 * 权限标识
 		 */
 		permission: {
+			createFromForecast: string;
+			nextUid: string;
 			delete: string;
 			update: string;
 			info: string;
@@ -2683,6 +2700,8 @@ declare namespace Eps {
 		 * 权限状态
 		 */
 		_permission: {
+			createFromForecast: boolean;
+			nextUid: boolean;
 			delete: boolean;
 			update: boolean;
 			info: boolean;
@@ -2695,6 +2714,16 @@ declare namespace Eps {
 	}
 
 	interface TaskAs03 {
+		/**
+		 * createFromForecast
+		 */
+		createFromForecast(data?: any): Promise<any>;
+
+		/**
+		 * nextUid
+		 */
+		nextUid(data?: any): Promise<any>;
+
 		/**
 		 * 删除
 		 */
@@ -2733,6 +2762,8 @@ declare namespace Eps {
 		 * 权限标识
 		 */
 		permission: {
+			createFromForecast: string;
+			nextUid: string;
 			delete: string;
 			update: string;
 			info: string;
@@ -2745,6 +2776,8 @@ declare namespace Eps {
 		 * 权限状态
 		 */
 		_permission: {
+			createFromForecast: boolean;
+			nextUid: boolean;
 			delete: boolean;
 			update: boolean;
 			info: boolean;
