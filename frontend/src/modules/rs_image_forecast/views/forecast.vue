@@ -105,49 +105,63 @@
           <el-tag type="success">{{ apiResponse?.message || '成功' }}</el-tag>
         </div>
       </template>
-      <el-table :data="apiResponse?.result || []" size="small" style="width: 100%" :fit="true" :class="['results-table', { as03: isAS03 }]">
-        <el-table-column type="index" width="20" label="#" />
-        <el-table-column prop="satellite" label="卫星" width="50" />
-        <el-table-column prop="name" label="目标点名称" min-width="100" />
-        <el-table-column prop="long" label="经度" width="70" />
-        <el-table-column prop="lat" label="纬度" width="70" />
-        <el-table-column prop="priority" label="优先级" width="50" />
-        <el-table-column prop="cloud" label="云量" width="70" />
-        <el-table-column label="星历时间" min-width="150">
-          <template #default="{ row }">
-            {{ formatDisplayTime(row.ephemeris_time || row.t0_beijing || row.t0) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="roll_angle" label="侧摆角" width="70" />
-        <el-table-column prop="solar_angle" label="太阳高度角" width="90" />
-        <el-table-column prop="push_kind" label="模式" width="50" />
-        <el-table-column prop="t0_beijing" label="开始时间" min-width="140" />
-        <el-table-column prop="end_beijing" label="结束时间" min-width="140" />
+      <el-table
+        :data="apiResponse?.result || []"
+        size="small"
+        style="width: 100%"
+        :fit="true"     
+        class="results-table"
+      >
+        <el-table-column type="index" width="50" label="#" />
+        <el-table-column prop="satellite" label="卫星" width="60" />
+        <el-table-column prop="name" label="目标点名称" min-width="120" show-overflow-tooltip /> <!-- 弹性列之一 -->
+        <el-table-column prop="long" label="经度" width="110" />
+        <el-table-column prop="lat"  label="纬度" width="110" />
+        <el-table-column prop="priority" label="优先级" width="70" />
+        <el-table-column prop="cloud" label="云量" width="90" />
+        <el-table-column prop="roll_angle" label="侧摆角" width="90" />
+        <el-table-column prop="solar_angle" label="太阳高度角" width="110" />
+        <el-table-column prop="push_kind" label="模式" width="70" />
+        <el-table-column prop="t0_beijing" label="开始时间" min-width="160" show-overflow-tooltip /> <!-- 弹性列之二 -->
+        <el-table-column prop="end_beijing" label="结束时间" min-width="160" show-overflow-tooltip />
         <el-table-column label="选择" width="50">
           <template #default="{ $index }">
             <el-checkbox v-model="selectedMap[$index]" />
           </template>
         </el-table-column>
-        <el-table-column label="起始文件号" width="70">
+
+        <!-- AS02 -->
+        <el-table-column
+          v-if="!isAS03"
+          label="起始文件号"
+          width="120">
           <template #default="{ $index }">
             <el-input v-model="startFileNoMap[$index]" size="small" placeholder="请输入" />
           </template>
         </el-table-column>
-        <!-- AS03 专用列：起始绝对延时指令号 + 是否重新加载表 -->
-        <el-table-column v-if="isAS03" :label="startLabel" width="110">
+
+        <!-- AS03：两列，用 v-if 切换，别用 CSS 隐藏 -->
+        <el-table-column
+          v-if="isAS03"
+          :label="startLabel"
+          width="120">
           <template #default="{ $index }">
             <el-input v-model="startFileNoMap[$index]" size="small" placeholder="请输入" />
           </template>
         </el-table-column>
-        <el-table-column v-if="isAS03" label="是否重新加载表" width="140">
+        <el-table-column
+          v-if="isAS03"
+          label="是否重新加载表"
+          width="120">
           <template #default="{ $index }">
-            <el-select v-model="reloadMap[$index]" size="small" style="width: 70px">
+            <el-select v-model="reloadMap[$index]" size="small" style="width: 100%">
               <el-option label="是" value="1" />
               <el-option label="否" value="0" />
             </el-select>
           </template>
         </el-table-column>
       </el-table>
+
       <div class="mt8" style="text-align:right;">
         <el-button type="success" @click="submitSelectedUnified" :loading="creating">生成提交成像信息</el-button>
       </div>
@@ -1073,25 +1087,6 @@ function normalizeDecimal(value: unknown, fallback: number): number {
   white-space: nowrap;
 }
 
-/* 强制压缩部分列宽以避免横向滚动 */
-.results-table colgroup col:nth-child(1) { width: 50px !important; }
-.results-table colgroup col:nth-child(3) { width: 70px !important; }
-.results-table colgroup col:nth-child(4) { width: 110px !important; }
-.results-table colgroup col:nth-child(5) { width: 110px !important; }
-.results-table colgroup col:nth-child(6) { width: 70px !important; }
-.results-table colgroup col:nth-child(7) { width: 70px !important; }
-.results-table colgroup col:nth-child(8) { width: 70px !important; }
-.results-table colgroup col:nth-child(9) { width: 90px !important; }
-.results-table colgroup col:nth-child(10) { width: 90px !important; }
-.results-table colgroup col:nth-child(11) { width: 150px !important; }
-.results-table colgroup col:nth-child(12) { width: 150px !important; }
-.results-table colgroup col:nth-child(13) { width: 70px !important; }
-.results-table colgroup col:nth-child(14) { width: 120px !important; }
-/* 当 AS03 时，隐藏旧的“起始文件号”列（第14列），并为新增的两列预留宽度 */
-.results-table.as03 colgroup col:nth-child(14) { display: none !important; width: 0 !important; }
-.results-table.as03 :deep(th:nth-child(14)),
-.results-table.as03 :deep(td:nth-child(14)) { display: none !important; }
-.results-table.as03 colgroup col:nth-child(15) { width: 110px !important; }
-.results-table.as03 colgroup col:nth-child(16) { width: 140px !important; }
+
 
 </style>
