@@ -1105,6 +1105,26 @@ declare namespace Eps {
 		imagingTime?: Date;
 
 		/**
+		 * 数传站
+		 */
+		transferName?: string;
+
+		/**
+		 * 数传时间
+		 */
+		transferTime?: Date;
+
+		/**
+		 * 成像UID
+		 */
+		imagingUID?: string;
+
+		/**
+		 * 数传UID
+		 */
+		transferUID?: string;
+
+		/**
 		 * 状态
 		 */
 		status?: number;
@@ -1175,6 +1195,26 @@ declare namespace Eps {
 		 * 成像时间
 		 */
 		imagingTime?: Date;
+
+		/**
+		 * 数传站
+		 */
+		transferName?: string;
+
+		/**
+		 * 数传时间
+		 */
+		transferTime?: Date;
+
+		/**
+		 * 成像UID
+		 */
+		imagingUID?: string;
+
+		/**
+		 * 数传UID
+		 */
+		transferUID?: string;
 
 		/**
 		 * 状态

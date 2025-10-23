@@ -1,229 +1,375 @@
 <template>
 	<cl-crud ref="Crud">
 		<cl-row>
-			<!-- 刷新按钮 -->
 			<cl-refresh-btn />
-			<!-- 新增按钮 -->
 			<cl-add-btn />
-			<!-- 删除按钮 -->
 			<cl-multi-delete-btn />
 			<cl-flex1 />
-			<!-- 条件搜索 -->
 			<cl-search ref="Search" />
 		</cl-row>
 
 		<cl-row>
-			<!-- 数据表格 -->
 			<cl-table ref="Table" />
 		</cl-row>
 
 		<cl-row>
 			<cl-flex1 />
-			<!-- 分页控件 -->
 			<cl-pagination />
 		</cl-row>
 
-		<!-- 新增、编辑 -->
 		<cl-upsert ref="Upsert" />
+
+		<el-dialog
+			v-model="detailDialog.visible"
+			:title="t('详情')"
+			width="640px"
+			:close-on-click-modal="false"
+			:destroy-on-close="true"
+		>
+			<div v-loading="detailDialog.loading">
+				<el-descriptions border :column="2" size="small">
+					<el-descriptions-item :label="t('卫星代号')">{{ detailDialog.data?.satelliteCode ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('成像目标点')">{{ detailDialog.data?.imagingTarget ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('经度')">{{ detailDialog.data?.longitude ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('纬度')">{{ detailDialog.data?.latitude ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('云量')">{{ detailDialog.data?.cloudCoverage ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('太阳高度角')">{{ detailDialog.data?.sunElevation ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('星历时间')">{{ detailDialog.data?.ephemerisTime ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('成像时间')">{{ detailDialog.data?.imagingTime ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('数传站')">{{ detailDialog.data?.transferName ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('数传时间')">{{ detailDialog.data?.transferTime ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('成像UID')">{{ detailDialog.data?.imagingUID ?? '-' }}</el-descriptions-item>
+					<el-descriptions-item :label="t('数传UID')">
+						<template #default>
+							<div v-if="detailTransferUidList.length" class="uid-flex-column">
+								<el-tag v-for="uid in detailTransferUidList" :key="uid" size="small" class="uid-tag">
+									{{ uid }}
+								</el-tag>
+							</div>
+							<span v-else>-</span>
+						</template>
+					</el-descriptions-item>
+					<el-descriptions-item :label="t('状态')">{{ getStatusLabel(detailDialog.data?.status) }}</el-descriptions-item>
+					<el-descriptions-item :label="t('缩略图')">
+						<el-link
+							v-if="detailDialog.data?.thumbnailUrl"
+							:href="detailDialog.data.thumbnailUrl"
+							target="_blank"
+							type="primary"
+						>
+							{{ detailDialog.data.thumbnailUrl }}
+						</el-link>
+						<span v-else>-</span>
+					</el-descriptions-item>
+				</el-descriptions>
+			</div>
+			<template #footer>
+				<el-button @click="detailDialog.visible = false">{{ t('关闭') }}</el-button>
+			</template>
+		</el-dialog>
 	</cl-crud>
 </template>
 
 <script lang="ts" setup>
 defineOptions({
-	name: "task-as02",
+	name: 'task-as02',
 });
 
-import { useCrud, useTable, useUpsert, useSearch } from "@cool-vue/crud";
-import { useCool } from "/@/cool";
-import { useI18n } from "vue-i18n";
-import { reactive } from "vue";
+import { useCrud, useTable, useUpsert, useSearch } from '@cool-vue/crud';
+import { useCool } from '/@/cool';
+import { useI18n } from 'vue-i18n';
+import { computed, reactive } from 'vue';
 
 const { service } = useCool();
 const { t } = useI18n();
 
-// 选项
 const options = reactive({
 	status: [
-		{ label: t("需求待响应"), value: 0 },
-		{ label: t("需求已接收"), value: 1 },
-		{ label: t("需求已完成"), value: 2 },
+		{ label: t('待处理'), value: 0 },
+		{ label: t('处理中'), value: 1 },
+		{ label: t('已完成'), value: 2 },
+		{ label: t('失败'), value: 3 },
 	],
 });
 
-// cl-upsert
+const statusLabelMap = computed<Record<number, string>>(() => {
+	const map: Record<number, string> = {};
+	options.status.forEach(item => {
+		map[item.value as number] = item.label;
+	});
+	return map;
+});
+
 const Upsert = useUpsert({
 	items: [
 		{
-			label: t("卫星代号"),
-			prop: "satelliteCode",
-			component: { name: "el-input", props: { clearable: true,disabled: true  } },
-			value: "AS02", // 默认值
+			label: t('卫星代号'),
+			prop: 'satelliteCode',
+			component: { name: 'el-input', props: { clearable: true, disabled: true } },
+			value: 'AS02',
 			span: 12,
-			required: true,
+			required: false,
 		},
 		{
-			label: t("成像目标点"),
-			prop: "imagingTarget",
-			component: { name: "el-input", props: { clearable: true } },
+			label: t('成像目标点'),
+			prop: 'imagingTarget',
+			component: { name: 'el-input', props: { clearable: true } },
 			span: 12,
-			required: true,
+			required: false,
 		},
 		{
-			label: t("经度"),
-			prop: "longitude",
-			hook: "number",
-			component: { name: "el-input-number", props: { min: 0 } },
-			span: 12,
-			required: true,
-		},
-		{
-			label: t("纬度"),
-			prop: "latitude",
-			hook: "number",
-			component: { name: "el-input-number", props: { min: 0 } },
-			span: 12,
-			required: true,
-		},
-		{
-			label: t("云量"),
-			prop: "cloudCoverage",
-			hook: "number",
-			component: { name: "el-input-number", props: { min: 0 } },
-			span: 12,
-			required: true,
-		},
-		{
-			label: t("太阳高度角"),
-			prop: "sunElevation",
-			hook: "number",
-			component: { name: "el-input-number", props: { min: 0 } },
-			span: 12,
-			required: true,
-		},
-		{
-			label: t("星历时间"),
-			prop: "ephemerisTime",
+			label: t('经度'),
+			prop: 'longitude',
+			hook: 'number',
 			component: {
-				name: "el-date-picker",
-				props: { type: "datetime", valueFormat: "YYYY-MM-DD HH:mm:ss" },
+				name: 'el-input-number',
+				props: { min: -180, max: 180, step: 0.01, precision: 2 },
 			},
 			span: 12,
-			required: true,
+			required: false,
 		},
 		{
-			label: t("成像时间"),
-			prop: "imagingTime",
+			label: t('纬度'),
+			prop: 'latitude',
+			hook: 'number',
 			component: {
-				name: "el-date-picker",
-				props: { type: "datetime", valueFormat: "YYYY-MM-DD HH:mm:ss" },
+				name: 'el-input-number',
+				props: { min: -90, max: 90, step: 0.01, precision: 2 },
 			},
 			span: 12,
-			required: true,
+			required: false,
 		},
 		{
-			label: t("状态"),
-			prop: "status",
-			component: { name: "el-radio-group", options: options.status },
+			label: t('云量'),
+			prop: 'cloudCoverage',
+			hook: 'number',
+			component: {
+				name: 'el-input-number',
+				props: { min: 0, max: 100, step: 0.1, precision: 1 },
+			},
+			span: 12,
+			required: false,
+		},
+		{
+			label: t('太阳高度角'),
+			prop: 'sunElevation',
+			hook: 'number',
+			component: {
+				name: 'el-input-number',
+				props: { min: -90, max: 90, step: 0.1, precision: 1 },
+			},
+			span: 12,
+			required: false,
+		},
+		{
+			label: t('星历时间'),
+			prop: 'ephemerisTime',
+			component: {
+				name: 'el-date-picker',
+				props: { type: 'datetime', valueFormat: 'YYYY-MM-DD HH:mm:ss' },
+			},
+			span: 12,
+			required: false,
+		},
+		{
+			label: t('成像时间'),
+			prop: 'imagingTime',
+			component: {
+				name: 'el-date-picker',
+				props: { type: 'datetime', valueFormat: 'YYYY-MM-DD HH:mm:ss' },
+			},
+			span: 12,
+			required: false,
+		},
+		{
+			label: t('数传站'),
+			prop: 'transferName',
+			component: { name: 'el-input', props: { clearable: true } },
+			span: 12,
+			required: false,
+		},
+		{
+			label: t('数传时间'),
+			prop: 'transferTime',
+			component: {
+				name: 'el-date-picker',
+				props: { type: 'datetime', valueFormat: 'YYYY-MM-DD HH:mm:ss' },
+			},
+			span: 12,
+			required: false,
+		},
+		{
+			label: t('成像UID'),
+			prop: 'imagingUID',
+			component: { name: 'el-input', props: { clearable: true } },
+			span: 12,
+			required: false,
+		},
+		{
+			label: t('数传UID'),
+			prop: 'transferUID',
+			component: {
+				name: 'el-input',
+				props: {
+					type: 'textarea',
+					clearable: true,
+					autosize: { minRows: 2, maxRows: 6 },
+					placeholder: t('可输入多个 UID，使用逗号、空格或换行分隔'),
+				},
+			},
+			span: 12,
+			required: false,
+		},
+		{
+			label: t('状态'),
+			prop: 'status',
+			component: { name: 'el-radio-group', options: options.status },
 			value: 0,
 			required: true,
 		},
 		{
-			label: t("成像缩略图地址链接"),
-			prop: "thumbnailUrl",
-			component: { name: "cl-upload" },
+			label: t('成像缩略图地址链接'),
+			prop: 'thumbnailUrl',
+			component: { name: 'cl-upload' },
 		},
 	],
 });
 
-// cl-table
 const Table = useTable({
 	columns: [
-		{ type: "selection" },
-		{ label: t("卫星代号"), prop: "satelliteCode", minWidth: 140 },
-		{ label: t("成像目标点"), prop: "imagingTarget", minWidth: 140 },
+		{ type: 'selection' },
+		{ label: t('卫星代号'), prop: 'satelliteCode', minWidth: 140 },
+		{ label: t('成像目标点'), prop: 'imagingTarget', minWidth: 140 },
+		{ label: t('经度'), prop: 'longitude', minWidth: 110 },
+		{ label: t('纬度'), prop: 'latitude', minWidth: 110 },
 		{
-			label: t("经度"),
-			prop: "longitude",
-			minWidth: 140,
-			sortable: "custom",
-		},
-		{
-			label: t("纬度"),
-			prop: "latitude",
-			minWidth: 140,
-			sortable: "custom",
-		},
-		{
-			label: t("云量"),
-			prop: "cloudCoverage",
-			minWidth: 140,
-			sortable: "custom",
-		},
-		{
-			label: t("太阳高度角"),
-			prop: "sunElevation",
-			minWidth: 140,
-			sortable: "custom",
-		},
-		{
-			label: t("星历时间"),
-			prop: "ephemerisTime",
+			label: t('成像时间'),
+			prop: 'imagingTime',
 			minWidth: 170,
-			sortable: "custom",
-			component: { name: "cl-date-text" },
+			sortable: 'custom',
+			component: { name: 'cl-date-text' },
 		},
 		{
-			label: t("成像时间"),
-			prop: "imagingTime",
+			label: t('数传站'),
+			prop: 'transferName',
+			minWidth: 140,
+		},
+		{
+			label: t('数传时间'),
+			prop: 'transferTime',
 			minWidth: 170,
-			sortable: "custom",
-			component: { name: "cl-date-text" },
+			component: { name: 'cl-date-text' },
 		},
 		{
-			label: t("状态"),
-			prop: "status",
+			label: t('状态'),
+			prop: 'status',
 			minWidth: 120,
 			dict: options.status,
 		},
 		{
-			label: t("成像缩略图地址链接"),
-			prop: "thumbnailUrl",
-			minWidth: 100,
-			component: { name: "cl-image", props: { size: 60 } },
+			type: 'op',
+			buttons: [
+				{
+					label: t('详情'),
+					props: { type: 'primary', text: true, size: 'medium' },
+					onClick(ctx: { scope?: { row?: Record<string, any> } }) {
+						const row = ctx?.scope?.row ?? {};
+						openDetail(row);
+					},
+				},
+				'edit',
+				'delete',
+			],
 		},
-		{
-			label: t("创建时间"),
-			prop: "createTime",
-			minWidth: 170,
-			sortable: "desc",
-			component: { name: "cl-date-text" },
-		},
-		{
-			label: t("更新时间"),
-			prop: "updateTime",
-			minWidth: 170,
-			sortable: "custom",
-			component: { name: "cl-date-text" },
-		},
-		{ type: "op", buttons: ["edit", "delete"] },
 	],
 });
 
-// cl-search
-const Search = useSearch();
+const Search = useSearch({
+	items: [
+		{
+			label: t('成像目标点'),
+			prop: 'imagingTarget',
+			component: { name: 'el-input', props: { clearable: true, placeholder: t('支持模糊匹配') } },
+		},
+		{
+			label: t('数传站'),
+			prop: 'transferName',
+			component: { name: 'el-input', props: { clearable: true } },
+		},
+		{
+			label: t('成像UID'),
+			prop: 'imagingUID',
+			component: { name: 'el-input', props: { clearable: true } },
+		},
+		{
+			label: t('数传UID'),
+			prop: 'transferUID',
+			component: { name: 'el-input', props: { clearable: true, placeholder: t('支持部分匹配') } },
+		},
+	],
+});
 
-// cl-crud
 const Crud = useCrud(
 	{
 		service: service.task.as02,
 	},
-	(app) => {
+	app => {
 		app.refresh();
 	},
 );
 
-// 刷新
-function refresh(params?: any) {
-	Crud.value?.refresh(params);
+const detailDialog = reactive({
+	visible: false,
+	loading: false,
+	data: {} as Record<string, any>,
+});
+
+const detailTransferUidList = computed(() => splitTransferUid(detailDialog.data?.transferUID));
+
+async function openDetail(row: Record<string, any>) {
+	try {
+		detailDialog.visible = true;
+		detailDialog.loading = true;
+		const api = service.task.as02?.info;
+		if (typeof api === 'function') {
+			const res = await api({ id: row.id });
+			detailDialog.data = res?.data?.data ?? res?.data ?? res ?? row;
+		} else {
+			detailDialog.data = row;
+		}
+	} catch {
+		detailDialog.data = row;
+	} finally {
+		detailDialog.loading = false;
+	}
+}
+
+function getStatusLabel(value: unknown): string {
+	const num = Number(value);
+	if (Number.isFinite(num)) {
+		return statusLabelMap.value[num] ?? '-';
+	}
+	return '-';
+}
+
+function splitTransferUid(value: unknown): string[] {
+	if (value == null) return [];
+	const raw = String(value);
+	return raw
+		.split(/[\s,，；;]+/)
+		.map(item => item.trim())
+		.filter(Boolean);
 }
 </script>
+
+<style scoped>
+.uid-flex-column {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.uid-tag {
+	align-self: flex-start;
+}
+</style>
