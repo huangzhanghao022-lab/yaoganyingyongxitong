@@ -11,7 +11,8 @@ import { TaskAs03Service } from '../../service/as03';
   entity: TaskAs03Entity,
   service: TaskAs03Service,
   pageQueryOp: {
-    keyWordLikeFields: ['a.satelliteCode', 'a.imagingTarget'],
+    keyWordLikeFields: ['a.satelliteCode', 'a.imagingTarget', 'a.transferName'],
+    fieldLike: ['a.imagingTarget', 'a.transferUID'],
     fieldEq: [
       'a.longitude',
       'a.latitude',
@@ -19,6 +20,9 @@ import { TaskAs03Service } from '../../service/as03';
       'a.sunElevation',
       'a.ephemerisTime',
       'a.imagingTime',
+      'a.transferTime',
+      'a.transferName',
+      'a.imagingUID',
       'a.status',
     ],
   },

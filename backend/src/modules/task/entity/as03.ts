@@ -1,5 +1,5 @@
 import { BaseEntity } from '../../base/entity/base';
-import { Column, Entity, Index } from 'typeorm';
+import { Column, Entity } from 'typeorm';
 
 /**
  * AS03信息
@@ -29,6 +29,18 @@ export class TaskAs03Entity extends BaseEntity {
 
   @Column({ comment: '成像时间' })
   imagingTime: Date;
+
+  @Column({ comment: '数传站', length: 50, nullable: true })
+  transferName: string;
+
+  @Column({ comment: '数传时间', nullable: true })
+  transferTime: Date;
+
+  @Column({ comment: '成像UID', length: 50, nullable: true })
+  imagingUID: string;
+
+  @Column({ comment: '数传UID', type: 'text', nullable: true })
+  transferUID: string;
 
   @Column({
     comment: '状态',

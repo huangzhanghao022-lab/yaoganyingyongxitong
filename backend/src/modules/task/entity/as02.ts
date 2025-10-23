@@ -30,6 +30,18 @@ export class TaskAs02Entity extends BaseEntity {
   @Column({ comment: '成像时间' })
   imagingTime: Date;
 
+  @Column({ comment: '数传站', length: 50, nullable: true })
+  transferName: string;
+
+  @Column({ comment: '数传时间', nullable: true })
+  transferTime: Date;
+
+  @Column({ comment: '成像UID', length: 50, nullable: true })
+  imagingUID: string;
+
+  @Column({ comment: '数传UID', type: 'text', nullable: true })
+  transferUID: string;
+
   @Column({
     comment: '状态',
     dict: ['待处理', '处理中', '已完成', '失败'],
