@@ -18,10 +18,10 @@ export class TaskAs03Entity extends BaseEntity {
   @Column({ comment: '纬度', type: 'decimal', precision: 10, scale: 2 })
   latitude: number;
 
-  @Column({ comment: '云量', type: 'decimal', precision: 5, scale: 2 })
+  @Column({ comment: '云量', type: 'decimal', precision: 5, scale: 2, default: 0 })
   cloudCoverage: number;
 
-  @Column({ comment: '太阳高度角', type: 'decimal', precision: 5, scale: 2 })
+  @Column({ comment: '太阳高度角', type: 'decimal', precision: 5, scale: 2, default: 0 })
   sunElevation: number;
 
   @Column({ comment: '星历时间' })

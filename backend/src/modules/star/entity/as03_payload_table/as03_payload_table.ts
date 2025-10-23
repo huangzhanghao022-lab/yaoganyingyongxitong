@@ -31,4 +31,7 @@ export class as03payloadtableEntity extends BaseEntity {
   
     @Column({ comment: '结束文件号', nullable: true })
     endFileNo: number;
+
+    @Column({ comment: '成像UID', length: 64, nullable: true })
+    imagingUid: string;
 }

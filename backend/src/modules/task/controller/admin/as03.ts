@@ -1,4 +1,4 @@
-import { Inject } from '@midwayjs/core';
+import { Body, Get, Inject, Post, Query } from '@midwayjs/core';
 import { CoolController, BaseController } from '@cool-midway/core';
 import { TaskAs03Entity } from '../../entity/as03';
 import { TaskAs03Service } from '../../service/as03';
@@ -30,4 +30,18 @@ import { TaskAs03Service } from '../../service/as03';
 export class AdminTaskAs03Controller extends BaseController {
   @Inject()
   taskAs03Service: TaskAs03Service;
+
+  @Post('/createFromForecast')
+  async createFromForecast(@Body() payload: any) {
+    const tasks = Array.isArray(payload) ? payload : payload?.tasks;
+    const result = await this.taskAs03Service.createFromForecast(tasks || []);
+    return this.ok({ count: result.length });
+  }
+
+  @Get('/nextUid')
+  async nextUid(@Query('count') count: number) {
+    const total = Math.max(1, Math.min(100, Number(count) || 1));
+    const list = Array.from({ length: total }, () => this.taskAs03Service.nextUid());
+    return this.ok({ list });
+  }
 }
