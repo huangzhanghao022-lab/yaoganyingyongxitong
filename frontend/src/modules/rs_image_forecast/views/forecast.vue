@@ -248,6 +248,17 @@ type OrbitElementsRow = {
   value: string;
 };
 
+const ORBIT_FIELD_CONFIG: Array<{ key: keyof OrbitElements; label: string; type?: 'time' }> = [
+  { key: 'epochTimeUTC', label: '历元 (UTC)', type: 'time' },
+  { key: 'a', label: '半长轴 a (米)' },
+  { key: 'e', label: '离心率 e' },
+  { key: 'i', label: '轨道倾角 i (°)' },
+  { key: 'dw', label: '升交点赤经 Ω (°)' },
+  { key: 'xw', label: '近地点幅角 ω (°)' },
+  { key: 'M', label: '平近点角 M (°)' },
+  { key: 'CD', label: '阻力系数 CD' },
+];
+
 const form = reactive({
   satellite: '' as '' | 'AS02' | 'AS03',
   startAt: '' as string | '',
@@ -336,22 +347,34 @@ const pushKindLabel = computed(() => {
 
 const orbitElementsRows = computed<OrbitElementsRow[]>(() => {
   if (!orbitElements.value) return [];
-  const mapping: Array<{ key: keyof OrbitElements; label: string; type?: 'time' }> = [
-    { key: 'epochTimeUTC', label: 'Epoch Time (UTC)', type: 'time' },
-    { key: 'a', label: 'Semi-major Axis a (m)' },
-    { key: 'e', label: 'Eccentricity e' },
-    { key: 'i', label: 'Inclination i (deg)' },
-    { key: 'dw', label: 'RAAN (deg)' },
-    { key: 'xw', label: 'Argument of Perigee (deg)' },
-    { key: 'M', label: 'Mean Anomaly M (deg)' },
-    { key: 'CD', label: 'Drag Coefficient CD' },
-  ];
-  return mapping.map(({ key, label, type }) => {
+  return ORBIT_FIELD_CONFIG.map(({ key, label, type }) => {
     const raw = orbitElements.value?.[key];
     const value = type === 'time' ? (raw ? formatDisplayTime(raw) : '-') : formatOrbitNumber(raw);
     return { label, value };
   });
 });
+
+function buildOrbitElementsSnapshot(source: OrbitElements | null): Record<string, string> | null {
+  if (!source) return null;
+  const result: Record<string, string> = {};
+  for (const { key, label, type } of ORBIT_FIELD_CONFIG) {
+    const value = source?.[key];
+    if (value == null) continue;
+    if (type === 'time') {
+      const formatted = value ? formatDisplayTime(value) : '-';
+      if (formatted !== '-') {
+        result[label] = formatted;
+      }
+    } else {
+      const formatted = formatOrbitNumber(value);
+      if (formatted !== '-') {
+        result[label] = formatted;
+      }
+    }
+  }
+  return Object.keys(result).length ? result : null;
+}
+
 function mapTargetList(list: TargetItem[]) {
   return list
     .filter((t) => t && t.name && Number.isFinite(Number(t.long)) && Number.isFinite(Number(t.lat)))
@@ -1071,6 +1094,7 @@ type ForecastTaskPayload = {
   transferName?: string;
   transferTime?: string;
   status?: number;
+  orbitElements?: Record<string, string> | null;
 };
 
 function buildTaskRecord(row: any, satellite: string, imagingUid?: string): ForecastTaskPayload {
@@ -1112,6 +1136,8 @@ function buildTaskRecord(row: any, satellite: string, imagingUid?: string): Fore
   const transferTimeSource = row?.transfer_time || row?.transferTime;
   if (transferTimeSource) payload.transferTime = toIsoString(transferTimeSource);
 
+  const orbitSnapshot = buildOrbitElementsSnapshot(orbitElements.value ?? null);
+  if (orbitSnapshot) payload.orbitElements = orbitSnapshot;
 
   return payload;
 }
@@ -1136,6 +1162,13 @@ async function recordImagingTasks(satellite: string, tasks: ForecastTaskPayload[
       if (task.imagingTime) payload.imagingTime = task.imagingTime;
       if (task.transferName) payload.transferName = task.transferName;
       if (task.transferTime) payload.transferTime = task.transferTime;
+      if (task.orbitElements) {
+        try {
+          payload.orbitElements = JSON.stringify(task.orbitElements);
+        } catch {
+          payload.orbitElements = null;
+        }
+      }
       await svc.add(payload);
     }
   } catch (err) {

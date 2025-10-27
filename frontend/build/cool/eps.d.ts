@@ -1140,6 +1140,11 @@ declare namespace Eps {
 		thumbnailUrl?: string;
 
 		/**
+		 * 星历信息
+		 */
+		orbitElements?: string;
+
+		/**
 		 * 创建时间
 		 */
 		createTime?: string;
@@ -1230,6 +1235,11 @@ declare namespace Eps {
 		 * 成像缩略图地址链接
 		 */
 		thumbnailUrl?: string;
+
+		/**
+		 * 星历信息
+		 */
+		orbitElements?: string;
 
 		/**
 		 * 创建时间
