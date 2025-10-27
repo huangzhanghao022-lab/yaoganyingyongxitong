@@ -51,4 +51,7 @@ export class TaskAs02Entity extends BaseEntity {
 
   @Column({ comment: '成像缩略图地址链接', nullable: true })
   thumbnailUrl: string;
+
+  @Column({ comment: '星历信息', type: 'text', nullable: true })
+  orbitElements: string;
 }

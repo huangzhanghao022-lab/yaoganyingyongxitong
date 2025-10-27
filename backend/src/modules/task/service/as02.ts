@@ -37,6 +37,7 @@ export class TaskAs02Service extends BaseService {
       entity.transferUID = String(item.transferUID ?? '');
       entity.status = Number.isFinite(Number(item.status)) ? Number(item.status) : 0;
       entity.thumbnailUrl = item.thumbnailUrl ?? '';
+      entity.orbitElements = serializeOrbitElements(item.orbitElements);
       return entity;
     });
 
@@ -59,6 +60,7 @@ type ForecastTaskPayload = {
   transferUID?: string;
   thumbnailUrl?: string;
   status?: number;
+  orbitElements?: Record<string, any> | string | null;
 };
 
 function parseDecimal(val: unknown): number {
@@ -76,4 +78,16 @@ function parseOptionalDate(val: unknown): Date | null {
   if (!val) return null;
   const date = new Date(val as any);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function serializeOrbitElements(val: unknown): string | null {
+  if (val == null) return null;
+  if (typeof val === 'string') {
+    return val.trim() ? val : null;
+  }
+  try {
+    return JSON.stringify(val);
+  } catch {
+    return null;
+  }
 }
