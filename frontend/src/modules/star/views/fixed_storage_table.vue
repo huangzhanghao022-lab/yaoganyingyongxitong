@@ -145,6 +145,7 @@
 	  { label: t("解析有问题"), value: 4, type: "danger" },
 	  { label: t("已重传待反馈"), value: 5, type: "danger" },
 	  { label: t("已数传待删除"), value: 6, type: "success" },
+	  { label: t("已安排数传"), value: 7, type: "primary" },
 	],
   });
 

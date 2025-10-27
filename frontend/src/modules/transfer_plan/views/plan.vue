@@ -273,7 +273,10 @@ const statusDict: Record<number, string> = {
 	4: "解析有问题",
 	5: "已重传待反馈",
 	6: "已数传待删除",
+	7: "已安排数传",
 };
+
+const STORAGE_STATUS_TRANSFER_SCHEDULED = 7;
 
 type TagStyle = { type?: 'info' | 'warning' | 'danger' | 'success' | 'primary'; color?: string };
 
@@ -285,6 +288,7 @@ const statusTagMap: Record<number, TagStyle> = {
 	4: { type: "danger" },
 	5: { type: "danger" },
 	6: { type: "success" },
+	7: { type: "primary" },
 };
 
 const form = reactive({
@@ -315,6 +319,8 @@ type StorageRow = {
 	status: number | null;
 	statusLabel: string;
 	updateTime: string;
+	tableName?: number | null;
+	source?: SelectionSource;
 	raw: Record<string, any>;
 };
 
@@ -426,11 +432,13 @@ async function fetchStationOptions() {
 	}
 }
 
-function mapStorageRow(item: Record<string, any>): StorageRow {
+function mapStorageRow(item: Record<string, any>, tableName?: number | null, source?: SelectionSource): StorageRow {
 	const display = item.targetName || item.fileName || item.platformFileName || item.code || "-";
 	const startFileNo = item.startFileNo ?? item.beginFileNo ?? item.fileNo ?? "-";
 	const status = typeof item.status === "number" ? item.status : null;
 	const updateTime = item.updateTime || item.writeTime || "-";
+	const resolvedTableName = typeof tableName === "number" ? tableName : (typeof item.name === "number" ? item.name : null);
+	const resolvedSource = source ?? inferSourceFromTableName(resolvedTableName);
 	return {
 		id: item.id ?? `${display}-${startFileNo}`,
 		display,
@@ -438,6 +446,8 @@ function mapStorageRow(item: Record<string, any>): StorageRow {
 		status,
 		statusLabel: status != null ? (statusDict[status] || `状态${status}`) : "-",
 		updateTime,
+		tableName: resolvedTableName,
+		source: resolvedSource,
 		raw: item,
 	};
 }
@@ -455,8 +465,9 @@ async function fetchStorageByName(name: number) {
 	}
 	const res = await api.page({ page: 1, size: 200, name, sort: "startFileNo", order: "ASC" });
 	const list = res?.list || res?.data?.list || [];
+	const source: SelectionSource = name === 0 || name === 2 ? "payload" : "platform";
 	return list
-		.map((item: any) => mapStorageRow(item))
+		.map((item: any) => mapStorageRow(item, name, source))
 		.sort((a, b) => {
 			const toNum = (val: string) => {
 				const num = Number(val);
@@ -730,6 +741,205 @@ function validateTransferParams(): boolean {
 	return true;
 }
 
+function collectSelectedStorageRows(): StorageRow[] {
+	const groups = integratedGroups.value;
+	const filterByGroups = Array.isArray(groups) && groups.length > 0;
+	const combined: StorageRow[] = [
+		...confirmedStorage.payload,
+		...confirmedStorage.platform,
+	];
+	const map = new Map<string, StorageRow>();
+	combined.forEach(row => {
+		if (!row) return;
+		if (filterByGroups && !isRowWithinGroups(row, groups)) {
+			return;
+		}
+		const rawId = row.raw?.id ?? row.id;
+		const tableName = typeof row.tableName === "number"
+			? row.tableName
+			: (typeof row.raw?.name === "number" ? row.raw.name : null);
+		const key = `${tableName ?? "t"}-${rawId ?? ""}`;
+		if (!map.has(key)) {
+			map.set(key, row);
+		}
+	});
+	return Array.from(map.values());
+}
+
+function inferSourceFromTableName(tableName: number | null | undefined): SelectionSource | undefined {
+	if (tableName === 0 || tableName === 2) return "payload";
+	if (tableName === 1 || tableName === 3) return "platform";
+	return undefined;
+}
+
+function isRowWithinGroups(row: StorageRow, groups: IntegratedGroup[]): boolean {
+	const tableName = typeof row.tableName === "number"
+		? row.tableName
+		: (typeof row.raw?.name === "number" ? row.raw.name : null);
+	const rowType = row.source || inferSourceFromTableName(tableName);
+	const startNo = Number(row.startFileNo);
+	if (!Number.isFinite(startNo)) {
+		return false;
+	}
+	return groups.some(group => {
+		if (rowType && group.type !== rowType) return false;
+		const groupStart = Number(group.startNo);
+		const groupEnd = Number(group.endNo);
+		if (!Number.isFinite(groupStart) || !Number.isFinite(groupEnd)) {
+			return false;
+		}
+		const min = Math.min(groupStart, groupEnd);
+		const max = Math.max(groupStart, groupEnd);
+		return startNo >= min && startNo <= max;
+	});
+}
+
+
+function resolveTableName(row: StorageRow, satellite: string): number | null {
+	if (typeof row.tableName === "number") return row.tableName;
+	if (typeof row.raw?.name === "number") return row.raw.name;
+	if (row.source) {
+		if (satellite === "AS02") {
+			return row.source === "payload" ? 0 : 1;
+		}
+		if (satellite === "AS03") {
+			return row.source === "payload" ? 2 : 3;
+		}
+	}
+	return null;
+}
+
+function applyLocalStorageStatus(rows: StorageRow[], status: number) {
+	const label = statusDict[status] || `状态${status}`;
+	const applyStatus = (row: StorageRow) => {
+		row.status = status;
+		row.statusLabel = label;
+		if (row.raw) {
+			row.raw.status = status;
+		}
+	};
+	rows.forEach(applyStatus);
+
+	const collections = [
+		storageDialog.payload,
+		storageDialog.platform,
+		storageDialog.selectedPayload,
+		storageDialog.selectedPlatform,
+	];
+	rows.forEach(row => {
+		const rawId = row.raw?.id ?? row.id;
+		const tableName = typeof row.tableName === "number"
+			? row.tableName
+			: (typeof row.raw?.name === "number" ? row.raw.name : null);
+		const keyId = String(rawId ?? "");
+		collections.forEach(list => {
+			if (!Array.isArray(list)) return;
+			const target = list.find(item => {
+				const itemId = String(item.raw?.id ?? item.id ?? "");
+				const itemTable = typeof item.tableName === "number"
+					? item.tableName
+					: (typeof item.raw?.name === "number" ? item.raw.name : null);
+				return itemId === keyId && itemTable === tableName;
+			});
+			if (target) {
+				applyStatus(target);
+			}
+		});
+	});
+}
+
+async function generateTransferUid(satellite: string): Promise<string> {
+	const svc = satellite === "AS03" ? (service as any)?.task?.as03 : (service as any)?.task?.as02;
+	try {
+		const res = await svc?.nextUid?.({ count: 1 });
+		const list =
+			(Array.isArray(res?.list) && res?.list) ||
+			(Array.isArray(res?.data?.list) && res?.data?.list) ||
+			(Array.isArray(res?.data) && res?.data) ||
+			[];
+		if (Array.isArray(list) && list.length) {
+			return String(list[0]);
+		}
+	} catch (err) {
+		console.warn("[transfer-plan] 获取数传UID失败", err);
+	}
+	return `T${Date.now()}`;
+}
+
+async function updateFixedStorageStatus(rows: StorageRow[], satellite: string, status: number) {
+	const api: any = (service as any)?.star?.fixed_storage_table;
+	if (!api?.update) {
+		throw new Error("固存表更新接口不可用");
+	}
+	for (const row of rows) {
+		const tableName = resolveTableName(row, satellite);
+		const rawId = row.raw?.id ?? row.id;
+		if (tableName == null || rawId == null) continue;
+		const idNumber = Number(rawId);
+		const id = Number.isFinite(idNumber) ? idNumber : rawId;
+		if (tableName != null && typeof row.tableName !== "number") {
+			row.tableName = tableName;
+		}
+		await api.update({
+			name: tableName,
+			data: { id, status },
+		});
+	}
+}
+
+async function updateTaskTransferRecords(
+	satellite: string,
+	rows: StorageRow[],
+	transferName: string,
+	transferTime: string,
+	transferUid: string
+) {
+	const svc = satellite === "AS03" ? (service as any)?.task?.as03 : (service as any)?.task?.as02;
+	if (!svc?.page || !svc?.update) {
+		throw new Error("任务记录接口不可用");
+	}
+	const imagingUids = Array.from(
+		new Set(
+			rows
+				.map(row => row.raw?.imagingUid || row.raw?.imaging_uid || row.raw?.imagingUID)
+				.filter(uid => uid != null && uid !== "")
+				.map(uid => String(uid))
+		)
+	);
+	if (!imagingUids.length) {
+		return;
+	}
+	for (const uid of imagingUids) {
+		const res = await svc.page({ page: 1, size: 20, imagingUID: uid });
+		const list = res?.list || res?.data?.list || [];
+		if (!Array.isArray(list) || !list.length) continue;
+		for (const item of list) {
+			if (!item?.id) continue;
+			await svc.update({
+				id: item.id,
+				transferName,
+				transferTime,
+				transferUID: transferUid,
+			});
+		}
+	}
+}
+
+async function syncTransferAfterSubmit(satellite: string): Promise<string | null> {
+	const rows = collectSelectedStorageRows();
+	if (!rows.length) {
+		return null;
+	}
+	const transferUid = await generateTransferUid(satellite);
+	const transferName = form.stationName || form.station || "";
+	const transferTimeIso = toIsoString(form.transferT0) || new Date().toISOString();
+	await updateTaskTransferRecords(satellite, rows, transferName, transferTimeIso, transferUid);
+	await updateFixedStorageStatus(rows, satellite, STORAGE_STATUS_TRANSFER_SCHEDULED);
+	applyLocalStorageStatus(rows, STORAGE_STATUS_TRANSFER_SCHEDULED);
+	return transferUid;
+}
+
+
 function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 	const stationLabel = form.stationName || form.station || '';
 	const transferLabel = form.transferT0 ? String(form.transferT0) : new Date().toISOString();
@@ -899,7 +1109,12 @@ async function submitTransferTask() {
 			const errText = await resp.text();
 			throw new Error(errText || `HTTP ${resp.status}`);
 		}
-		ElMessage.success('数传任务提交成功');
+		const transferUid = await syncTransferAfterSubmit(satellite);
+		if (transferUid) {
+			ElMessage.success(`数传任务提交成功，数传UID：${transferUid}`);
+		} else {
+			ElMessage.success('数传任务提交成功');
+		}
 	} catch (err: any) {
 		ElMessage.error(`数传任务提交失败: ${err?.message || err}`);
 	} finally {
