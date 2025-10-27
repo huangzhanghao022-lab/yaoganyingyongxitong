@@ -83,8 +83,28 @@
       </el-form>
     </el-card>
 
-    <!-- AS02 载荷固存表空文件号提示 -->
-    <el-card v-if="form.satellite === 'AS02' && as02EmptyFileNos.length" shadow="never" class="mb16">
+
+
+    <el-card v-if="orbitElements" shadow="never" class="mb16">
+      <template #header>
+        <div class="card-header">
+          <span>星历信息</span>
+        </div>
+      </template>
+      <el-descriptions v-if="orbitElementsRows.length" :column="2" border size="small">
+        <el-descriptions-item
+          v-for="item in orbitElementsRows"
+          :key="item.label"
+          :label="item.label"
+        >
+          {{ item.value }}
+        </el-descriptions-item>
+      </el-descriptions>
+      <div v-else>暂无星历数据</div>
+    </el-card>
+
+        <!-- AS02 载荷固存表空文件号提示 -->
+        <el-card v-if="form.satellite === 'AS02' && as02EmptyFileNos.length" shadow="never" class="mb16">
       <template #header>
         <div class="card-header">
           <span>AS02 载荷固存表空文件号</span>
@@ -212,6 +232,22 @@ type TargetItem = {
   priority?: '1' | '2' | '3' | string;
 };
 
+type OrbitElements = {
+  epochTimeUTC?: string;
+  a?: number;
+  e?: number;
+  i?: number;
+  dw?: number;
+  xw?: number;
+  M?: number;
+  CD?: number;
+};
+
+type OrbitElementsRow = {
+  label: string;
+  value: string;
+};
+
 const form = reactive({
   satellite: '' as '' | 'AS02' | 'AS03',
   startAt: '' as string | '',
@@ -226,6 +262,7 @@ const targetPickMode = ref<'' | 'manual' | 'all'>('');
 const jsonPreview = ref('');
 const posting = ref(false);
 const apiResponse = ref<any | null>(null);
+const orbitElements = ref<OrbitElements | null>(null);
 // AS02 载荷固存表空文件号
 const as02EmptyFileNos = ref<number[]>([]);
 const creating = ref(false);
@@ -297,6 +334,24 @@ const pushKindLabel = computed(() => {
   return m[form.pushKind] ?? String(form.pushKind ?? '');
 });
 
+const orbitElementsRows = computed<OrbitElementsRow[]>(() => {
+  if (!orbitElements.value) return [];
+  const mapping: Array<{ key: keyof OrbitElements; label: string; type?: 'time' }> = [
+    { key: 'epochTimeUTC', label: 'Epoch Time (UTC)', type: 'time' },
+    { key: 'a', label: 'Semi-major Axis a (m)' },
+    { key: 'e', label: 'Eccentricity e' },
+    { key: 'i', label: 'Inclination i (deg)' },
+    { key: 'dw', label: 'RAAN (deg)' },
+    { key: 'xw', label: 'Argument of Perigee (deg)' },
+    { key: 'M', label: 'Mean Anomaly M (deg)' },
+    { key: 'CD', label: 'Drag Coefficient CD' },
+  ];
+  return mapping.map(({ key, label, type }) => {
+    const raw = orbitElements.value?.[key];
+    const value = type === 'time' ? (raw ? formatDisplayTime(raw) : '-') : formatOrbitNumber(raw);
+    return { label, value };
+  });
+});
 function mapTargetList(list: TargetItem[]) {
   return list
     .filter((t) => t && t.name && Number.isFinite(Number(t.long)) && Number.isFinite(Number(t.lat)))
@@ -515,6 +570,7 @@ watch(
 watch(
   () => form.satellite,
   async () => {
+    orbitElements.value = null;
     dbAllLoaded.value = false;
     dbAllTargets.value = [];
     dbDialog.page = 1;
@@ -533,6 +589,7 @@ watch(
 async function callForecastApi() {
   try {
     posting.value = true;
+    orbitElements.value = null;
     const payload = await normalizePayload();
     const res = await fetch('http://172.16.10.86:9025/as_image_forecast', {
       method: 'POST',
@@ -542,7 +599,7 @@ async function callForecastApi() {
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const data = await res.json();
     apiResponse.value = data;
-    ElMessage.success('接口调用成功');
+    orbitElements.value = (await fetchOrbitElementsForSatellite(form.satellite)) || null;
     // 若当前为 AS02，则在获取结果后，额外获取载荷固存表的空文件号
     if (form.satellite === 'AS02') {
       try {
@@ -553,11 +610,13 @@ async function callForecastApi() {
     } else {
       as02EmptyFileNos.value = [];
     }
+    ElMessage.success('接口调用成功');
   } catch (e: any) {
     apiResponse.value = null;
+    orbitElements.value = null;
     ElMessage.error(`接口调用失败: ${e?.message || e}`);
   } finally {
-  posting.value = false;
+    posting.value = false;
   }
 }
 
@@ -613,6 +672,13 @@ function formatDisplayTime(value: any): string {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
 }
 
+function formatOrbitNumber(value: unknown): string {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '-';
+  const rounded = num.toFixed(6);
+  return rounded.replace(/\.?0+$/, '');
+}
+
 function toScanModeValue(v: any): string {
   const s = String(v ?? '');
   if (/^[0-3]$/.test(s)) return s;
@@ -630,6 +696,57 @@ async function getToken(): Promise<string> {
   const token = data?.data?.token;
   if (!token) throw new Error('获取登录 token 失败');
   return token;
+}
+
+function getSpacecraftIdBySatellite(satellite: string | undefined): string | null {
+  if (!satellite) return null;
+  const map: Record<string, string> = {
+    AS02: '12',
+    AS03: '13',
+  };
+  return map[satellite] ?? null;
+}
+
+async function fetchOrbitElementsForSatellite(satellite: string | undefined): Promise<OrbitElements | null> {
+  const spacecraftId = getSpacecraftIdBySatellite(satellite);
+  if (!spacecraftId) return null;
+  try {
+    const token = await getToken();
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const body = {
+      keyword: '',
+      spacecraftIds: [spacecraftId],
+      beginTime: now - 7 * dayMs,
+      endTime: now + 1 * dayMs,
+      page: 1,
+      pageSize: 20,
+      states: [1, 2],
+      order: 6,
+    };
+    const resp = await fetch('http://ttnonc-webui.cyk3.yhroot.com/v2/api/orbit/keplers/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-web-token': token,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    const result = await resp.json();
+    if (result?.code !== 0) {
+      console.warn('[forecast] 星历接口返回异常', result);
+      return null;
+    }
+    const list = result?.data?.list;
+    if (!Array.isArray(list) || !list.length) return null;
+    const elements = list[0]?.orbitElements;
+    if (!elements) return null;
+    return elements as OrbitElements;
+  } catch (err) {
+    console.warn('[forecast] 获取星历信息失败', err);
+    return null;
+  }
 }
 
 function getSelectedIdxs(): number[] {
