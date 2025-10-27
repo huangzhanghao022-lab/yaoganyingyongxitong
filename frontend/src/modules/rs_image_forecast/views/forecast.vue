@@ -155,8 +155,8 @@
           width="120">
           <template #default="{ $index }">
             <el-select v-model="reloadMap[$index]" size="small" style="width: 100%">
-              <el-option label="是" value="1" />
-              <el-option label="否" value="0" />
+              <el-option label="是" value=true />
+              <el-option label="否" value=false />
             </el-select>
           </template>
         </el-table-column>
@@ -960,14 +960,25 @@ function buildTaskRecord(row: any, satellite: string, imagingUid?: string): Fore
   const payload: ForecastTaskPayload = {
     satelliteCode: satellite,
   };
+
   if (row?.name) payload.imagingTarget = String(row.name);
 
   const lon = Number(row?.long);
   if (Number.isFinite(lon)) payload.longitude = lon;
   const lat = Number(row?.lat);
   if (Number.isFinite(lat)) payload.latitude = lat;
-  const cloud = Number(row?.cloud ?? row?.cloud_cover);
-  if (Number.isFinite(cloud)) payload.cloudCoverage = cloud;
+    const cloud = parseCloud(
+    row?.cloud ??
+    row?.cloud_cover ??
+    row?.cloudCover ??
+    row?.cloud_pct ??
+    row?.cloudPercent ??
+    row?.cloud_rate ??
+    row?.cloudiness ??
+    row?.clouds ??
+    row?.cloudCoverage
+  );
+  if (cloud !== undefined) payload.cloudCoverage = cloud;
   const sun = Number(row?.solar_angle ?? row?.solarAng);
   if (Number.isFinite(sun)) payload.sunElevation = sun;
 
@@ -983,6 +994,7 @@ function buildTaskRecord(row: any, satellite: string, imagingUid?: string): Fore
   if (transferName) payload.transferName = String(transferName);
   const transferTimeSource = row?.transfer_time || row?.transferTime;
   if (transferTimeSource) payload.transferTime = toIsoString(transferTimeSource);
+
 
   return payload;
 }
@@ -1013,6 +1025,22 @@ async function recordImagingTasks(satellite: string, tasks: ForecastTaskPayload[
     console.warn('[forecast] 任务记录失败', err);
   }
 }
+
+function parseCloud(v: any): number | undefined {
+  if (v == null) return undefined;
+  const s = String(v).trim().replace('％', '%'); // 兼容全角％
+  if (s.endsWith('%')) {
+    const n = Number(s.slice(0, -1));
+    return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : undefined;
+  }
+  const n = Number(s);
+  if (!Number.isFinite(n)) return undefined;
+  // 0~1 视为比例
+  if (n >= 0 && n <= 1) return Math.round(n * 100);
+  // 其他按 0~100 处理
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
 
 function normalizeDecimal(value: unknown, fallback: number): number {
   const num = Number(value);
