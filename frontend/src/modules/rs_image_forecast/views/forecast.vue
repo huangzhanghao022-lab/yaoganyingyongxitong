@@ -133,17 +133,32 @@
         class="results-table"
       >
         <el-table-column type="index" width="50" label="#" />
-        <el-table-column prop="satellite" label="卫星" width="60" />
+        <el-table-column
+          label="卫星"
+          width="60"
+          :formatter="() => form.satellite"
+        />
         <el-table-column prop="name" label="目标点名称" min-width="120" show-overflow-tooltip /> <!-- 弹性列之一 -->
         <el-table-column prop="long" label="经度" width="110" />
         <el-table-column prop="lat"  label="纬度" width="110" />
         <el-table-column prop="priority" label="优先级" width="70" />
         <el-table-column prop="cloud" label="云量" width="90" />
-        <el-table-column prop="roll_angle" label="侧摆角" width="90" />
-        <el-table-column prop="solar_angle" label="太阳高度角" width="110" />
-        <el-table-column prop="push_kind" label="模式" width="70" />
-        <el-table-column prop="t0_beijing" label="开始时间" min-width="160" show-overflow-tooltip /> <!-- 弹性列之二 -->
-        <el-table-column prop="end_beijing" label="结束时间" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="rollAng" label="侧摆角" width="90" />
+        <el-table-column prop="solarAng" label="太阳高度角" width="110" />
+        <el-table-column label="模式" width="70">
+            <template #default="{ row }">
+              {{
+                {
+                  '0': '直通',
+                  '1': '压缩',
+                  '2': '推扫',
+                  '3': '凝视',
+                }[String(row.push_kind ?? form.pushKind ?? '')] ?? '-'
+              }}
+            </template>
+          </el-table-column>
+        <el-table-column prop="startAtBeijing" label="开始时间" min-width="160" show-overflow-tooltip /> <!-- 弹性列之二 -->
+        <el-table-column prop="endAtBeijing" label="结束时间" min-width="160" show-overflow-tooltip />
         <el-table-column label="选择" width="50">
           <template #default="{ $index }">
             <el-checkbox v-model="selectedMap[$index]" />
@@ -222,6 +237,100 @@ import { ElMessage } from 'element-plus';
 import { useCool } from '/@/cool';
 
 const { service } = useCool();
+
+const priorityCache = new Map<string, string>();
+const priorityFetchMap = new Map<string, Promise<string | undefined>>();
+
+function normalizeName(name: unknown): string {
+  return String(name ?? '').trim();
+}
+
+function cachePriority(name: unknown, priority: unknown) {
+  const key = normalizeName(name);
+  if (!key) return;
+  if (priority == null || priority === '') return;
+  priorityCache.set(key, String(priority));
+}
+
+function readCachedPriority(name: unknown): string | undefined {
+  const key = normalizeName(name);
+  if (!key) return undefined;
+  return priorityCache.get(key);
+}
+
+async function resolvePriorityByName(name: unknown): Promise<string | undefined> {
+  const normalized = normalizeName(name);
+  if (!normalized) return undefined;
+  const cached = readCachedPriority(normalized);
+  if (cached !== undefined) return cached;
+  if (priorityFetchMap.has(normalized)) {
+    return priorityFetchMap.get(normalized);
+  }
+  const api: any = (service as any)?.rs_poi?.poi;
+  if (!api?.page) return undefined;
+  const task = (async () => {
+    try {
+      const res = await api.page({ page: 1, size: 20, keyWord: normalized });
+      const list = res?.list || res?.data?.list || [];
+      const match = list.find((item: any) => normalizeName(item?.name) === normalized) || list[0];
+      if (match) {
+        cachePriority(match?.name, match?.level ?? match?.priority);
+        return readCachedPriority(normalized);
+      }
+    } catch (err) {
+      console.warn('[forecast] resolvePriorityByName failed', err);
+    }
+    return undefined;
+  })();
+  priorityFetchMap.set(normalized, task);
+  const result = await task;
+  priorityFetchMap.delete(normalized);
+  return result;
+}
+
+async function enrichPriorities(rows: any[]): Promise<any[]> {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  const enriched = await Promise.all(
+    rows.map(async (row) => {
+      const direct = row?.priority ?? row?.level ?? row?.priorityLevel;
+      if (direct != null && direct !== '') {
+        cachePriority(row?.name, direct);
+      }
+      let resolved = readCachedPriority(row?.name);
+      if (resolved == null || resolved === '') {
+        resolved = await resolvePriorityByName(row?.name);
+      }
+      if (resolved == null) resolved = '';
+      cachePriority(row?.name, resolved);
+      return { ...row, priority: resolved };
+    })
+  );
+  return enriched;
+}
+
+function parseStartTime(row: any): number {
+  const candidates = [
+    row?.startAtBeijing,
+    row?.start_at_beijing,
+    row?.t0_beijing,
+    row?.startAt,
+    row?.start_at,
+    row?.t0,
+  ];
+  for (const value of candidates) {
+    if (!value) continue;
+    const text = String(value).trim();
+    if (!text) continue;
+    const normalized = text.includes('T') ? text : text.replace(' ', 'T');
+    const ts = new Date(normalized).getTime();
+    if (!Number.isNaN(ts)) return ts;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function sortForecastRows(rows: any[]): any[] {
+  return [...rows].sort((a, b) => parseStartTime(a) - parseStartTime(b));
+}
 
 type TargetItem = {
   name: string;
@@ -376,6 +485,7 @@ function buildOrbitElementsSnapshot(source: OrbitElements | null): Record<string
 }
 
 function mapTargetList(list: TargetItem[]) {
+
   return list
     .filter((t) => t && t.name && Number.isFinite(Number(t.long)) && Number.isFinite(Number(t.lat)))
     .map((t) => ({
@@ -383,26 +493,38 @@ function mapTargetList(list: TargetItem[]) {
       long: Number(t.long),
       lat: Number(t.lat),
       alt: Number(t.alt ?? 0),
-      push_kind: String(form.pushKind ?? '0'),
-      priority: String(t.priority ?? '1'),
+      imageTime: form.imageTime, 
     }));
 }
 
 async function normalizePayload() {
   let targetList: TargetItem[] = [];
+  const elements = await fetchOrbitElementsForSatellite(form.satellite)
   if (targetPickMode.value === 'all') {
     if (!dbAllLoaded.value) await loadAllTargets();
     targetList = dbAllTargets.value.map(poiToTarget);
   } else {
     targetList = form.targetList.slice();
   }
+
+  const startTs = toUnixMs(form.startAt);
+  const endTs = toUnixMs(form.endAt);
+
   return {
-    satellite: form.satellite,
-    startAt: form.startAt || '',
-    endAt: form.endAt || '',
-    imageTime: String(form.imageTime ?? ''),
+    satelliteCode: form.satellite,
+    ephemeris:elements,
+    forecastStartAt: startTs,
+    forecastEndAt: endTs,
     targetList: mapTargetList(targetList),
   };
+}
+
+function toUnixMs(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  // 兼容 "2025-10-29 10:30:00" 这类没有 T 的格式
+  const s = String(value).trim().replace(' ', 'T');
+  const ms = new Date(s).getTime();
+  return Number.isNaN(ms) ? null : ms;
 }
 
 async function generateJson() {
@@ -443,7 +565,15 @@ async function setPickMode(mode: 'manual' | 'all') {
 }
 
 // 数据库选择逻辑
-type Poi = { id: number; name: string; area_lon?: string; area_lat?: string; level?: number };
+type Poi = {
+  id: number;
+  name: string;
+  area_lon?: string;
+  area_lat?: string;
+  level?: number;
+  priority?: number | string;
+  priorityLevel?: number | string;
+};
 
 const dbDialog = reactive({
   visible: false,
@@ -497,12 +627,13 @@ function onDbSelectionChange(rows: Poi[]) {
 function poiToTarget(p: Poi): TargetItem {
   const lon = Number(p.area_lon);
   const lat = Number(p.area_lat);
+  cachePriority(p.name, p.level ?? (p as any)?.priority ?? (p as any)?.priorityLevel);
   return {
     name: p.name,
     long: Number.isFinite(lon) ? lon : undefined,
     lat: Number.isFinite(lat) ? lat : undefined,
     alt: 0,
-    priority: String(p.level ?? 1),
+    priority: String(p.level ?? (p as any)?.priority ?? 1),
   };
 }
 
@@ -530,6 +661,7 @@ async function fetchAllPois(keyword = '', satFilter = ''): Promise<Poi[]> {
     const list = res?.list || res?.data?.list || [];
     const pg = res?.pagination || res?.data?.pagination || { total: list.length };
     acc.push(...list);
+    list.forEach((item: any) => cachePriority(item?.name, item?.level ?? item?.priority));
     total = pg.total ?? acc.length;
     if (acc.length >= total || list.length === 0) break;
     page += 1;
@@ -614,14 +746,17 @@ async function callForecastApi() {
     posting.value = true;
     orbitElements.value = null;
     const payload = await normalizePayload();
-    const res = await fetch('http://172.16.10.86:9025/as_image_forecast', {
+    const res = await fetch('http://172.16.10.86:9030/image-forecast', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const data = await res.json();
-    apiResponse.value = data;
+    const rows = Array.isArray((data as any)?.result) ? (data as any)?.result : [];
+    const enriched = await enrichPriorities(rows);
+    const sorted = sortForecastRows(enriched);
+    apiResponse.value = { ...data, result: sorted };
     orbitElements.value = (await fetchOrbitElementsForSatellite(form.satellite)) || null;
     // 若当前为 AS02，则在获取结果后，额外获取载荷固存表的空文件号
     if (form.satellite === 'AS02') {
@@ -633,11 +768,11 @@ async function callForecastApi() {
     } else {
       as02EmptyFileNos.value = [];
     }
-    ElMessage.success('接口调用成功');
+    ElMessage.success('星历接口调用成功');
   } catch (e: any) {
     apiResponse.value = null;
     orbitElements.value = null;
-    ElMessage.error(`接口调用失败: ${e?.message || e}`);
+    ElMessage.error(`星历接口调用失败: ${e?.message || e}`);
   } finally {
     posting.value = false;
   }
@@ -794,6 +929,25 @@ async function createWithTemplate() {
     return;
   }
 
+  const times: number[] = [];
+  idxs.forEach((i) => {
+    const row: any = list[i] || {};
+    const ts = parseStartTime(row);
+    if (Number.isFinite(ts)) times.push(ts);
+  });
+  times.sort((a, b) => a - b);
+  let conflict = false;
+  for (let i = 1; i < times.length; i++) {
+    if (times[i] - times[i - 1] < 1.5 * 60 * 60 * 1000) {
+      conflict = true;
+      break;
+    }
+  }
+  if (conflict) {
+    ElMessage.error('选中任务之间存在成像时间间隔小于1.5小时的冲突，提交失败');
+    return;
+  }
+
   creating.value = true;
   const token = await getToken();
 
@@ -804,7 +958,15 @@ async function createWithTemplate() {
     const generatedUid = generateImagingUid();
     (row as any).__imagingUid = generatedUid;
     // AS02 提交前将太阳高度角映射为十六进制码
-      const sun = Number(row.solar_angle ?? row.solarAng ?? NaN);
+      const sun = Number(
+        row.solar_angle ??
+          row.solarAng ??
+          row.solarAngle ??
+          row.sunElevation ??
+          row.sunElevationDeg ??
+          row.sun_angle ??
+          NaN
+      );
       let solarMapped = '';
       if (!Number.isNaN(sun)) {
         if (sun >= 20 && sun < 30) solarMapped = '0x1111';
@@ -816,17 +978,36 @@ async function createWithTemplate() {
       // 扫描模式映射：直通->0x02，压缩->0x01，其它保持原码
       const smNorm = toScanModeValue(row.push_kind ?? form.pushKind);
       const scanModeMapped = smNorm === '0' ? '0x02' : smNorm === '1' ? '0x01' : smNorm;
+      const rollAngle =
+        row.roll_angle ??
+        row.rollAng ??
+        row.rollAngle ??
+        row.roll_angle_value ??
+        row.side_swipe_angle;
+      const startAtRaw =
+        row.startAtBeijing ??
+        row.start_at_beijing ??
+        row.t0_beijing ??
+        row.startAt ??
+        row.start_at ??
+        row.t0;
+      const endAtRaw =
+        row.endAtBeijing ??
+        row.end_beijing ??
+        row.endAt ??
+        row.end_at ??
+        row.tf;
 
       const body = {
         spacecraftCode: String(row.satellite || form.satellite || ''),
         templateId: '689d78a65526542523548b0f',
         folderId: '6731752608e123893cf92873',
-        name: String(row.name || ''),
+        name: String(row.name || '')+startAtRaw,
         scanMode: scanModeMapped,
-        rollAng: String(row.roll_angle ?? ''),
-        startAt: toIsoString(row.t0_beijing || row.t0),
-        endAt: toIsoString(row.end_beijing || row.tf),
-        solarAng: solarMapped || String(row.solar_angle ?? ''),
+        rollAng: rollAngle != null ? String(rollAngle) : '',
+        startAt: toIsoString(startAtRaw),
+        endAt: toIsoString(endAtRaw),
+        solarAng: solarMapped || String(row.solar_angle ?? row.solarAng ?? row.solarAngle ?? row.sunElevation ?? ''),
         fileStart: String(startFileNoMap[i] ?? ''),
       } as any;
 
@@ -899,7 +1080,19 @@ async function updateAs02FixedStorage(fileStart: string, srcRow: any) {
   if (!row?.id) return;
   const id = row.id;
   const targetName = String(srcRow?.name || row?.targetName || '');
-  const imagingTime = String(srcRow?.t0_beijing || row?.imagingTime || '');
+  const imagingRaw =
+    srcRow?.startAtBeijing ??
+    srcRow?.start_at_beijing ??
+    srcRow?.t0_beijing ??
+    srcRow?.startAt ??
+    srcRow?.start_at ??
+    srcRow?.t0 ??
+    row?.imagingTime ??
+    row?.t0_beijing ??
+    row?.imaging_time ??
+    '';
+  const imagingIso = imagingRaw ? toIsoString(imagingRaw) : '';
+  const imagingTime = imagingIso || String(imagingRaw || row?.imagingTime || row?.t0_beijing || row?.imaging_time || '');
   const status = 1; // 待写入
   const imagingUid = String(srcRow?.__imagingUid || row?.imagingUid || row?.imaging_uid || '');
   const payload: Record<string, any> = { id, targetName, imagingTime, status };
@@ -922,8 +1115,27 @@ async function createWithTemplateAS03() {
     return;
   }
 
-    creating.value = true;
-    const token = await getToken();
+  const times: number[] = [];
+  idxs.forEach((i) => {
+    const row: any = list[i] || {};
+    const ts = parseStartTime(row);
+    if (Number.isFinite(ts)) times.push(ts);
+  });
+  times.sort((a, b) => a - b);
+  let conflict = false;
+  for (let i = 1; i < times.length; i++) {
+    if (times[i] - times[i - 1] < 1.5 * 60 * 60 * 1000) {
+      conflict = true;
+      break;
+    }
+  }
+  if (conflict) {
+    ElMessage.error('选中任务之间存在成像时间间隔小于1.5小时的冲突，提交失败');
+    return;
+  }
+
+  creating.value = true;
+  const token = await getToken();
 
     let ok = 0;
     let total = 0;
@@ -940,8 +1152,21 @@ async function createWithTemplateAS03() {
       (row as any).__imagingUid = generatedUid;
 
       const name = String(row.name || '');
-      const t0 = toIsoString(row.t0_beijing || row.t0);
-      const tf = toIsoString(row.end_beijing || row.tf);
+      const t0Raw =
+        row.startAtBeijing ??
+        row.start_at_beijing ??
+        row.t0_beijing ??
+        row.startAt ??
+        row.start_at ??
+        row.t0;
+      const tfRaw =
+        row.endAtBeijing ??
+        row.end_beijing ??
+        row.endAt ??
+        row.end_at ??
+        row.tf;
+      const t0 = toIsoString(t0Raw);
+      const tf = toIsoString(tfRaw);
       const baseSeq = Number(startFileNoMap[i] ?? '') || 0;
       const resetSeq = String((reloadMap as any)?.[i] ?? '1');
 
@@ -950,7 +1175,7 @@ async function createWithTemplateAS03() {
           spacecraftCode: sat,
           templateId: '673c2d9049b1f446adc4623c',
           folderId: '6731755b08e123893cf92878',
-          name,
+          name:name+"焦面断电-"+t0Raw,
           reset_seq: resetSeq,
           start_seq: String(baseSeq),
           tf,
@@ -959,7 +1184,7 @@ async function createWithTemplateAS03() {
           spacecraftCode: sat,
           templateId: '673c2d8f49b1f446adc46230',
           folderId: '6731755b08e123893cf92878',
-          name,
+          name:name+"制冷剂启停-"+t0Raw,
           t0,
           start_seq: String(baseSeq + 14),
         },
@@ -967,10 +1192,17 @@ async function createWithTemplateAS03() {
           spacecraftCode: sat,
           templateId: '673c2d9049b1f446adc4623f',
           folderId: '6731755b08e123893cf92878',
-          name,
+          name:name+"成像序列+转姿态+GNSS转存-"+t0Raw,
           start_seq: String(baseSeq + 47),
           t0,
-          side_swipe_angle: String(row.roll_angle ?? ''),
+          side_swipe_angle: String(
+            row.roll_angle ??
+              row.rollAng ??
+              row.rollAngle ??
+              row.roll_angle_value ??
+              row.side_swipe_angle ??
+              ''
+          ),
           tf,
         },
       ];
@@ -1055,7 +1287,16 @@ async function updateAs03FixedStorage(id: number, srcRow: any) {
   if (!api?.update) return;
   const name = 2;
   const targetName = String(srcRow?.name || '');
-  const imagingTime = String(srcRow?.t0_beijing || '');
+  const imagingRaw =
+    srcRow?.startAtBeijing ??
+    srcRow?.start_at_beijing ??
+    srcRow?.t0_beijing ??
+    srcRow?.startAt ??
+    srcRow?.start_at ??
+    srcRow?.t0 ??
+    '';
+  const imagingIso = imagingRaw ? toIsoString(imagingRaw) : '';
+  const imagingTime = imagingIso || String(imagingRaw || '');
   const status = 1; // 待写入
   const imagingUid = String(srcRow?.__imagingUid || '');
   const payload: Record<string, any> = { id, targetName, imagingTime, status };
@@ -1093,6 +1334,8 @@ type ForecastTaskPayload = {
   imagingUID?: string;
   transferName?: string;
   transferTime?: string;
+  transferUID?: string;
+  thumbnailUrl?: string;
   status?: number;
   orbitElements?: Record<string, string> | null;
 };
@@ -1104,9 +1347,24 @@ function buildTaskRecord(row: any, satellite: string, imagingUid?: string): Fore
 
   if (row?.name) payload.imagingTarget = String(row.name);
 
-  const lon = Number(row?.long);
+  const lon = Number(
+    row?.long ??
+      row?.longitude ??
+      row?.lon ??
+      row?.lng ??
+      row?.area_lon ??
+      row?.areaLon ??
+      row?.areaLonDeg
+  );
   if (Number.isFinite(lon)) payload.longitude = lon;
-  const lat = Number(row?.lat);
+  const lat = Number(
+    row?.lat ??
+      row?.latitude ??
+      row?.latDeg ??
+      row?.area_lat ??
+      row?.areaLat ??
+      row?.areaLatDeg
+  );
   if (Number.isFinite(lat)) payload.latitude = lat;
     const cloud = parseCloud(
     row?.cloud ??
@@ -1120,20 +1378,54 @@ function buildTaskRecord(row: any, satellite: string, imagingUid?: string): Fore
     row?.cloudCoverage
   );
   if (cloud !== undefined) payload.cloudCoverage = cloud;
-  const sun = Number(row?.solar_angle ?? row?.solarAng);
+  const sun = Number(
+    row?.solar_angle ??
+      row?.solarAng ??
+      row?.solarAngle ??
+      row?.sunElevation ??
+      row?.sunElevationDeg ??
+      row?.sun_angle ??
+      NaN
+  );
   if (Number.isFinite(sun)) payload.sunElevation = sun;
 
-  const ephemerisSource = row?.ephemeris_time || row?.ephemerisTime || row?.t0;
+  const ephemerisSource =
+    row?.ephemeris_time ||
+    row?.ephemerisTime ||
+    row?.ephemerisTimeUtc ||
+    row?.ephemeris_time_utc ||
+    row?.t0;
   if (ephemerisSource) payload.ephemerisTime = toIsoString(ephemerisSource);
 
-  const imagingSource = row?.t0_beijing || row?.t0 || row?.start_at;
+  const imagingSource =
+    row?.startAtBeijing ||
+    row?.start_at_beijing ||
+    row?.t0_beijing ||
+    row?.startAt ||
+    row?.start_at ||
+    row?.t0;
   if (imagingSource) payload.imagingTime = toIsoString(imagingSource);
 
   if (imagingUid) payload.imagingUID = imagingUid;
 
-  const transferName = row?.transfer_name || row?.ground_station || row?.station || row?.transferName;
+  const transferName =
+    row?.transfer_name ||
+    row?.ground_station ||
+    row?.groundStation ||
+    row?.station ||
+    row?.relayStation ||
+    row?.transferStation ||
+    row?.transferName;
   if (transferName) payload.transferName = String(transferName);
-  const transferTimeSource = row?.transfer_time || row?.transferTime;
+  const transferTimeSource =
+    row?.transfer_time ||
+    row?.transferTime ||
+    row?.transferAtBeijing ||
+    row?.transfer_at_beijing ||
+    row?.transferAtUtc ||
+    row?.transfer_at_utc ||
+    row?.transferAt ||
+    row?.transfer_at;
   if (transferTimeSource) payload.transferTime = toIsoString(transferTimeSource);
 
   const orbitSnapshot = buildOrbitElementsSnapshot(orbitElements.value ?? null);
@@ -1146,8 +1438,9 @@ async function recordImagingTasks(satellite: string, tasks: ForecastTaskPayload[
   if (!Array.isArray(tasks) || !tasks.length) return;
   try {
     const svc = satellite === 'AS03' ? (service as any)?.task?.as03 : (service as any)?.task?.as02;
-    if (!svc?.add) return;
-    for (const task of tasks) {
+    if (!svc) return;
+
+    const normalizedTasks = tasks.map((task) => {
       const payload: Record<string, any> = {
         satelliteCode: task.satelliteCode ?? satellite,
         imagingTarget: task.imagingTarget ?? '',
@@ -1156,12 +1449,14 @@ async function recordImagingTasks(satellite: string, tasks: ForecastTaskPayload[
         latitude: normalizeDecimal(task.latitude, 0),
         cloudCoverage: normalizeDecimal(task.cloudCoverage, 0),
         sunElevation: normalizeDecimal(task.sunElevation, 0),
-        status: 0,
+        status: Number.isFinite(Number(task.status)) ? Number(task.status) : 0,
       };
       if (task.ephemerisTime) payload.ephemerisTime = task.ephemerisTime;
       if (task.imagingTime) payload.imagingTime = task.imagingTime;
       if (task.transferName) payload.transferName = task.transferName;
       if (task.transferTime) payload.transferTime = task.transferTime;
+      if (task.transferUID) payload.transferUID = task.transferUID;
+      if (task.thumbnailUrl) payload.thumbnailUrl = task.thumbnailUrl;
       if (task.orbitElements) {
         try {
           payload.orbitElements = JSON.stringify(task.orbitElements);
@@ -1169,10 +1464,49 @@ async function recordImagingTasks(satellite: string, tasks: ForecastTaskPayload[
           payload.orbitElements = null;
         }
       }
-      await svc.add(payload);
+      return payload;
+    });
+
+    let lastError: any = null;
+
+    const createFromForecast = (svc as any)?.createFromForecast;
+    if (typeof createFromForecast === 'function') {
+      try {
+        await createFromForecast({ tasks: normalizedTasks });
+        return;
+      } catch (err) {
+        lastError = err;
+        console.warn('[forecast] createFromForecast 调用失败，尝试回退', err);
+      }
+    }
+
+    if (typeof svc?.request === 'function') {
+      try {
+        await svc.request({
+          url: '/createFromForecast',
+          method: 'POST',
+          data: { tasks: normalizedTasks },
+        });
+        return;
+      } catch (err) {
+        lastError = err;
+        console.warn('[forecast] /createFromForecast 请求失败，尝试逐条 add', err);
+      }
+    }
+
+    if (typeof svc?.add === 'function') {
+      for (const payload of normalizedTasks) {
+        await svc.add(payload);
+      }
+      return;
+    }
+
+    if (lastError) {
+      throw lastError;
     }
   } catch (err) {
     console.warn('[forecast] 任务记录失败', err);
+    ElMessage.error(`任务记录失败：${(err as any)?.message || err || '未知错误'}`);
   }
 }
 
