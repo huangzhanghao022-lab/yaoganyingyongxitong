@@ -155,6 +155,16 @@
 			</div>
 		</el-card>
 
+		<el-card v-if="transferNotice.visible" shadow="never" class="selection-card mb16">
+			<template #header>
+				<div class="selection-header">数传任务反馈</div>
+			</template>
+			<div class="submission-feedback">
+				<p class="submission-message">{{ transferNotice.message }}</p>
+				<p v-if="transferNotice.detail" class="submission-detail">{{ transferNotice.detail }}</p>
+			</div>
+		</el-card>
+
 		<el-dialog
 			v-model="storageDialog.visible"
 			title="固存表状态"
@@ -355,6 +365,13 @@ type IntegratedGroup = {
 	type: SelectionSource;
 };
 
+type TransferNotice = {
+	visible: boolean;
+	type: 'success' | 'info' | 'warning' | 'danger';
+	message: string;
+	detail?: string;
+};
+
 const TRANSFER_TEMPLATE_ID = '673c2d9049b1f446adc4623e';
 const TRANSFER_FOLDER_ID = '6731752608e123893cf92873';
 const TRANSFER_API_URL = 'http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template';
@@ -364,6 +381,12 @@ const TRANS_TIME_SUFFIXES = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 const integratedGroups = ref<IntegratedGroup[]>([]);
 const transferSubmitting = ref(false);
+const transferNotice = reactive<TransferNotice>({
+	visible: false,
+	type: 'info',
+	message: '',
+	detail: '',
+});
 
 function resetStationDetail() {
 	form.stationName = "";
@@ -610,6 +633,57 @@ function toIsoString(input: any): string {
 	}
 }
 
+function formatTransferTimeDisplay(value: unknown): string {
+	if (!value) return '--';
+	const raw = String(value).trim();
+	if (!raw) return '--';
+	const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+	const date = new Date(normalized);
+	if (Number.isNaN(date.getTime())) {
+		return raw;
+	}
+	const yyyy = date.getFullYear();
+	const mm = String(date.getMonth() + 1).padStart(2, '0');
+	const dd = String(date.getDate()).padStart(2, '0');
+	const hh = String(date.getHours()).padStart(2, '0');
+	const mi = String(date.getMinutes()).padStart(2, '0');
+	return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+}
+
+function resetTransferNotice() {
+	transferNotice.visible = false;
+	transferNotice.type = 'info';
+	transferNotice.message = '';
+	transferNotice.detail = '';
+}
+
+function showTransferNotice(type: TransferNotice['type'], message: string, detail?: string) {
+	transferNotice.visible = true;
+	transferNotice.type = type;
+	transferNotice.message = message;
+	transferNotice.detail = detail ?? '';
+}
+
+function buildTransferFileSegment(group: IntegratedGroup): string {
+	const prefix = group.type === 'platform' ? '\u5e73\u53f0' : '\u8f7d\u8377';
+	const start = (group.startNo || '').trim();
+	const end = (group.endNo || '').trim();
+	if (start && end && end !== start) {
+		return `${prefix}${start}~${end}`;
+	}
+	const label = start || end || '-';
+	return `${prefix}${label}`;
+}
+
+function buildTransferSummary(groups: IntegratedGroup[], satellite: string | undefined): string {
+	if (!groups.length) {
+		return `\u6570\u4f20\u4efb\u52a1\u63d0\u4ea4\u6210\u529f(${satellite || '-'})`;
+	}
+	const station = form.stationName || form.station || '-';
+	const transferTime = formatTransferTimeDisplay(form.transferT0 || new Date().toISOString());
+	const segments = groups.map((group) => buildTransferFileSegment(group)).join('；');
+	return `\u4e0a\u6ce8\u6570\u4f20\u4efb\u52a1\uff0c\u6570\u4f20\u7ad9\uff1a${station}\uff0c\u5f00\u59cb\u4e0b\u6570\u65f6\u95f4\uff1a${transferTime}\uff0c\u6570\u4f20\u6587\u4ef6\u53f7\uff1a${segments}`;
+}
 async function acquireToken(): Promise<string> {
 	const res = await axios.post(TOKEN_URL, {
 		username: '02ptemplate@yinhe.ht',
@@ -1069,12 +1143,13 @@ function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 
 async function submitTransferTask() {
 	const satellite = form.satellite;
+	resetTransferNotice();
 	if (!satellite) {
 		ElMessage.warning('请先选择卫星');
 		return;
 	}
 	if (!integratedGroups.value.length) {
-		ElMessage.warning('请先整合数传信息');
+		ElMessage.warning('请先生成数传信息');
 		return;
 	}
 	if (!form.transferT0) {
@@ -1088,7 +1163,7 @@ async function submitTransferTask() {
 
 	const incomplete = integratedGroups.value.some((group) => !group.startNo || !group.endNo);
 	if (incomplete) {
-		ElMessage.warning('请完善整合组的固存号范围');
+		ElMessage.warning('请补全数传文件范围');
 		return;
 	}
 
@@ -1110,13 +1185,18 @@ async function submitTransferTask() {
 			throw new Error(errText || `HTTP ${resp.status}`);
 		}
 		const transferUid = await syncTransferAfterSubmit(satellite);
+		const summary = buildTransferSummary([...integratedGroups.value], satellite);
 		if (transferUid) {
-			ElMessage.success(`数传任务提交成功，数传UID：${transferUid}`);
+			ElMessage.success(`数传任务提交成功，流程UID：${transferUid}`);
+			showTransferNotice('success', summary, `流程UID：${transferUid}`);
 		} else {
 			ElMessage.success('数传任务提交成功');
+			showTransferNotice('success', summary);
 		}
 	} catch (err: any) {
-		ElMessage.error(`数传任务提交失败: ${err?.message || err}`);
+		const message = err?.message || err || 'unknown error';
+		ElMessage.error(`数传任务提交失败: ${message}`);
+		showTransferNotice('danger', '数传任务提交失败', String(message));
 	} finally {
 		transferSubmitting.value = false;
 	}
