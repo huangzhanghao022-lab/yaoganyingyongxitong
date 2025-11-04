@@ -341,6 +341,120 @@ declare namespace Eps {
 		[key: string]: any;
 	}
 
+	interface DailyPlanAs02Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 日期
+		 */
+		date?: Date;
+
+		/**
+		 * 值班人
+		 */
+		dutyOfficer?: string;
+
+		/**
+		 * 测控站
+		 */
+		telemetryStation?: string;
+
+		/**
+		 * 过境时间-开始
+		 */
+		transitTimeStart?: time;
+
+		/**
+		 * 过境时间-结束
+		 */
+		transitTimeEnd?: time;
+
+		/**
+		 * 仰角
+		 */
+		elevationAngle?: number;
+
+		/**
+		 * 测控信息
+		 */
+		telemetryInfo?: string;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
+	interface DailyPlanAs03Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 日期
+		 */
+		date?: Date;
+
+		/**
+		 * 值班人
+		 */
+		dutyOfficer?: string;
+
+		/**
+		 * 测控站
+		 */
+		telemetryStation?: string;
+
+		/**
+		 * 过境时间-开始
+		 */
+		transitTimeStart?: time;
+
+		/**
+		 * 过境时间-结束
+		 */
+		transitTimeEnd?: time;
+
+		/**
+		 * 仰角
+		 */
+		elevationAngle?: number;
+
+		/**
+		 * 测控信息
+		 */
+		telemetryInfo?: string;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
 	interface DemoGoodsEntity {
 		/**
 		 * ID
@@ -2923,6 +3037,130 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface Daily_planAs02 {
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<DailyPlanAs02Entity>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<DailyPlanAs02Entity[]>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: DailyPlanAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			delete: string;
+			update: string;
+			info: string;
+			list: string;
+			page: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			delete: boolean;
+			update: boolean;
+			info: boolean;
+			list: boolean;
+			page: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Daily_planAs03 {
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<DailyPlanAs03Entity>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<DailyPlanAs03Entity[]>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: DailyPlanAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			delete: string;
+			update: string;
+			info: string;
+			list: string;
+			page: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			delete: boolean;
+			update: boolean;
+			info: boolean;
+			list: boolean;
+			page: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
 	type Service = {
 		/**
 		 * 基础请求
@@ -2965,6 +3203,7 @@ declare namespace Eps {
 		star: { fixed_storage_table: StarFixed_storage_table; history_excel: StarHistory_excel };
 		task: { as02: TaskAs02; as03: TaskAs03 };
 		user: { address: UserAddress; info: UserInfo };
+		daily_plan: { as02: Daily_planAs02; as03: Daily_planAs03 };
 	};
 
 	type DictKey = "brand" | "occupation";
