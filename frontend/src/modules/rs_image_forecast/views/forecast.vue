@@ -202,6 +202,22 @@
       </div>
     </el-card>
 
+    <el-card v-if="submissionNotice.visible" shadow="never" class="mb16">
+      <template #header>
+        <div class="card-header">
+          <span>提交反馈</span>
+        </div>
+      </template>
+      <div class="submission-feedback">
+        <p class="submission-message">{{ submissionNotice.message }}</p>
+        <p
+            v-if="submissionNotice.detail"
+            class="submission-detail"
+            v-html="submissionNotice.detail.replace(/\n/g, '<br>')"
+          ></p>
+      </div>
+    </el-card>
+
     <!-- 防止底部内容被裁切的占位 -->
     <!-- 合并按钮：改为统一按钮，按卫星分支提交，单独 AS03 按钮移除 -->
     <div class="bottom-spacer"></div>
@@ -272,6 +288,8 @@ async function resolvePriorityByName(name: unknown): Promise<string | undefined>
     try {
       const res = await api.page({ page: 1, size: 20, keyWord: normalized });
       const list = res?.list || res?.data?.list || [];
+
+
       const match = list.find((item: any) => normalizeName(item?.name) === normalized) || list[0];
       if (match) {
         cachePriority(match?.name, match?.level ?? match?.priority);
@@ -357,7 +375,32 @@ type OrbitElementsRow = {
   value: string;
 };
 
+type SubmissionNotice = {
+  visible: boolean;
+  type: 'success' | 'info' | 'warning' | 'danger';
+  message: string;
+  detail?: string;
+};
+
+type SubmissionNoticeEntry = {
+  satellite: string;
+  targetName: string;
+  priority?: string;
+  modeLabel: string;
+  longitude?: number | null;
+  latitude?: number | null;
+  cloudPercent?: number | string | null;
+  rollAngle?: number | string | null;
+  solarAngle?: number | string | null;
+  imagingTime?: string;
+  startFileNo?: string;
+  endFileNo?: string;
+  orbitElements?: Record<string, any> | string | null;
+};
+
 const ORBIT_FIELD_CONFIG: Array<{ key: keyof OrbitElements; label: string; type?: 'time' }> = [
+
+
   { key: 'epochTimeUTC', label: '历元 (UTC)', type: 'time' },
   { key: 'a', label: '半长轴 a (米)' },
   { key: 'e', label: '离心率 e' },
@@ -367,6 +410,13 @@ const ORBIT_FIELD_CONFIG: Array<{ key: keyof OrbitElements; label: string; type?
   { key: 'M', label: '平近点角 M (°)' },
   { key: 'CD', label: '阻力系数 CD' },
 ];
+const MODE_LABEL_MAP: Record<string, string> = {
+  '0': '\u76f4\u901a',
+  '1': '\u538b\u7f29',
+  '2': '\u63a8\u626b',
+  '3': '\u51dd\u89c6',
+};
+
 
 const form = reactive({
   satellite: '' as '' | 'AS02' | 'AS03',
@@ -383,6 +433,12 @@ const jsonPreview = ref('');
 const posting = ref(false);
 const apiResponse = ref<any | null>(null);
 const orbitElements = ref<OrbitElements | null>(null);
+const submissionNotice = reactive<SubmissionNotice>({
+  visible: false,
+  type: 'info',
+  message: '',
+  detail: '',
+});
 // AS02 载荷固存表空文件号
 const as02EmptyFileNos = ref<number[]>([]);
 const creating = ref(false);
@@ -830,6 +886,251 @@ function formatDisplayTime(value: any): string {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
 }
 
+function resetSubmissionNotice() {
+  submissionNotice.visible = false;
+  submissionNotice.type = 'info';
+  submissionNotice.message = '';
+  submissionNotice.detail = '';
+}
+
+function showSubmissionNotice(
+  type: SubmissionNotice['type'],
+  message: string,
+  detail?: string
+) {
+  submissionNotice.visible = true;
+  submissionNotice.type = type;
+  submissionNotice.message = message;
+  submissionNotice.detail = detail ?? '';
+}
+
+function resolveModeLabel(raw: any, fallback?: string): string {
+  const key = String(raw ?? fallback ?? '').trim();
+  if (MODE_LABEL_MAP[key] != null) {
+    return MODE_LABEL_MAP[key];
+  }
+  if (fallback && MODE_LABEL_MAP[fallback] != null) {
+    return MODE_LABEL_MAP[fallback];
+  }
+  return '成像';
+}
+
+function toNumberOrNull(value: any): number | null {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function resolveCloudPercentValue(row: any): number | string | null {
+  const source =
+    row?.cloud ??
+    row?.cloudPercent ??
+    row?.cloud_percent ??
+    row?.cloudCoverage ??
+    row?.cloud_coverage;
+  if (source == null) return null;
+  if (typeof source === 'string') {
+    const trimmed = source.trim();
+    if (!trimmed) return null;
+    if (trimmed.endsWith('%')) return trimmed;
+    const num = Number(trimmed);
+    if (Number.isFinite(num)) {
+      return `${num}%`;
+    }
+    return trimmed;
+  }
+  const parsed = parseCloud(source);
+  return parsed != null ? `${parsed}%` : null;
+}
+
+function formatMonthDayLabel(input?: string): string {
+  if (!input) return '--';
+  const normalized = input.includes('T') ? input : input.replace(' ', 'T');
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return '--';
+  const mm = (date.getMonth() + 1).toString().padStart(2, '0');
+  const dd = date.getDate().toString().padStart(2, '0');
+  return `${mm}-${dd}`;
+}
+
+function formatNumberText(value: number | string | null | undefined, digits = 4): string {
+  if (value == null || value === '') return '--';
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return String(value);
+  }
+  return Number(num.toFixed(digits)).toString();
+}
+
+function formatPercentText(value: number | string | null | undefined): string {
+  if (value == null || value === '') return '--';
+  if (typeof value === 'string') {
+    return value.endsWith('%') ? value : `${value}%`;
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num)) return String(value);
+  const percent = num > 1 ? num : num * 100;
+  return `${Number(percent.toFixed(1))}%`;
+}
+
+function formatOrbitElementsText(value: string | Record<string, any> | null | undefined): string {
+  if (!value) return '';
+  if (typeof value === 'string') {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '';
+  }
+}
+
+function buildSubmissionSummary(
+  entries: SubmissionNoticeEntry[],
+  satellite: string
+): string {
+  if (!entries.length) {
+    return `提交成功${satellite}`;
+  }
+  return entries
+    .map((entry) => {
+      const monthDay = formatMonthDayLabel(entry.imagingTime);
+      const header = `上注${monthDay} ${entry.targetName}目标点任务`;
+      const priority = entry.priority || '1';
+      const longitude = formatNumberText(entry.longitude);
+      const latitude = formatNumberText(entry.latitude);
+      const cloud = typeof entry.cloudPercent === 'string'
+        ? entry.cloudPercent
+        : formatPercentText(entry.cloudPercent);
+      const roll = formatNumberText(entry.rollAngle, 6);
+      const solar = formatNumberText(entry.solarAngle, 6);
+      const imagingTime = entry.imagingTime ?? '--';
+      const fileRange = (() => {
+          // 没有起始号就直接用 '-'
+          if (!entry.startFileNo) return '-';
+
+          const sat = entry.satellite; // 'AS02' | 'AS03' | 其它
+          const startNum = Number(entry.startFileNo);
+
+          // AS03 不显示区间
+          if (sat === 'AS03') {
+            return '';
+          }
+
+          // AS02 显示 start ~ start+8
+          if (sat === 'AS02') {
+            if (Number.isFinite(startNum)) {
+              return `${startNum}~${startNum + 8}`;
+            }
+            // 起始号不是数字的话就用原样
+            return `${entry.startFileNo}~${entry.startFileNo}+8`;
+          }
+
+          // 其它卫星走原来的兜底
+          return entry.endFileNo
+            ? `${entry.startFileNo}~${entry.endFileNo}`
+            : entry.startFileNo;
+        })();
+
+      const orbitText = formatOrbitElementsText(entry.orbitElements);
+      const orbitLine = orbitText ? `预报星历${orbitText}` : '';
+      const lines = [
+        `${priority}级目标 ${entry.modeLabel}成像任务，双相机成像，目标点为${entry.targetName}，经度${longitude}，维度${latitude}，云量${cloud}，侧摆角${roll}，`,
+        `太阳高度角${solar}，成像时间${imagingTime}，记录文件号${fileRange}（${entry.modeLabel}）。`,
+        orbitLine,
+        `预报方法：姿轨控新方法`,
+      ].filter(Boolean);
+      // 这一行要用 '\n'
+      return [header, ...lines].join('\n');
+    })
+    // 这里也要用 '\n\n'
+    .join('\n\n');
+}
+
+function parseOrbitElementsForNotice(value: any): Record<string, any> | string | null {
+  if (value == null || value === '') return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+  if (typeof value === 'object') {
+    return value as Record<string, any>;
+  }
+  return null;
+}
+
+function prefer<T>(...values: Array<T | null | undefined | ''>): T | undefined {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== '') {
+      return value as T;
+    }
+  }
+  return undefined;
+}
+
+function buildSubmissionNoticeEntry(
+  satellite: string,
+  row: any,
+  payload: ForecastTaskPayload,
+  startFileNo?: string | number,
+  endFileNo?: string | number,
+  fallbackMode?: string
+): SubmissionNoticeEntry {
+  const targetName = normalizeName(prefer(row?.name, payload.imagingTarget)) || '-';
+  const priority = prefer(row?.priority, row?.level, row?.priorityLevel);
+  const modeLabel = resolveModeLabel(prefer(row?.push_kind, row?.pushKind, fallbackMode));
+  const longitude = toNumberOrNull(prefer(row?.long, row?.longitude, payload.longitude));
+  const latitude = toNumberOrNull(prefer(row?.lat, row?.latitude, payload.latitude));
+  const cloudPercent = resolveCloudPercentValue(row);
+  const rollAngle = prefer(
+    row?.roll_angle,
+    row?.rollAng,
+    row?.rollAngle,
+    row?.roll_angle_value,
+    row?.side_swipe_angle
+  );
+  const solarAngle = prefer(
+    row?.solar_angle,
+    row?.solarAng,
+    row?.solarAngle,
+    row?.sunElevation,
+    row?.sunElevationDeg,
+    row?.sun_angle
+  );
+  const imagingSource = prefer(
+    payload.imagingTime,
+    row?.startAtBeijing,
+    row?.start_at_beijing,
+    row?.t0_beijing,
+    row?.startAt,
+    row?.start_at,
+    row?.t0
+  );
+  const imagingTime = imagingSource ? formatDisplayTime(imagingSource) : undefined;
+  const orbitSummary = parseOrbitElementsForNotice(
+    (payload as any)?.orbitElements ?? row?.orbitElements ?? null
+  );
+  return {
+    satellite,
+    targetName,
+    priority: priority ? String(priority) : undefined,
+    modeLabel,
+    longitude,
+    latitude,
+    cloudPercent,
+    rollAngle,
+    solarAngle,
+    imagingTime,
+    startFileNo: startFileNo != null && startFileNo !== '' ? String(startFileNo) : undefined,
+    endFileNo: endFileNo != null && endFileNo !== '' ? String(endFileNo) : undefined,
+    orbitElements: orbitSummary,
+  };
+}
+
 function formatOrbitNumber(value: unknown): string {
   const num = Number(value);
   if (!Number.isFinite(num)) return '-';
@@ -838,10 +1139,14 @@ function formatOrbitNumber(value: unknown): string {
 }
 
 function toScanModeValue(v: any): string {
-  const s = String(v ?? '');
+  const s = String(v ?? '').trim();
   if (/^[0-3]$/.test(s)) return s;
-  const map: Record<string, string> = { '直通': '0', '压缩': '1', '条扫': '2', '汇聚': '3' };
-  return map[s] ?? '0';
+  for (const [key, label] of Object.entries(MODE_LABEL_MAP)) {
+    if (label === s) {
+      return key;
+    }
+  }
+  return '0';
 }
 
 async function getToken(): Promise<string> {
@@ -945,6 +1250,7 @@ async function createWithTemplate() {
   }
   if (conflict) {
     ElMessage.error('选中任务之间存在成像时间间隔小于1.5小时的冲突，提交失败');
+    showSubmissionNotice('warning', '提交失败', '选中任务之间存在成像时间间隔小于1.5小时的冲突');
     return;
   }
 
@@ -953,6 +1259,7 @@ async function createWithTemplate() {
 
   let ok = 0;
   const tasksToRecord: ForecastTaskPayload[] = [];
+  const noticeEntries: SubmissionNoticeEntry[] = [];
   for (const i of idxs) {
     const row: any = list[i] || {};
     const generatedUid = generateImagingUid();
@@ -1026,7 +1333,19 @@ async function createWithTemplate() {
         } catch (e) {
           console.warn('[AS02] 固存表回填失败: ', e);
         }
-        tasksToRecord.push(buildTaskRecord(row, 'AS02', generatedUid));
+        const taskPayload = buildTaskRecord(row, 'AS02', generatedUid);
+        tasksToRecord.push(taskPayload);
+        const startFileRef = body.fileStart ?? startFileNoMap[i] ?? '';
+        noticeEntries.push(
+          buildSubmissionNoticeEntry(
+            'AS02',
+            row,
+            taskPayload,
+            startFileRef,
+            undefined,
+            form.pushKind
+          )
+        );
       } else {
         console.warn('[AS02] 模板提交失败', await safeReadText(resp));
       }
@@ -1036,9 +1355,17 @@ async function createWithTemplate() {
       await recordImagingTasks('AS02', tasksToRecord);
     }
 
+    const summaryText = buildSubmissionSummary(noticeEntries, 'AS02');
+
     ElMessage.success(`已提交 ${ok}/${idxs.length} 条成像信息`);
-  } catch (e: any) {
+    showSubmissionNotice(
+      'success',
+      `已提交 ${ok}/${idxs.length} 条成像信息`,
+      summaryText  // 这里就能在页面里显示出来了
+    );
+} catch (e: any) {
     ElMessage.error(`提交失败: ${e?.message || e}`);
+    showSubmissionNotice('danger', '提交失败', String(e?.message || e));
   } finally {
     creating.value = false;
   }
@@ -1131,6 +1458,7 @@ async function createWithTemplateAS03() {
   }
   if (conflict) {
     ElMessage.error('选中任务之间存在成像时间间隔小于1.5小时的冲突，提交失败');
+    showSubmissionNotice('warning', '提交失败', '选中任务之间存在成像时间间隔小于1.5小时的冲突');
     return;
   }
 
@@ -1140,6 +1468,7 @@ async function createWithTemplateAS03() {
     let ok = 0;
     let total = 0;
     const tasksToRecord: ForecastTaskPayload[] = [];
+    const noticeEntries: SubmissionNoticeEntry[] = [];
 
     // 为固存同步准备足量的空槽（AS03 载荷 name=2，status=0），按 startFileNo 升序
     const emptySlots = await fetchAs03EmptySlots(idxs.length);
@@ -1237,7 +1566,20 @@ async function createWithTemplateAS03() {
         } else {
           console.warn('[AS03] 固存槽不足，无法回填固存记录');
         }
-        tasksToRecord.push(buildTaskRecord(row, 'AS03', generatedUid));
+        const taskPayload = buildTaskRecord(row, 'AS03', generatedUid);
+        tasksToRecord.push(taskPayload);
+        const startFileRef = slot?.startFileNo ?? baseSeq;
+        const endFileRef = slot?.endFileNo ?? undefined;
+        noticeEntries.push(
+          buildSubmissionNoticeEntry(
+            'AS03',
+            row,
+            taskPayload,
+            startFileRef,
+            endFileRef,
+            form.pushKind
+          )
+        );
       }
     }
 
@@ -1245,9 +1587,17 @@ async function createWithTemplateAS03() {
       await recordImagingTasks('AS03', tasksToRecord);
     }
 
+    const summaryText = buildSubmissionSummary(noticeEntries, 'AS03');
+
     ElMessage.success(`AS03 已提交 ${ok}/${total} 条请求`);
-  } catch (e: any) {
+    showSubmissionNotice(
+      'success',
+      `AS03 已提交 ${ok}/${total} 条请求`,
+      summaryText
+    );
+    } catch (e: any) {
     ElMessage.error(`提交失败: ${e?.message || e}`);
+    showSubmissionNotice('danger', '提交失败', String(e?.message || e));
   } finally {
     creating.value = false;
   }
@@ -1306,6 +1656,7 @@ async function updateAs03FixedStorage(id: number, srcRow: any) {
 
 // 统一入口：根据卫星选择 AS02 或 AS03 提交逻辑
 async function submitSelectedUnified() {
+  resetSubmissionNotice();
   const sat = form.satellite || apiResponse.value?.result?.[0]?.satellite || '';
   if (sat === 'AS03') {
     await createWithTemplateAS03();
@@ -1600,5 +1951,20 @@ function normalizeDecimal(value: unknown, fallback: number): number {
 }
 
 
+
+
+.submission-feedback {
+  line-height: 1.6;
+}
+
+.submission-message {
+  font-weight: 600;
+  white-space: pre-line;
+}
+
+.submission-detail {
+  margin-top: 4px;
+  color: var(--el-text-color-secondary);
+}
 
 </style>
