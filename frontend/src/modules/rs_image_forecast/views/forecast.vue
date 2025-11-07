@@ -1034,7 +1034,8 @@ function buildSubmissionSummary(
       const orbitText = formatOrbitElementsText(entry.orbitElements);
       const orbitLine = orbitText ? `预报星历${orbitText}` : '';
       const lines = [
-        `${priority}级目标 ${entry.modeLabel}成像任务，双相机成像，目标点为${entry.targetName}，经度${longitude}，维度${latitude}，云量${cloud}，侧摆角${roll}，`,
+        `${priority}级目标 ${entry.modeLabel}成像任务，双相机成像，目标点为`,
+        `${entry.targetName}，经度${longitude}，纬度${latitude}，云量${cloud}，侧摆角${roll}，`,
         `太阳高度角${solar}，成像时间${imagingTime}，记录文件号${fileRange}（${entry.modeLabel}）。`,
         orbitLine,
         `预报方法：姿轨控新方法`,
@@ -1513,7 +1514,7 @@ async function createWithTemplateAS03() {
           spacecraftCode: sat,
           templateId: '673c2d8f49b1f446adc46230',
           folderId: '6731755b08e123893cf92878',
-          name:name+"制冷剂启停-"+t0Raw,
+          name:name+"制冷机启停-"+t0Raw,
           t0,
           start_seq: String(baseSeq + 14),
         },

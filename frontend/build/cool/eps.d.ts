@@ -363,14 +363,9 @@ declare namespace Eps {
 		telemetryStation?: string;
 
 		/**
-		 * 过境时间-开始
+		 * 过境时间
 		 */
-		transitTimeStart?: time;
-
-		/**
-		 * 过境时间-结束
-		 */
-		transitTimeEnd?: time;
+		transitTime?: string;
 
 		/**
 		 * 仰角
@@ -420,14 +415,9 @@ declare namespace Eps {
 		telemetryStation?: string;
 
 		/**
-		 * 过境时间-开始
+		 * 过境时间
 		 */
-		transitTimeStart?: time;
-
-		/**
-		 * 过境时间-结束
-		 */
-		transitTimeEnd?: time;
+		transitTime?: string;
 
 		/**
 		 * 仰角
@@ -2008,6 +1998,130 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface Daily_planAs02 {
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<DailyPlanAs02Entity>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<DailyPlanAs02Entity[]>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: DailyPlanAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			delete: string;
+			update: string;
+			info: string;
+			list: string;
+			page: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			delete: boolean;
+			update: boolean;
+			info: boolean;
+			list: boolean;
+			page: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Daily_planAs03 {
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<DailyPlanAs03Entity>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<DailyPlanAs03Entity[]>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: DailyPlanAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			delete: string;
+			update: string;
+			info: string;
+			list: string;
+			page: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			delete: boolean;
+			update: boolean;
+			info: boolean;
+			list: boolean;
+			page: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
 	interface DemoGoods {
 		/**
 		 * 删除
@@ -3037,130 +3151,6 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
-	interface Daily_planAs02 {
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<DailyPlanAs02Entity>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<DailyPlanAs02Entity[]>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: DailyPlanAs02Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			delete: string;
-			update: string;
-			info: string;
-			list: string;
-			page: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			delete: boolean;
-			update: boolean;
-			info: boolean;
-			list: boolean;
-			page: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface Daily_planAs03 {
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<DailyPlanAs03Entity>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<DailyPlanAs03Entity[]>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: DailyPlanAs03Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			delete: string;
-			update: string;
-			info: string;
-			list: string;
-			page: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			delete: boolean;
-			update: boolean;
-			info: boolean;
-			list: boolean;
-			page: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
 	type Service = {
 		/**
 		 * 基础请求
@@ -3192,6 +3182,7 @@ declare namespace Eps {
 				user: BaseSysUser;
 			};
 		};
+		daily_plan: { as02: Daily_planAs02; as03: Daily_planAs03 };
 		demo: { goods: DemoGoods; tenant: DemoTenant };
 		dict: { info: DictInfo; type: DictType };
 		plugin: { info: PluginInfo };
@@ -3203,7 +3194,6 @@ declare namespace Eps {
 		star: { fixed_storage_table: StarFixed_storage_table; history_excel: StarHistory_excel };
 		task: { as02: TaskAs02; as03: TaskAs03 };
 		user: { address: UserAddress; info: UserInfo };
-		daily_plan: { as02: Daily_planAs02; as03: Daily_planAs03 };
 	};
 
 	type DictKey = "brand" | "occupation";

@@ -40,6 +40,20 @@ import { useI18n } from "vue-i18n";
 const { service } = useCool();
 const { t } = useI18n();
 
+function splitTransit(value: unknown): [string, string] {
+	if (typeof value !== "string") {
+		return ["", ""];
+	}
+	const index = value.indexOf("-", 19);
+	if (index === -1) {
+		const trimmed = value.trim();
+		return [trimmed, ""];
+	}
+	const start = value.slice(0, index).trim();
+	const end = value.slice(index + 1).trim();
+	return [start, end];
+}
+
 // cl-upsert
 const Upsert = useUpsert({
 	items: [
@@ -68,23 +82,21 @@ const Upsert = useUpsert({
 			required: true,
 		},
 		{
-			label: t("过境时间-开始"),
-			prop: "transitTimeStart",
+			label: t("过境时间"),
+			prop: "transitTime",
+			value: [],
 			component: {
 				name: "el-date-picker",
-				props: { type: "datetime", valueFormat: "YYYY-MM-DD HH:mm:ss" },
+				props: {
+					type: "datetimerange",
+					valueFormat: "YYYY-MM-DD HH:mm:ss",
+					unlinkPanels: true,
+					startPlaceholder: t("开始时间"),
+					endPlaceholder: t("结束时间"),
+					rangeSeparator: t("至"),
+				},
 			},
-			span: 12,
-			required: true,
-		},
-		{
-			label: t("过境时间-结束"),
-			prop: "transitTimeEnd",
-			component: {
-				name: "el-date-picker",
-				props: { type: "datetime", valueFormat: "YYYY-MM-DD HH:mm:ss" },
-			},
-			span: 12,
+			span: 24,
 			required: true,
 		},
 		{
@@ -104,6 +116,19 @@ const Upsert = useUpsert({
 			},
 		},
 	],
+	onSubmit(form, { next }) {
+		const { transitTime, ...rest } = form;
+		const [start, end] = Array.isArray(transitTime) ? transitTime : [];
+		const payload = {
+			...rest,
+			transitTime: start && end ? `${start}-${end}` : undefined,
+		};
+		next(payload);
+	},
+	onOpened(data) {
+		const [start, end] = splitTransit(data?.transitTime);
+		data.transitTime = start && end ? [start, end] : [];
+	},
 });
 
 // cl-table
@@ -123,18 +148,17 @@ const Table = useTable({
 		{ label: t("值班人"), prop: "dutyOfficer", minWidth: 140 },
 		{ label: t("测控站"), prop: "telemetryStation", minWidth: 120 },
 		{
-			label: t("过境时间-开始"),
-			prop: "transitTimeStart",
-			minWidth: 170,
+			label: t("过境时间"),
+			prop: "transitTime",
+			minWidth: 200,
 			sortable: "custom",
-			component: { name: "cl-date-text" },
-		},
-		{
-			label: t("过境时间-结束"),
-			prop: "transitTimeEnd",
-			minWidth: 170,
-			sortable: "custom",
-			component: { name: "cl-date-text" },
+			formatter(row) {
+				const [start, end] = splitTransit(row.transitTime);
+				if (start && end) {
+					return `${start} ~ ${end}`;
+				}
+				return start || "-";
+			},
 		},
 		{
 			label: t("仰角"),
