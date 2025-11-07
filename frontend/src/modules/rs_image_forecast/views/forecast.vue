@@ -418,16 +418,305 @@ const MODE_LABEL_MAP: Record<string, string> = {
 };
 
 
-const form = reactive({
-  satellite: '' as '' | 'AS02' | 'AS03',
-  startAt: '' as string | '',
-  endAt: '' as string | '',
-  imageTime: 10 as number,
-  pushKind: '0' as '0' | '1' | '2' | '3',
-  targetList: [] as TargetItem[],
-});
+const FORECAST_CACHE_KEY = 'rs_image_forecast_cache_v1';
+const FORECAST_RELOAD_FLAG = '__forecastReloadHandled';
+let isForecastRestoring = false;
+
+function detectPageReload(): boolean {
+  if (typeof window === 'undefined' || typeof performance === 'undefined') {
+    return false;
+  }
+
+  const entries = performance.getEntriesByType?.('navigation') || [];
+  if (entries.length && typeof entries[0]?.type === 'string') {
+    return entries[0].type === 'reload';
+  }
+
+  const nav = (performance as any).navigation;
+  if (nav?.type != null && nav?.TYPE_RELOAD != null) {
+    return nav.type === nav.TYPE_RELOAD;
+  }
+
+  return false;
+}
+
+const isPageReload = detectPageReload();
+
+if (isPageReload && typeof window !== 'undefined') {
+  const win = window as any;
+  if (!win[FORECAST_RELOAD_FLAG]) {
+    try {
+      window.localStorage.removeItem(FORECAST_CACHE_KEY);
+    } catch (err) {
+      console.warn('[forecast] 清除缓存失败', err);
+    }
+    win[FORECAST_RELOAD_FLAG] = true;
+  }
+}
+
+type ForecastFormState = {
+  satellite: '' | 'AS02' | 'AS03';
+  startAt: string;
+  endAt: string;
+  imageTime: number;
+  pushKind: '0' | '1' | '2' | '3';
+  targetList: TargetItem[];
+};
+
+type ForecastCachePayload = {
+  form: ForecastFormState;
+  targetPickMode: '' | 'manual' | 'all';
+  orbitElements?: OrbitElements | null;
+  as02EmptyFileNos?: number[];
+  apiResponse?: any;
+  submissionNotice?: SubmissionNotice;
+  selectedMap?: Record<string, boolean>;
+  startFileNoMap?: Record<string, string>;
+  reloadMap?: Record<string, string>;
+};
+
+const defaultForecastForm: ForecastFormState = {
+  satellite: '',
+  startAt: '',
+  endAt: '',
+  imageTime: 10,
+  pushKind: '0',
+  targetList: [],
+};
+
+const form = reactive<ForecastFormState>({ ...defaultForecastForm });
 
 const targetPickMode = ref<'' | 'manual' | 'all'>('');
+
+function deepClone<T>(value: T): T {
+  if (value == null) return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
+function recordToPlain<T = any>(source: Record<string | number, T>): Record<string, T> {
+  const plain: Record<string, T> = {};
+  if (!source) {
+    return plain;
+  }
+  Object.keys(source).forEach((key) => {
+    const value = (source as any)[key];
+    if (value !== undefined) {
+      plain[key] = value;
+    }
+  });
+  return plain;
+}
+
+function restoreRecord(
+  target: Record<string | number, any>,
+  source?: Record<string, any> | null
+) {
+  Object.keys(target).forEach((key) => {
+    delete target[key];
+  });
+  if (!source) return;
+  Object.keys(source).forEach((key) => {
+    target[key as any] = source[key];
+  });
+}
+
+function restoreForecastCache(): (() => void) | null {
+
+  if (typeof window === 'undefined') return null;
+
+
+
+  const raw = window.localStorage.getItem(FORECAST_CACHE_KEY);
+
+  if (!raw) return null;
+
+
+
+  try {
+
+    const payload = JSON.parse(raw) as Partial<ForecastCachePayload>;
+
+    isForecastRestoring = true;
+
+
+
+    if (payload?.form) {
+
+      Object.assign(form, { ...defaultForecastForm, ...payload.form });
+
+      form.targetList = Array.isArray(payload.form.targetList) ? payload.form.targetList : [];
+
+    }
+
+
+
+    if (payload?.targetPickMode !== undefined) {
+
+      targetPickMode.value = payload.targetPickMode!;
+
+    }
+
+
+
+    if (payload?.orbitElements !== undefined) {
+
+      orbitElements.value = payload.orbitElements ?? null;
+
+    }
+
+
+
+    if (Array.isArray(payload?.as02EmptyFileNos)) {
+
+      as02EmptyFileNos.value = payload.as02EmptyFileNos;
+
+    } else {
+
+      as02EmptyFileNos.value = [];
+
+    }
+
+
+
+    if (payload?.apiResponse !== undefined) {
+
+      apiResponse.value = payload.apiResponse ?? null;
+
+    }
+
+
+
+    if (payload?.submissionNotice) {
+
+      Object.assign(submissionNotice, {
+
+        visible: !!payload.submissionNotice.visible,
+
+        type: payload.submissionNotice.type ?? 'info',
+
+        message: payload.submissionNotice.message ?? '',
+
+        detail: payload.submissionNotice.detail ?? '',
+
+      });
+
+    } else {
+
+      resetSubmissionNotice();
+
+    }
+
+
+
+    if (payload?.selectedMap) {
+
+      restoreRecord(selectedMap as Record<string, any>, payload.selectedMap);
+
+    }
+
+    if (payload?.startFileNoMap) {
+
+      restoreRecord(startFileNoMap as Record<string, any>, payload.startFileNoMap);
+
+    }
+
+    if (payload?.reloadMap) {
+
+      restoreRecord(reloadMap as Record<string, any>, payload.reloadMap);
+
+    }
+
+  } catch (err) {
+
+    console.warn('[forecast] 恢复缓存失败', err);
+
+    isForecastRestoring = false;
+
+    return null;
+
+  }
+
+
+
+  return () => {
+
+    isForecastRestoring = false;
+
+  };
+
+}
+
+
+
+function persistForecastCache() {
+
+  if (typeof window === 'undefined' || isForecastRestoring) return;
+
+
+
+  const payload: ForecastCachePayload = {
+
+    form: {
+
+      satellite: form.satellite,
+
+      startAt: form.startAt,
+
+      endAt: form.endAt,
+
+      imageTime: form.imageTime,
+
+      pushKind: form.pushKind,
+
+      targetList: form.targetList.map((item) => ({ ...item })),
+
+    },
+
+    targetPickMode: targetPickMode.value,
+
+    orbitElements: orbitElements.value ? deepClone(orbitElements.value) : null,
+
+    as02EmptyFileNos: as02EmptyFileNos.value.slice(),
+
+    apiResponse: apiResponse.value ? deepClone(apiResponse.value) : null,
+
+    submissionNotice: {
+
+      visible: submissionNotice.visible,
+
+      type: submissionNotice.type,
+
+      message: submissionNotice.message,
+
+      detail: submissionNotice.detail ?? '',
+
+    },
+
+    selectedMap: recordToPlain(selectedMap),
+
+    startFileNoMap: recordToPlain(startFileNoMap),
+
+    reloadMap: recordToPlain(reloadMap),
+
+  };
+
+
+
+  try {
+
+    window.localStorage.setItem(FORECAST_CACHE_KEY, JSON.stringify(payload));
+
+  } catch (err) {
+
+    console.warn('[forecast] 缓存状态失败', err);
+
+  }
+
+}
 
 const jsonPreview = ref('');
 const posting = ref(false);
@@ -449,12 +738,53 @@ const startLabel = computed(() => (isAS03.value ? '起始绝对延时指令号' 
 // 多选与起始号映射
 const selectedMap = reactive<Record<number, boolean>>({});
 const startFileNoMap = reactive<Record<number, string>>({});
-const reloadMap = reactive<Record<number, string>>({}); // 0=是, 1=否，仅 AS03 使用
+const reloadMap = reactive<Record<number, string>>({}); // 0=��, 1=�񣬽� AS03 ʹ��
+
+const finishForecastRestore = restoreForecastCache();
+
+watch(
+  [form, targetPickMode],
+  () => {
+    persistForecastCache();
+  },
+  { deep: true }
+);
+
+watch(
+  [orbitElements, as02EmptyFileNos, apiResponse],
+  () => {
+    persistForecastCache();
+  },
+  { deep: true }
+);
+
+watch(
+  () => ({
+    visible: submissionNotice.visible,
+    type: submissionNotice.type,
+    message: submissionNotice.message,
+    detail: submissionNotice.detail,
+  }),
+  () => {
+    persistForecastCache();
+  }
+);
+
+watch(
+  [() => selectedMap, () => startFileNoMap, () => reloadMap],
+  () => {
+    persistForecastCache();
+  },
+  { deep: true }
+);
 
 // 结果变动时清空已选与起始号
 watch(
   () => apiResponse.value?.result,
   () => {
+    if (isForecastRestoring) {
+      return;
+    }
     Object.keys(selectedMap).forEach((k) => delete (selectedMap as any)[k]);
     Object.keys(startFileNoMap).forEach((k) => delete (startFileNoMap as any)[k]);
     Object.keys(reloadMap).forEach((k) => delete (reloadMap as any)[k]);
@@ -765,6 +1095,9 @@ generateJson();
 watch(
   () => form.satellite,
   (sat) => {
+    if (isForecastRestoring) {
+      return;
+    }
     if (sat === 'AS02') {
       form.imageTime = 10;
       form.pushKind = '0'; // 直通
@@ -781,6 +1114,9 @@ watch(
 watch(
   () => form.satellite,
   async () => {
+    if (isForecastRestoring) {
+      return;
+    }
     orbitElements.value = null;
     dbAllLoaded.value = false;
     dbAllTargets.value = [];
@@ -796,6 +1132,8 @@ watch(
   },
   { immediate: false }
 );
+
+finishForecastRestore?.();
 
 async function callForecastApi() {
   try {

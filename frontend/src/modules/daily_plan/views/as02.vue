@@ -30,7 +30,7 @@
 
 <script lang="ts" setup>
 defineOptions({
-	name: "daily_plan-as02",
+	name: "daily-plan-as02",
 });
 
 import { useCrud, useTable, useUpsert, useSearch } from "@cool-vue/crud";

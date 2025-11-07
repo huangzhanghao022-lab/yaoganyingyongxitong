@@ -259,7 +259,7 @@ defineOptions({
 
 
 import { useI18n } from "vue-i18n";
-import { reactive, computed, ref, onMounted } from "vue";
+import { reactive, computed, ref, onMounted, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { View } from "@element-plus/icons-vue";
 import axios from "axios";
@@ -301,8 +301,23 @@ const statusTagMap: Record<number, TagStyle> = {
 	7: { type: "primary" },
 };
 
-const form = reactive({
-	satellite: "AS02" as "AS02" | "AS03",
+const TRANSFER_PLAN_CACHE_KEY = "transfer_plan_cache_v1";
+
+type TransferPlanFormState = {
+	satellite: "AS02" | "AS03";
+	reloadTable: boolean;
+	startCommand: string;
+	station: string;
+	stationName: string;
+	longitude: string;
+	latitude: string;
+	altitude: string;
+	transferT0: string;
+	duration: string;
+};
+
+const defaultTransferPlanForm: TransferPlanFormState = {
+	satellite: "AS02",
 	reloadTable: false,
 	startCommand: "",
 	station: "",
@@ -312,7 +327,9 @@ const form = reactive({
 	altitude: "",
 	transferT0: "",
 	duration: "",
-});
+};
+
+const form = reactive<TransferPlanFormState>({ ...defaultTransferPlanForm });
 
 type StationOption = {
 	label: string;
@@ -349,9 +366,14 @@ const storageDialog = reactive({
 	selectedPlatform: [] as StorageRow[],
 });
 
-const confirmedStorage = reactive({
-	payload: [] as StorageRow[],
-	platform: [] as StorageRow[],
+type ConfirmedStorageState = {
+	payload: StorageRow[];
+	platform: StorageRow[];
+};
+
+const confirmedStorage = reactive<ConfirmedStorageState>({
+	payload: [],
+	platform: [],
 });
 
 type SelectionSource = 'payload' | 'platform';
@@ -387,6 +409,73 @@ const transferNotice = reactive<TransferNotice>({
 	message: '',
 	detail: '',
 });
+
+type TransferPlanCachePayload = {
+	form: TransferPlanFormState;
+	confirmedStorage: ConfirmedStorageState;
+	integratedGroups: IntegratedGroup[];
+};
+
+function restoreTransferPlanCache() {
+	if (typeof window === "undefined") {
+		return;
+	}
+
+	const raw = window.localStorage.getItem(TRANSFER_PLAN_CACHE_KEY);
+	if (!raw) {
+		return;
+	}
+
+	try {
+		const payload = JSON.parse(raw) as Partial<TransferPlanCachePayload>;
+
+		if (payload?.form) {
+			Object.assign(form, { ...defaultTransferPlanForm, ...payload.form });
+		}
+
+		if (payload?.confirmedStorage) {
+			confirmedStorage.payload = Array.isArray(payload.confirmedStorage.payload) ? payload.confirmedStorage.payload : [];
+			confirmedStorage.platform = Array.isArray(payload.confirmedStorage.platform) ? payload.confirmedStorage.platform : [];
+		}
+
+		if (Array.isArray(payload?.integratedGroups)) {
+			integratedGroups.value = payload.integratedGroups;
+		}
+	} catch (err) {
+		console.warn("[transfer-plan] 恢复缓存失败", err);
+	}
+}
+
+function persistTransferPlanCache() {
+	if (typeof window === "undefined") {
+		return;
+	}
+
+	const snapshot: TransferPlanCachePayload = {
+		form: { ...form },
+		confirmedStorage: {
+			payload: confirmedStorage.payload.map(item => ({ ...item })),
+			platform: confirmedStorage.platform.map(item => ({ ...item })),
+		},
+		integratedGroups: integratedGroups.value.map(item => ({ ...item })),
+	};
+
+	try {
+		window.localStorage.setItem(TRANSFER_PLAN_CACHE_KEY, JSON.stringify(snapshot));
+	} catch (err) {
+		console.warn("[transfer-plan] 缓存状态失败", err);
+	}
+}
+
+restoreTransferPlanCache();
+
+watch(
+	[form, confirmedStorage, integratedGroups],
+	() => {
+		persistTransferPlanCache();
+	},
+	{ deep: true }
+);
 
 function resetStationDetail() {
 	form.stationName = "";
