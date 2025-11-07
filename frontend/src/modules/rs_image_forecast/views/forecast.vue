@@ -428,8 +428,9 @@ function detectPageReload(): boolean {
   }
 
   const entries = performance.getEntriesByType?.('navigation') || [];
-  if (entries.length && typeof entries[0]?.type === 'string') {
-    return entries[0].type === 'reload';
+  const firstEntry = entries[0] as PerformanceNavigationTiming | undefined;
+  if (firstEntry && typeof firstEntry.type === 'string') {
+    return firstEntry.type === 'reload';
   }
 
   const nav = (performance as any).navigation;

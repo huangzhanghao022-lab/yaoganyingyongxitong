@@ -139,19 +139,19 @@ const Table = useTable({
 		{
 			label: t("日期"),
 			prop: "date",
-			minWidth: 140,
+			minWidth: 90,
 			sortable: "custom",
 			component: {
 				name: "cl-date-text",
 				props: { format: "YYYY-MM-DD" },
 			},
 		},
-		{ label: t("值班人"), prop: "dutyOfficer", minWidth: 140 },
-		{ label: t("测控站"), prop: "telemetryStation", minWidth: 120 },
+		{ label: t("值班人"), prop: "dutyOfficer", minWidth: 60 },
+		{ label: t("测控站"), prop: "telemetryStation", minWidth: 60 },
 		{
 			label: t("过境时间"),
 			prop: "transitTime",
-			minWidth: 200,
+			minWidth: 110,
 			sortable: "custom",
 			formatter(row) {
 				const [start, end] = splitTransit(row.transitTime);
@@ -164,14 +164,15 @@ const Table = useTable({
 		{
 			label: t("仰角"),
 			prop: "elevationAngle",
-			minWidth: 140,
+			minWidth: 60,
 			sortable: "custom",
 		},
 		{
 			label: t("测控信息"),
 			prop: "telemetryInfo",
-			showOverflowTooltip: true,
-			minWidth: 200,
+			minWidth: 450,
+			className: "dp-telemetry-column",
+			align: "left",
 		},
 		{ type: "op", buttons: ["edit", "delete"] },
 	],
@@ -195,3 +196,10 @@ function refresh(params?: any) {
 	Crud.value?.refresh(params);
 }
 </script>
+
+<style scoped>
+:deep(.dp-telemetry-column .cell) {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+</style>
