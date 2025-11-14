@@ -1,0 +1,14 @@
+{
+	"日期": "Date",
+	"值班人": "Duty Officer",
+	"测控站": "Telemetry Station",
+	"过境时间": "Transit Time",
+	"开始时间": "Start Time",
+	"结束时间": "End Time",
+	"仰角": "Elevation Angle",
+	"测控信息": "Telemetry Info",
+	"生成计划": "Generate Plan",
+	"请选择日期": "Please select date",
+	"查询测控计划": "Query Plan",
+	"录入计划": "Submit Plan"
+}

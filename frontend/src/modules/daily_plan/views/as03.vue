@@ -7,6 +7,7 @@
 			<cl-add-btn />
 			<!-- 删除按钮 -->
 			<cl-multi-delete-btn />
+			<el-button type="primary" plain @click="openPlanDialog">{{ t("生成计划") }}</el-button>
 			<cl-flex1 />
 			<!-- 条件搜索 -->
 			<cl-search ref="Search" />
@@ -26,6 +27,20 @@
 		<!-- 新增、编辑 -->
 		<cl-upsert ref="Upsert" />
 	</cl-crud>
+
+	<el-dialog v-model="planDialog.open" :title="t('生成计划')" width="420px">
+		<el-form label-width="90px">
+			<el-form-item :label="t('日期')">
+				<el-date-picker v-model="planDialog.date" type="date" value-format="YYYY-MM-DD" :placeholder="t('请选择日期')" style="width: 100%" />
+			</el-form-item>
+		</el-form>
+		<template #footer>
+			<el-space>
+				<el-button @click="onQueryPlan">{{ t('查询测控计划') }}</el-button>
+				<el-button type="primary" @click="onSubmitPlan">{{ t('录入计划') }}</el-button>
+			</el-space>
+		</template>
+	</el-dialog>
 </template>
 
 <script lang="ts" setup>
@@ -36,9 +51,16 @@ defineOptions({
 import { useCrud, useTable, useUpsert, useSearch } from "@cool-vue/crud";
 import { useCool } from "/@/cool";
 import { useI18n } from "vue-i18n";
+import { reactive } from "vue";
+import { ElMessage } from "element-plus";
 
 const { service } = useCool();
 const { t } = useI18n();
+
+const planDialog = reactive({
+	open: false,
+	date: "",
+});
 
 function splitTransit(value: unknown): [string, string] {
 	if (typeof value !== "string") {
@@ -193,6 +215,36 @@ const Crud = useCrud(
 // 刷新
 function refresh(params?: any) {
 	Crud.value?.refresh(params);
+}
+
+function openPlanDialog() {
+	if (!planDialog.date) {
+		planDialog.date = new Date().toISOString().slice(0, 10);
+	}
+	planDialog.open = true;
+}
+
+function ensureDateSelected() {
+	if (!planDialog.date) {
+		ElMessage.warning(t("请选择日期"));
+		return false;
+	}
+	return true;
+}
+
+function onQueryPlan() {
+	if (!ensureDateSelected()) {
+		return;
+	}
+	ElMessage.info(t("查询测控计划功能开发中"));
+}
+
+function onSubmitPlan() {
+	if (!ensureDateSelected()) {
+		return;
+	}
+	ElMessage.success(t("录入计划功能开发中"));
+	planDialog.open = false;
 }
 </script>
 
