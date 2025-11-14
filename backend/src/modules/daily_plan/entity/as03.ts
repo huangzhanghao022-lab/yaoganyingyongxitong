@@ -16,11 +16,8 @@ export class DailyPlanAs03Entity extends BaseEntity {
   @Column({ comment: '测控站', length: 50 })
   telemetryStation: string;
 
-  @Column({ comment: '过境时间-开始', type: 'time' })
-  transitTimeStart: Date;
-
-  @Column({ comment: '过境时间-结束', type: 'time' })
-  transitTimeEnd: Date;
+  @Column({ comment: '过境时间', length: 100 })
+  transitTime: string;
 
   @Column({ comment: '仰角' })
   elevationAngle: number;
