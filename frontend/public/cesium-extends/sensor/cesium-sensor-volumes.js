@@ -398,7 +398,7 @@
 
 		var that = this;
 
-		/* eslint-disable camelcase */
+		 
 		this._uniforms = {
 			u_showThroughEllipsoid: function() {
 				return that.showThroughEllipsoid;
@@ -419,7 +419,7 @@
 				return 1.0;
 			}
 		};
-		/* eslint-enable camelcase */
+		 
 
 		this._mode = SceneMode.SCENE3D;
 	};
@@ -546,7 +546,7 @@
 	 * @exception {DeveloperError} this.radius must be greater than or equal to zero.
 	 * @exception {DeveloperError} this.lateralSurfaceMaterial must be defined.
 	 */
-	// eslint-disable-next-line complexity
+	 
 	CustomSensorVolume.prototype.update = function(frameState) {
 		this._mode = frameState.mode;
 		if (!this.show || this._mode !== SceneMode.SCENE3D) {
@@ -698,7 +698,7 @@
 
 				backFaceColorCommand.shaderProgram = frontFaceColorCommand.shaderProgram;
 				backFaceColorCommand.uniformMap = combine(this._uniforms, this._lateralSurfaceMaterial._uniforms);
-				// eslint-disable-next-line camelcase
+				 
 				backFaceColorCommand.uniformMap.u_normalDirection = function() {
 					return -1.0;
 				};
@@ -740,7 +740,7 @@
 
 				var that = this;
 				var uniforms = {
-					// eslint-disable-next-line camelcase
+					 
 					czm_pickColor: function() {
 						return that._pickId.color;
 					}
@@ -802,7 +802,7 @@
 		spherical.magnitude = 1.0;
 	}
 
-	// eslint-disable-next-line max-params
+	 
 	function computeDirections(primitive, minimumClockAngle, maximumClockAngle, innerHalfAngle, outerHalfAngle) {
 		var directions = primitive.directions;
 		var angle;
@@ -1785,7 +1785,7 @@
 	var processPacketData = CzmlDataSource.processPacketData;
 	var processMaterialPacketData = CzmlDataSource.processMaterialPacketData;
 
-	// eslint-disable-next-line max-params
+	 
 	function processDirectionData(customPatternSensor, directions, interval, sourceUri, entityCollection) {
 		var i;
 		var len;
@@ -1821,7 +1821,7 @@
 		processPacketData(Array, customPatternSensor, 'directions', directions, interval, sourceUri, entityCollection);
 	}
 
-	// eslint-disable-next-line max-params
+	 
 	function processCommonSensorProperties(sensor, sensorData, interval, sourceUri, entityCollection) {
 		processPacketData(Boolean, sensor, 'show', sensorData.show, interval, sourceUri, entityCollection);
 		processPacketData(Number, sensor, 'radius', sensorData.radius, interval, sourceUri, entityCollection);

@@ -80,7 +80,7 @@
 
 <script lang="ts" setup>
 defineOptions({
-	name: "rs_poi-poi",
+	name: "rs-poi-poi",
 });
 
 import { ref, reactive, nextTick } from "vue";

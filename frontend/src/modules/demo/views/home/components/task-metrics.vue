@@ -2,7 +2,7 @@
 	<div class="card metrics-card">
 		<div class="card__header">
 			<div class="title">
-				<el-icon><Calendar /></el-icon>
+				<el-icon><calendar /></el-icon>
 				<span>任务概览</span>
 			</div>
 			<el-tag v-if="metrics?.lastUpdated" size="small" type="info">

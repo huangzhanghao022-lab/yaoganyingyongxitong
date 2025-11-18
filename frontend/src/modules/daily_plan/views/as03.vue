@@ -1,30 +1,23 @@
 <template>
 	<cl-crud ref="Crud">
 		<cl-row>
-			<!-- 刷新按钮 -->
 			<cl-refresh-btn />
-			<!-- 新增按钮 -->
 			<cl-add-btn />
-			<!-- 删除按钮 -->
 			<cl-multi-delete-btn />
 			<el-button type="primary" plain @click="openPlanDialog">{{ t("生成计划") }}</el-button>
 			<cl-flex1 />
-			<!-- 条件搜索 -->
 			<cl-search ref="Search" />
 		</cl-row>
 
 		<cl-row>
-			<!-- 数据表格 -->
 			<cl-table ref="Table" />
 		</cl-row>
 
 		<cl-row>
 			<cl-flex1 />
-			<!-- 分页控件 -->
 			<cl-pagination />
 		</cl-row>
 
-		<!-- 新增、编辑 -->
 		<cl-upsert ref="Upsert" />
 	</cl-crud>
 
@@ -34,15 +27,17 @@
 				<el-date-picker v-model="planDialog.date" type="date" value-format="YYYY-MM-DD" :placeholder="t('请选择日期')" style="width: 100%" />
 			</el-form-item>
 		</el-form>
-	<div class="dp-duty-info">
-		<span class="dp-duty-label">{{ t("值班人") }} :</span>
-		<template v-if="planDialog.dutyOfficers.length">
-			<el-tag v-for="name in planDialog.dutyOfficers" :key="name" size="small" effect="plain">
-				{{ name }}
-			</el-tag>
-		</template>
-		<span v-else class="dp-duty-empty">{{ t("暂无值班信息") }}</span>
-	</div>
+
+		<div class="dp-duty-info">
+			<span class="dp-duty-label">{{ t("值班人") }} :</span>
+			<template v-if="planDialog.dutyOfficers.length">
+				<el-tag v-for="name in planDialog.dutyOfficers" :key="name" size="small" effect="plain">
+					{{ name }}
+				</el-tag>
+			</template>
+			<span v-else class="dp-duty-empty">{{ t("暂无值班信息") }}</span>
+		</div>
+
 		<el-table
 			v-if="planDialog.records.length || planDialog.loading"
 			:data="planDialog.records"
@@ -51,13 +46,13 @@
 			border
 			height="300px"
 		>
-			<el-table-column type="index" width="60" :label="t('#')" />
-			<el-table-column :label="t('卫星代号')" min-width="70">
+			<el-table-column type="index" width="40" :label="t('#')" />
+			<el-table-column :label="t('卫星代号')" min-width="90">
 				<template #default="{ row }">
 					{{ resolveSatelliteCode(row) }}
 				</template>
 			</el-table-column>
-			<el-table-column :label="t('测控站')" min-width="180">
+			<el-table-column :label="t('测控站')" min-width="160">
 				<template #default="{ row }">
 					{{ resolveAntennaName(row) }}
 				</template>
@@ -83,16 +78,23 @@
 				</template>
 			</el-table-column>
 		</el-table>
-		<el-empty
-			v-else
-			:description="planDialog.loading ? t('查询中...') : t('暂无测控数据')"
-			image-size="120"
-		/>
+
+		<el-empty v-else :description="planDialog.loading ? t('查询中...') : t('暂无测控数据')" :image-size="120" />
+
 		<template #footer>
 			<el-space>
-				<el-button @click="onQueryPlan">{{ t('查询测控计划') }}</el-button>
-				<el-button type="primary" @click="onSubmitPlan" :loading="planDialog.submitting">{{ t('录入计划') }}</el-button>
+				<el-button @click="onQueryPlan">{{ t("查询测控计划") }}</el-button>
+				<el-button type="primary" :loading="planDialog.submitting" @click="onSubmitPlan">{{ t("录入计划") }}</el-button>
 			</el-space>
+		</template>
+	</el-dialog>
+
+	<el-dialog v-model="telemetryDetail.open" :title="t('任务详情')" width="1000px" class="dp-detail-dialog">
+		<el-scrollbar max-height="520px" v-loading="telemetryDetail.loading">
+			<pre class="dp-telemetry-detail">{{ telemetryDetail.content || t("暂无测控信息") }}</pre>
+		</el-scrollbar>
+		<template #footer>
+			<el-button @click="telemetryDetail.open = false">{{ t("关闭") }}</el-button>
 		</template>
 	</el-dialog>
 </template>
@@ -121,8 +123,16 @@ const planDialog = reactive({
 	submitting: false,
 });
 
+const telemetryDetail = reactive({
+	open: false,
+	title: "",
+	content: "",
+	loading: false,
+});
+
 type TelecontrolRecord = {
 	id?: string | number;
+	date?: string;
 	missionName?: string;
 	taskName?: string;
 	targetName?: string;
@@ -132,6 +142,7 @@ type TelecontrolRecord = {
 	endTime?: number | string;
 	spacecraftId?: string | number;
 	satelliteCode?: string;
+	telemetryInfo?: string;
 	antennaName?: string;
 	stationName?: string;
 	antennaId?: string | number;
@@ -150,12 +161,12 @@ type DailyPlanPayload = {
 
 const TELECONTROL_TOKEN_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token";
 const TELECONTROL_SEARCH_URLS = [
-	"https://ttnonc-webui.cyk3.yhroot.com/v2/api/tasks/telecontrol/search",
 	"http://ttnonc-webui.cyk3.yhroot.com/v2/api/tasks/telecontrol/search",
+	"https://ttnonc-webui.cyk3.yhroot.com/v2/api/tasks/telecontrol/search",
 ];
 const DUTY_ROSTER_URLS = [
-	"https://ttnonc-webui.cyk3.yhroot.com/v2/api/duty-rotas/search",
 	"http://ttnonc-webui.cyk3.yhroot.com/v2/api/duty-rotas/search",
+	"https://ttnonc-webui.cyk3.yhroot.com/v2/api/duty-rotas/search",
 ];
 const TELECONTROL_CREDENTIALS = {
 	username: "02ptemplate@yinhe.ht",
@@ -165,22 +176,8 @@ const TELECONTROL_CREDENTIALS = {
 const TELECONTROL_STATES = ["1", "2", "6"];
 const AS03_SPACECRAFT_ID = "13";
 const BEIJING_OFFSET = 8 * 60 * 60 * 1000;
+const DATE_COLOR_CLASSES = ["dp-row-color-0", "dp-row-color-1", "dp-row-color-2", "dp-row-color-3", "dp-row-color-4", "dp-row-color-5"];
 
-function splitTransit(value: unknown): [string, string] {
-	if (typeof value !== "string") {
-		return ["", ""];
-	}
-	const index = value.indexOf("-", 19);
-	if (index === -1) {
-		const trimmed = value.trim();
-		return [trimmed, ""];
-	}
-	const start = value.slice(0, index).trim();
-	const end = value.slice(index + 1).trim();
-	return [start, end];
-}
-
-// cl-upsert
 const Upsert = useUpsert({
 	items: [
 		{
@@ -257,8 +254,8 @@ const Upsert = useUpsert({
 	},
 });
 
-// cl-table
 const Table = useTable({
+	defaultSort: { prop: "date", order: "descending" },
 	columns: [
 		{ type: "selection" },
 		{
@@ -271,12 +268,12 @@ const Table = useTable({
 				props: { format: "YYYY-MM-DD" },
 			},
 		},
-		{ label: t("值班人"), prop: "dutyOfficer", minWidth: 60 },
-		{ label: t("测控站"), prop: "telemetryStation", minWidth: 60 },
+		{ label: t("值班人"), prop: "dutyOfficer", minWidth: 70 },
+		{ label: t("测控站"), prop: "telemetryStation", minWidth: 110 },
 		{
 			label: t("过境时间"),
 			prop: "transitTime",
-			minWidth: 110,
+			minWidth: 160,
 			sortable: "custom",
 			formatter(row) {
 				const [start, end] = splitTransit(row.transitTime);
@@ -289,24 +286,42 @@ const Table = useTable({
 		{
 			label: t("仰角"),
 			prop: "elevationAngle",
-			minWidth: 60,
+			minWidth: 70,
 			sortable: "custom",
 		},
 		{
 			label: t("测控信息"),
 			prop: "telemetryInfo",
-			minWidth: 450,
+			minWidth: 320,
 			className: "dp-telemetry-column",
 			align: "left",
+			formatter(row) {
+				return extractTelemetrySummary(row);
+			},
 		},
-		{ type: "op", buttons: ["edit", "delete"] },
+		{
+			type: "op",
+			buttons: [
+				"edit",
+				"delete",
+				{
+					text: t("详情") || "详情",
+					type: "primary",
+					onClick({ scope }: { scope: { row: TelecontrolRecord } }) {
+						openTelemetryDetail(scope.row);
+					},
+				},
+			],
+		},
 	],
+	props: {
+		border: true,
+		rowClassName: ({ row }: { row: TelecontrolRecord }) => resolveDateColorClass(row?.date),
+	},
 });
 
-// cl-search
 const Search = useSearch();
 
-// cl-crud
 const Crud = useCrud(
 	{
 		service: service.daily_plan.as03,
@@ -316,7 +331,6 @@ const Crud = useCrud(
 	},
 );
 
-// 刷新
 function refresh(params?: any) {
 	Crud.value?.refresh(params);
 }
@@ -339,21 +353,16 @@ function ensureDateSelected() {
 	return true;
 }
 
-function onQueryPlan() {
-	if (!ensureDateSelected()) {
-		return;
-	}
-	requestTelecontrolPlan()
-		.catch((err) => {
-			console.error("[daily-plan] telecontrol fetch failed", err);
-			ElMessage.error(t("查询测控计划失败"));
-		});
+function	onQueryPlan() {
+	if (!ensureDateSelected()) return;
+	requestTelecontrolPlan().catch((err) => {
+		console.error("[daily-plan] telecontrol fetch failed", err);
+		ElMessage.error(t("查询测控计划失败"));
+	});
 }
 
 async function onSubmitPlan() {
-	if (!ensureDateSelected()) {
-		return;
-	}
+	if (!ensureDateSelected()) return;
 	if (!planDialog.records.length) {
 		ElMessage.warning(t("暂无测控数据"));
 		return;
@@ -411,6 +420,34 @@ function buildTransitRange(row: TelecontrolRecord): string {
 	return start || end || "";
 }
 
+async function openTelemetryDetail(row: TelecontrolRecord) {
+	telemetryDetail.title = `${row.date ?? planDialog.date ?? ""} ${resolveAntennaName(row)}`;
+	telemetryDetail.open = true;
+	telemetryDetail.loading = true;
+	telemetryDetail.content = "";
+	const finalize = (text: string) => {
+		telemetryDetail.content = text || t("暂无测控信息");
+		telemetryDetail.loading = false;
+	};
+	const inline = resolveTelemetryContent(row);
+	if (inline && inline !== "-") {
+		finalize(inline);
+		return;
+	}
+	if (!row.id) {
+		finalize("");
+		return;
+	}
+	try {
+		const detail = await service.daily_plan.as03.info({ id: row.id });
+		const record = (detail as any)?.data?.info ?? (detail as any)?.data ?? detail;
+		finalize(resolveTelemetryContent(record as TelecontrolRecord));
+	} catch (err) {
+		console.error("[daily-plan] telemetry detail load failed", err);
+		finalize(t("测控信息加载失败"));
+	}
+}
+
 async function requestTelecontrolPlan() {
 	if (planDialog.loading) return;
 	planDialog.loading = true;
@@ -418,10 +455,7 @@ async function requestTelecontrolPlan() {
 		const token = await fetchTelecontrolToken();
 		const [records, dutyOfficers] = await Promise.all([
 			fetchTelecontrolRecords(token, planDialog.date, AS03_SPACECRAFT_ID),
-			fetchDutyRoster(token, planDialog.date, AS03_SPACECRAFT_ID).catch((err) => {
-				console.warn("[daily-plan] duty roster fetch failed", err);
-				return [] as string[];
-			}),
+			fetchDutyRoster(token, planDialog.date, AS03_SPACECRAFT_ID).catch(() => []),
 		]);
 		planDialog.records = records;
 		planDialog.dutyOfficers = dutyOfficers;
@@ -433,20 +467,29 @@ async function requestTelecontrolPlan() {
 	}
 }
 
+function splitTransit(value: unknown): [string, string] {
+	if (typeof value !== "string") {
+		return ["", ""];
+	}
+	const index = value.indexOf("-", 19);
+	if (index === -1) {
+		const trimmed = value.trim();
+		return [trimmed, ""];
+	}
+	const start = value.slice(0, index).trim();
+	const end = value.slice(index + 1).trim();
+	return [start, end];
+}
+
 async function fetchTelecontrolToken(): Promise<string> {
 	const resp = await fetch(TELECONTROL_TOKEN_URL, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(TELECONTROL_CREDENTIALS),
 	});
-	if (!resp.ok) {
-		throw new Error(`token request failed: ${resp.status}`);
-	}
-	const result = await resp.json().catch(() => ({}));
+	const result = await resp.json();
 	const token = result?.data?.token ?? result?.token ?? result?.data;
-	if (!token) {
-		throw new Error("token unavailable");
-	}
+	if (!token) throw new Error("token missing");
 	return token;
 }
 
@@ -455,7 +498,7 @@ async function fetchTelecontrolRecords(token: string, date: string, spacecraftId
 	const payload = {
 		keyword: "",
 		page: 1,
-		pageSize: 20,
+		pageSize: 200,
 		states: TELECONTROL_STATES,
 		beginTime: begin,
 		endTime: end,
@@ -463,7 +506,6 @@ async function fetchTelecontrolRecords(token: string, date: string, spacecraftId
 		spacecraftIds: [spacecraftId],
 		order: 3,
 	};
-
 	let lastError: any = null;
 	for (const url of TELECONTROL_SEARCH_URLS) {
 		try {
@@ -475,18 +517,15 @@ async function fetchTelecontrolRecords(token: string, date: string, spacecraftId
 				},
 				body: JSON.stringify(payload),
 			});
-			if (!resp.ok) {
-				throw new Error(`telecontrol search failed: ${resp.status}`);
-			}
-			const result = await resp.json().catch(() => ({}));
+			if (!resp.ok) throw new Error(String(resp.status));
+			const result = await resp.json();
 			const list = result?.data?.list ?? result?.data ?? result?.records ?? [];
 			return Array.isArray(list) ? list : [];
 		} catch (err) {
 			lastError = err;
-			console.warn("[daily-plan] telecontrol request failed via", url, err);
 		}
 	}
-	throw lastError || new Error("telecontrol search failed");
+	throw lastError || new Error("telecontrol fetch failed");
 }
 
 async function fetchDutyRoster(token: string, date: string, spacecraftId: string): Promise<string[]> {
@@ -509,10 +548,8 @@ async function fetchDutyRoster(token: string, date: string, spacecraftId: string
 					endTime: end,
 				}),
 			});
-			if (!resp.ok) {
-				throw new Error(`duty roster failed: ${resp.status}`);
-			}
-			const result = await resp.json().catch(() => ({}));
+			if (!resp.ok) throw new Error(String(resp.status));
+			const result = await resp.json();
 			const list = result?.data?.list ?? result?.data ?? result?.records ?? [];
 			if (!Array.isArray(list)) return [];
 			return list
@@ -520,10 +557,9 @@ async function fetchDutyRoster(token: string, date: string, spacecraftId: string
 					const name = (item?.name ?? item?.dutyName ?? item?.dutyOfficer) as string | undefined;
 					return name ? String(name).trim() : "";
 				})
-				.filter((name) => !!name);
+				.filter(Boolean);
 		} catch (err) {
 			lastError = err;
-			console.warn("[daily-plan] duty roster request failed via", url, err);
 		}
 	}
 	throw lastError || new Error("duty roster failed");
@@ -531,9 +567,7 @@ async function fetchDutyRoster(token: string, date: string, spacecraftId: string
 
 function buildUtcRange(date: string) {
 	const begin = Date.parse(`${date}T00:00:00Z`);
-	if (Number.isNaN(begin)) {
-		throw new Error("invalid date");
-	}
+	if (Number.isNaN(begin)) throw new Error("invalid date");
 	return {
 		begin: begin - BEIJING_OFFSET,
 		end: begin - BEIJING_OFFSET + 24 * 60 * 60 * 1000,
@@ -542,9 +576,7 @@ function buildUtcRange(date: string) {
 
 function buildBeijingRange(date: string) {
 	const begin = Date.parse(`${date}T00:00:00+08:00`);
-	if (Number.isNaN(begin)) {
-		throw new Error("invalid date");
-	}
+	if (Number.isNaN(begin)) throw new Error("invalid date");
 	return {
 		begin,
 		end: begin + 24 * 60 * 60 * 1000,
@@ -581,6 +613,69 @@ function resolveSatelliteCode(row: TelecontrolRecord): string {
 	return row.missionName || row.taskName || row.targetName || "-";
 }
 
+function resolveTelemetryContent(row: TelecontrolRecord | null | undefined): string {
+	if (!row) return "";
+	if (row.telemetryInfo && String(row.telemetryInfo).trim()) {
+		return String(row.telemetryInfo);
+	}
+	const start = formatPlanTimeValue(row.beginTime) ?? "-";
+	const end = formatPlanTimeValue(row.endTime) ?? "-";
+	return [`卫星: ${resolveSatelliteCode(row)}`, `测控站: ${resolveAntennaName(row)}`, `时间: ${start} ~ ${end}`, `状态: ${row.stateName || row.state || "-"}`].join("\n");
+}
+
+function extractTelemetrySummary(row: TelecontrolRecord): string {
+	const content = resolveTelemetryContent(row);
+	if (!content) return "-";
+
+	const lines = content.split(/\r?\n/);
+	const summaries: string[] = [];
+	const headingPattern = /^\d+[.:：]/;
+
+	for (let i = 0; i < lines.length; i++) {
+		const current = lines[i]?.trim();
+		if (!current || !headingPattern.test(current)) {
+			continue;
+		}
+
+		let segment = current;
+
+		if (current.includes("上注") && current.includes("目标点任务")) {
+			let imagingTime = "";
+			let fileNo = "";
+
+			for (let j = i + 1; j < lines.length; j++) {
+				const candidate = lines[j]?.trim();
+				if (!candidate) continue;
+				if (headingPattern.test(candidate)) break;
+
+				if (!imagingTime) {
+					const timeMatch = candidate.match(/成像时间[:：]?\s*([\d]{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
+					if (timeMatch) {
+						imagingTime = timeMatch[1];
+					}
+				}
+
+				if (!fileNo) {
+					const recordMatch = candidate.match(/记录文件号[:：]?\s*([^，。]+)/);
+					if (recordMatch) {
+						fileNo = recordMatch[1].trim();
+					}
+				}
+			}
+
+			if (imagingTime || fileNo) {
+				const parts = [segment];
+				if (imagingTime) parts.push(`成像时间: ${imagingTime}`);
+				if (fileNo) parts.push(`记录文件号: ${fileNo}`);
+				segment = parts.join(" | ");
+			}
+		}
+
+		summaries.push(segment);
+	}
+
+	return summaries.join("\n") || "-";
+}
 function resolveStateLabel(row: TelecontrolRecord): string {
 	return (row.stateName as string) || (row.state != null ? String(row.state) : "-");
 }
@@ -622,6 +717,23 @@ function resolveElevation(row: TelecontrolRecord): number | null {
 	const angle = resolveAngleMax(row);
 	return angle == null ? null : Math.round(angle);
 }
+
+function resolveDateColorClass(date: unknown): string {
+	const str = normalizeDateString(date);
+	if (!str) return "";
+	let hash = 0;
+	for (let i = 0; i < str.length; i++) {
+		hash = (hash + str.charCodeAt(i)) % DATE_COLOR_CLASSES.length;
+	}
+	return DATE_COLOR_CLASSES[hash];
+}
+
+function normalizeDateString(value: unknown): string | null {
+	if (!value) return null;
+	if (typeof value === "string") return value.trim() || null;
+	if (value instanceof Date) return value.toISOString().slice(0, 10);
+	return String(value);
+}
 </script>
 
 <style scoped>
@@ -645,5 +757,51 @@ function resolveElevation(row: TelecontrolRecord): number | null {
 
 .dp-duty-empty {
 	color: var(--el-text-color-placeholder);
+}
+
+.dp-telemetry-detail {
+	margin: 0;
+	padding: 12px;
+	background: var(--el-fill-color-lighter);
+	border-radius: 6px;
+	white-space: pre-wrap;
+	word-break: break-word;
+	font-size: 13px;
+	line-height: 1.6;
+	color: var(--el-text-color-primary);
+}
+
+:deep(.dp-row-color-0 > td) {
+	background-color: #ffe0d4;
+}
+
+:deep(.dp-row-color-1 > td) {
+	background-color: #dff5d6;
+}
+
+:deep(.dp-row-color-2 > td) {
+	background-color: #dbe6ff;
+}
+
+:deep(.dp-row-color-3 > td) {
+	background-color: #f1ddff;
+}
+
+:deep(.dp-row-color-4 > td) {
+	background-color: #e0f8f0;
+}
+
+:deep(.dp-row-color-5 > td) {
+	background-color: #fff1d9;
+}
+
+:deep(.el-table--border .el-table__cell) {
+	border-color: #000 !important;
+}
+
+:deep(.el-table--border .el-table__inner-wrapper::after),
+:deep(.el-table--border::before),
+:deep(.el-table--border::after) {
+	border-color: #000 !important;
 }
 </style>

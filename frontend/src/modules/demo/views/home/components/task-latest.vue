@@ -2,11 +2,11 @@
 	<div class="card latest-card">
 		<div class="card__header">
 			<div class="title">
-				<el-icon><Document /></el-icon>
+				<el-icon><document /></el-icon>
 				<span>最新任务记录</span>
 			</div>
 			<el-button link size="small" @click="$emit('refresh')" :loading="loading">
-				<el-icon><Refresh /></el-icon>
+				<el-icon><refresh /></el-icon>
 				刷新
 			</el-button>
 		</div>

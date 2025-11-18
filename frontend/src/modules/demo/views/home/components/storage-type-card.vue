@@ -2,7 +2,7 @@
 	<div class="card storage-card">
 		<div class="card__header">
 			<div class="title">
-				<el-icon><PieChart /></el-icon>
+				<el-icon><pie-chart /></el-icon>
 				<span>{{ title }}</span>
 			</div>
 			<el-radio-group v-model="activeSatellite" size="small" :disabled="loading || !summary">
