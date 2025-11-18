@@ -91,7 +91,7 @@
 		<template #footer>
 			<el-space>
 				<el-button @click="onQueryPlan">{{ t('查询测控计划') }}</el-button>
-				<el-button type="primary" @click="onSubmitPlan">{{ t('录入计划') }}</el-button>
+				<el-button type="primary" @click="onSubmitPlan" :loading="planDialog.submitting">{{ t('录入计划') }}</el-button>
 			</el-space>
 		</template>
 	</el-dialog>
@@ -118,6 +118,7 @@ const planDialog = reactive({
 	loading: false,
 	records: [] as TelecontrolRecord[],
 	dutyOfficers: [] as string[],
+	submitting: false,
 });
 
 type TelecontrolRecord = {
@@ -136,6 +137,15 @@ type TelecontrolRecord = {
 	antennaId?: string | number;
 	state?: string | number;
 	stateName?: string;
+};
+
+type DailyPlanPayload = {
+	date: string;
+	dutyOfficer: string;
+	telemetryStation: string;
+	transitTime: string;
+	elevationAngle: number | null;
+	telemetryInfo: string;
 };
 
 const TELECONTROL_TOKEN_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token";
@@ -317,6 +327,7 @@ function openPlanDialog() {
 	}
 	planDialog.records = [];
 	planDialog.dutyOfficers = [];
+	planDialog.submitting = false;
 	planDialog.open = true;
 }
 
@@ -339,12 +350,65 @@ function onQueryPlan() {
 		});
 }
 
-function onSubmitPlan() {
+async function onSubmitPlan() {
 	if (!ensureDateSelected()) {
 		return;
 	}
-	ElMessage.success(t("录入计划功能开发中"));
-	planDialog.open = false;
+	if (!planDialog.records.length) {
+		ElMessage.warning(t("暂无测控数据"));
+		return;
+	}
+	const payload = buildPlanEntries();
+	if (!payload.length) {
+		ElMessage.warning(t("没有可录入的计划数据"));
+		return;
+	}
+	if (planDialog.submitting) return;
+	planDialog.submitting = true;
+	try {
+		await Promise.all(payload.map((item) => service.daily_plan.as03.add(item)));
+		ElMessage.success(t("录入计划成功"));
+		planDialog.open = false;
+		refresh();
+	} catch (err) {
+		console.error("[daily-plan] submit failed", err);
+		ElMessage.error(t("录入计划失败"));
+	} finally {
+		planDialog.submitting = false;
+	}
+}
+
+function buildPlanEntries(): DailyPlanPayload[] {
+	const date = planDialog.date;
+	if (!date) return [];
+	return planDialog.records
+		.map((row) => buildPlanPayload(row, date))
+		.filter((item): item is DailyPlanPayload => Boolean(item));
+}
+
+function buildPlanPayload(row: TelecontrolRecord, date: string): DailyPlanPayload | null {
+	const station = resolveAntennaName(row);
+	const transitTime = buildTransitRange(row);
+	if (!transitTime) {
+		return null;
+	}
+	return {
+		date,
+		dutyOfficer: planDialog.dutyOfficers.join("、") || "-",
+		telemetryStation: station === "-" ? "" : station,
+		transitTime,
+		elevationAngle: resolveElevation(row),
+		telemetryInfo: "",
+	};
+}
+
+function buildTransitRange(row: TelecontrolRecord): string {
+	const start = formatPlanTimeValue(row.beginTime);
+	const end = formatPlanTimeValue(row.endTime);
+	if (start && end) {
+		return `${start}-${end}`;
+	}
+	return start || end || "";
 }
 
 async function requestTelecontrolPlan() {
@@ -488,18 +552,7 @@ function buildBeijingRange(date: string) {
 }
 
 function formatPlanTime(value: unknown): string {
-	if (value == null) {
-		return "-";
-	}
-	const num = typeof value === "number" ? value : Number(value);
-	const date = Number.isFinite(num) ? new Date(num) : new Date(String(value));
-	if (Number.isNaN(date.getTime())) {
-		return "-";
-	}
-	const pad = (n: number) => String(n).padStart(2, "0");
-	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
-		date.getMinutes(),
-	)}:${pad(date.getSeconds())}`;
+	return formatPlanTimeValue(value) ?? "-";
 }
 
 function resolveAntennaName(row: TelecontrolRecord): string {
@@ -528,12 +581,31 @@ function resolveSatelliteCode(row: TelecontrolRecord): string {
 	return row.missionName || row.taskName || row.targetName || "-";
 }
 
+function resolveStateLabel(row: TelecontrolRecord): string {
+	return (row.stateName as string) || (row.state != null ? String(row.state) : "-");
+}
+
 function formatAngle(value: number | null | undefined): string {
 	if (value == null) {
 		return "-";
 	}
 	const num = Number(value);
 	return Number.isFinite(num) ? `${num.toFixed(2)}°` : "-";
+}
+
+function formatPlanTimeValue(value: unknown): string | null {
+	if (value == null) {
+		return null;
+	}
+	const num = typeof value === "number" ? value : Number(value);
+	const date = Number.isFinite(num) ? new Date(num) : new Date(String(value));
+	if (Number.isNaN(date.getTime())) {
+		return null;
+	}
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
+		date.getMinutes(),
+	)}:${pad(date.getSeconds())}`;
 }
 
 function resolveAngleMax(row: TelecontrolRecord): number | null {
@@ -544,6 +616,11 @@ function resolveAngleMax(row: TelecontrolRecord): number | null {
 		(row as any)?.maxAngle;
 	const num = Number(raw);
 	return Number.isFinite(num) ? num : null;
+}
+
+function resolveElevation(row: TelecontrolRecord): number | null {
+	const angle = resolveAngleMax(row);
+	return angle == null ? null : Math.round(angle);
 }
 </script>
 
