@@ -140,6 +140,7 @@ type TelecontrolRecord = {
 	planEndTime?: number | string;
 	beginTime?: number | string;
 	endTime?: number | string;
+	transitTime?: string;
 	spacecraftId?: string | number;
 	satelliteCode?: string;
 	telemetryInfo?: string;
@@ -263,6 +264,7 @@ const Table = useTable({
 			prop: "date",
 			minWidth: 90,
 			sortable: "custom",
+			sortMethod: ((a: TelecontrolRecord, b: TelecontrolRecord) => compareDailyPlanOrder(a, b)) as unknown as fn,
 			component: {
 				name: "cl-date-text",
 				props: { format: "YYYY-MM-DD" },
@@ -275,6 +277,7 @@ const Table = useTable({
 			prop: "transitTime",
 			minWidth: 160,
 			sortable: "custom",
+			sortMethod: ((a: TelecontrolRecord, b: TelecontrolRecord) => compareTransitStart(a, b)) as unknown as fn,
 			formatter(row) {
 				const [start, end] = splitTransit(row.transitTime);
 				if (start && end) {
@@ -325,6 +328,26 @@ const Search = useSearch();
 const Crud = useCrud(
 	{
 		service: service.daily_plan.as03,
+		onRefresh(params, { render, done }) {
+			service.daily_plan.as03
+				.page(params)
+				.then((res) => {
+					const normalized = Array.isArray(res)
+						? { list: res, pagination: { total: res.length } }
+						: res ?? { list: [] };
+					const sortedList = Array.isArray(normalized.list)
+						? sortTelecontrolList(normalized.list)
+						: normalized.list;
+					render({
+						...normalized,
+						list: sortedList,
+					});
+				})
+				.catch((err) => {
+					ElMessage.error(err?.message || t("查询失败"));
+					done();
+				});
+		},
 	},
 	(app) => {
 		app.refresh();
@@ -676,6 +699,107 @@ function extractTelemetrySummary(row: TelecontrolRecord): string {
 
 	return summaries.join("\n") || "-";
 }
+
+function compareDailyPlanOrder(a: TelecontrolRecord | Record<string, any>, b: TelecontrolRecord | Record<string, any>): number {
+	const left = normalizeTelecontrolRecord(a);
+	const right = normalizeTelecontrolRecord(b);
+	const dateDiff = resolveDateBaseTimestamp(right) - resolveDateBaseTimestamp(left);
+	if (dateDiff !== 0) {
+		return dateDiff;
+	}
+	return resolveTransitStartTimestamp(left) - resolveTransitStartTimestamp(right);
+}
+
+function compareTransitStart(a: TelecontrolRecord | Record<string, any>, b: TelecontrolRecord | Record<string, any>): number {
+	const left = normalizeTelecontrolRecord(a);
+	const right = normalizeTelecontrolRecord(b);
+	return resolveTransitStartTimestamp(left) - resolveTransitStartTimestamp(right);
+}
+
+function sortTelecontrolList<T = TelecontrolRecord>(list: T[]): T[] {
+	return [...list].sort((a, b) => compareDailyPlanOrder(a as any, b as any));
+}
+
+function normalizeTelecontrolRecord(input: TelecontrolRecord | Record<string, any>): TelecontrolRecord {
+	if (!input) return {};
+	const record: TelecontrolRecord = { ...(input as any) };
+	const rawDate = (input as any)?.date;
+	if (rawDate instanceof Date) {
+		record.date = formatDateOnly(rawDate);
+	} else if (rawDate != null && typeof rawDate !== "string") {
+		record.date = String(rawDate);
+	}
+	if (!record.transitTime) {
+		const transitRaw =
+			(input as any)?.transitTime ??
+			(input as any)?.transit_time ??
+			(input as any)?.transit_time_text ??
+			(input as any)?.transit_time_texts;
+		if (transitRaw != null) {
+			record.transitTime = String(transitRaw);
+		}
+	}
+	return record;
+}
+
+function formatDateOnly(date: Date): string {
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function resolveDateBaseTimestamp(row: TelecontrolRecord): number {
+	const explicit = parseTimestamp(row.date);
+	if (explicit != null) {
+		const date = new Date(explicit);
+		date.setHours(0, 0, 0, 0);
+		return date.getTime();
+	}
+	const fallback = parseTimestamp(row.beginTime ?? row.planBeginTime);
+	if (fallback != null) {
+		const date = new Date(fallback);
+		date.setHours(0, 0, 0, 0);
+		return date.getTime();
+	}
+	return 0;
+}
+
+function resolveTransitStartTimestamp(row: TelecontrolRecord): number {
+	const [start] = splitTransit(row.transitTime);
+	const parsed = parseTimestamp(start);
+	if (parsed != null) {
+		return parsed;
+	}
+	const fallback = parseTimestamp(row.beginTime ?? row.planBeginTime);
+	return fallback ?? 0;
+}
+
+function parseTimestamp(value: unknown): number | null {
+	if (value == null) {
+		return null;
+	}
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return value;
+	}
+	if (value instanceof Date) {
+		return value.getTime();
+	}
+	if (typeof value === "string") {
+		const str = value.trim();
+		if (!str) {
+			return null;
+		}
+		let normalized = str;
+		if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+			normalized = `${str}T00:00:00`;
+		} else if (!str.includes("T")) {
+			normalized = str.replace(" ", "T");
+		}
+		const ts = Date.parse(normalized);
+		return Number.isNaN(ts) ? null : ts;
+	}
+	return null;
+}
+
 function resolveStateLabel(row: TelecontrolRecord): string {
 	return (row.stateName as string) || (row.state != null ? String(row.state) : "-");
 }
