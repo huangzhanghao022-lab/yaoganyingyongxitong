@@ -33,15 +33,15 @@
 				<el-date-picker v-model="planDialog.date" type="date" value-format="YYYY-MM-DD" :placeholder="t('请选择日期')" style="width: 100%" />
 			</el-form-item>
 		</el-form>
-		<div class="dp-duty-info">
-			<span class="dp-duty-label">{{ t("值班人") }} :</span>
-			<template v-if="planDialog.dutyOfficers.length">
-				<el-tag v-for="name in planDialog.dutyOfficers" :key="name" size="small" effect="plain">
-					{{ name }}
-				</el-tag>
-			</template>
-			<span v-else class="dp-duty-empty">{{ t("暂无值班信息") }}</span>
-		</div>
+	<div class="dp-duty-info">
+		<span class="dp-duty-label">{{ t("值班人") }} :</span>
+		<template v-if="planDialog.dutyOfficers.length">
+			<el-tag v-for="name in planDialog.dutyOfficers" :key="name" size="small" effect="plain">
+				{{ name }}
+			</el-tag>
+		</template>
+		<span v-else class="dp-duty-empty">{{ t("暂无值班信息") }}</span>
+	</div>
 		<el-table
 			v-if="planDialog.records.length || planDialog.loading"
 			:data="planDialog.records"
@@ -69,6 +69,11 @@
 			<el-table-column :label="t('轨次结束')" min-width="160">
 				<template #default="{ row }">
 					{{ formatPlanTime(row.endTime) }}
+				</template>
+			</el-table-column>
+			<el-table-column :label="t('最大仰角')" min-width="90">
+				<template #default="{ row }">
+					{{ formatAngle(resolveAngleMax(row)) }}
 				</template>
 			</el-table-column>
 			<el-table-column :label="t('状态')" min-width="90">
@@ -522,6 +527,24 @@ function resolveSatelliteCode(row: TelecontrolRecord): string {
 	if (code === 12) return "AS02";
 	if (code === 13) return "AS03";
 	return row.missionName || row.taskName || row.targetName || "-";
+}
+
+function formatAngle(value: number | null | undefined): string {
+	if (value == null) {
+		return "-";
+	}
+	const num = Number(value);
+	return Number.isFinite(num) ? `${num.toFixed(2)}°` : "-";
+}
+
+function resolveAngleMax(row: TelecontrolRecord): number | null {
+	const raw =
+		(row as any)?.tracking?.angleMax?.el ??
+		(row as any)?.angleMax ??
+		(row as any)?.angle_max ??
+		(row as any)?.maxAngle;
+	const num = Number(raw);
+	return Number.isFinite(num) ? num : null;
 }
 </script>
 
