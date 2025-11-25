@@ -584,8 +584,8 @@ packages:
     resolution: {integrity: sha512-2kGiWoXaeV8HZlhU/Nml12oTbhv7j2ufsJ5vQaa0VTjzUmZVdd/nmKFRAOJ/FtjO90Qba5AnZDwsrY7ZND5udA==}
     engines: {node: '>= 16'}
 
-  '@intlify/shared@11.1.11':
-    resolution: {integrity: sha512-RIBFTIqxZSsxUqlcyoR7iiC632bq7kkOwYvZlvcVObHfrF4NhuKc4FKvu8iPCrEO+e3XsY7/UVpfgzg+M7ETzA==}
+  '@intlify/shared@11.2.1':
+    resolution: {integrity: sha512-O67LZM4dbfr70WCsZLW+g+pIXdgQ66laLVd/FicW7iYgP/RuH0X1FDGSh+Hr9Gou/8TeldUE6KmTGdLwX2ufIA==}
     engines: {node: '>= 16'}
 
   '@intlify/shared@12.0.0-alpha.3':
@@ -3359,7 +3359,7 @@ snapshots:
 
   '@intlify/shared@11.1.1': {}
 
-  '@intlify/shared@11.1.11': {}
+  '@intlify/shared@11.2.1': {}
 
   '@intlify/shared@12.0.0-alpha.3': {}
 
@@ -3367,8 +3367,8 @@ snapshots:
     dependencies:
       '@eslint-community/eslint-utils': 4.4.1(eslint@9.20.1(jiti@1.21.7))
       '@intlify/bundle-utils': 10.0.0(vue-i18n@11.1.1(vue@3.5.13(typescript@5.5.4)))
-      '@intlify/shared': 11.1.11
-      '@intlify/vue-i18n-extensions': 8.0.0(@intlify/shared@11.1.11)(@vue/compiler-dom@3.5.13)(vue-i18n@11.1.1(vue@3.5.13(typescript@5.5.4)))(vue@3.5.13(typescript@5.5.4))
+      '@intlify/shared': 11.2.1
+      '@intlify/vue-i18n-extensions': 8.0.0(@intlify/shared@11.2.1)(@vue/compiler-dom@3.5.13)(vue-i18n@11.1.1(vue@3.5.13(typescript@5.5.4)))(vue@3.5.13(typescript@5.5.4))
       '@rollup/pluginutils': 5.1.4(rollup@4.34.8)
       '@typescript-eslint/scope-manager': 8.24.1
       '@typescript-eslint/typescript-estree': 8.24.1(typescript@5.5.4)
@@ -3390,11 +3390,11 @@ snapshots:
       - supports-color
       - typescript
 
-  '@intlify/vue-i18n-extensions@8.0.0(@intlify/shared@11.1.11)(@vue/compiler-dom@3.5.13)(vue-i18n@11.1.1(vue@3.5.13(typescript@5.5.4)))(vue@3.5.13(typescript@5.5.4))':
+  '@intlify/vue-i18n-extensions@8.0.0(@intlify/shared@11.2.1)(@vue/compiler-dom@3.5.13)(vue-i18n@11.1.1(vue@3.5.13(typescript@5.5.4)))(vue@3.5.13(typescript@5.5.4))':
     dependencies:
       '@babel/parser': 7.26.9
     optionalDependencies:
-      '@intlify/shared': 11.1.11
+      '@intlify/shared': 11.2.1
       '@vue/compiler-dom': 3.5.13
       vue: 3.5.13(typescript@5.5.4)
       vue-i18n: 11.1.1(vue@3.5.13(typescript@5.5.4))

@@ -896,7 +896,8 @@ function mapTargetList(list: TargetItem[]) {
       long: Number(t.long),
       lat: Number(t.lat),
       alt: Number(t.alt ?? 0),
-      imageTime: form.imageTime, 
+      imageTime: form.imageTime,
+      priority: t.priority ?? '1',
     }));
 }
 
