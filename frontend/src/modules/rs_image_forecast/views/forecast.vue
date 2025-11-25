@@ -60,7 +60,7 @@
         <template v-if="targetPickMode === 'manual'">
 
           <el-form-item label="已选目标点" class="full-row">
-            <el-table :data="form.targetList" size="small" style="width: 100%" empty-text="暂无目标">
+            <el-table :data="form.targetList" size="small" empty-text="暂无目标" :style="{ width: '100%' }">
               <el-table-column type="index" label="#" width="60" />
               <el-table-column prop="name" label="名称" min-width="160" />
               <el-table-column prop="long" label="经度" width="120" />
@@ -128,9 +128,9 @@
       <el-table
         :data="apiResponse?.result || []"
         size="small"
-        style="width: 100%"
         :fit="true"     
         class="results-table"
+        :style="{ width: '100%' }"
       >
         <el-table-column type="index" width="50" label="#" />
         <el-table-column
@@ -227,7 +227,15 @@
         <el-input v-model="dbDialog.keyword" placeholder="按名称搜索" clearable style="width: 240px" @keyup.enter="fetchDb(1)" />
         <el-button class="ml8" type="primary" @click="fetchDb(1)">搜索</el-button>
       </div>
-      <el-table :data="dbDialog.list" v-loading="dbDialog.loading" @selection-change="onDbSelectionChange" height="420px">
+      <el-table
+        ref="dbTableRef"
+        :row-key="getPoiKey"
+        :reserve-selection="true"
+        :data="dbDialog.list"
+        v-loading="dbDialog.loading"
+        @selection-change="onDbSelectionChange"
+        height="420px"
+      >
         <el-table-column type="selection" width="50" />
         <el-table-column prop="name" label="名称" min-width="220" />
         <el-table-column prop="area_lon" label="经度" width="120" />
@@ -236,6 +244,14 @@
       </el-table>
       <div class="mt8" style="display:flex;justify-content:flex-end;">
         <el-pagination background layout="prev, pager, next, jumper, ->, total" :current-page="dbDialog.page" :page-size="dbDialog.size" :total="dbDialog.total" @current-change="(p:number)=>fetchDb(p)" />
+      </div>
+      <div class="mt8" v-if="dbSelectedList.length" style="max-height: 140px; overflow-y: auto; border: 1px dashed var(--el-border-color); padding: 8px; border-radius: 6px;">
+        <div style="margin-bottom: 6px; font-weight: 600;">已选目标点（{{ dbSelectedList.length }}）</div>
+        <el-space wrap>
+          <el-tag v-for="item in dbSelectedList" :key="getPoiKey(item)" type="info" effect="plain">
+            {{ item.name }}
+          </el-tag>
+        </el-space>
       </div>
       <template #footer>
         <el-button @click="dbDialog.visible = false">取消</el-button>
@@ -248,7 +264,7 @@
 <script lang="ts" setup>
 defineOptions({ name: 'rs-image-forecast-forecast' });
 
-import { reactive, ref, watch, computed } from 'vue';
+import { reactive, ref, watch, computed, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useCool } from '/@/cool';
 
@@ -975,6 +991,10 @@ const dbDialog = reactive({
 
 const dbAllTargets = ref<Poi[]>([]);
 const dbAllLoaded = ref(false);
+const dbSelectedMap = reactive<Record<string, Poi>>({});
+const dbTableRef = ref();
+const dbSelectionRestoring = ref(false);
+const dbSelectedList = computed(() => Object.values(dbSelectedMap));
 
 function openDbDialog() {
   dbDialog.visible = true;
@@ -986,29 +1006,57 @@ async function fetchDb(page = 1) {
   try {
     const sat = (form.satellite || '').toString();
     if (!sat) {
-      ElMessage.warning('请先选择卫星');
+      ElMessage.warning('??????');
       dbDialog.list = [];
       dbDialog.total = 0;
       dbDialog.page = 1;
       return;
     }
-    // 全量拉取，按卫星过滤，统一排序后再做本地分页
     const all = await fetchAllPois(dbDialog.keyword || '', sat);
     const total = all.length;
     const size = dbDialog.size;
     const start = (page - 1) * size;
-    dbDialog.list = all.slice(start, start + size);
+    dbDialog.list = all.slice(start, start + size).map((row, idx) => {
+      const r: any = { ...row };
+      if (!r.__uid) {
+        const baseKey = `${r.name ?? ''}|${r.area_lon ?? ''}|${r.area_lat ?? ''}|${r.level ?? r.priority ?? ''}`;
+        r.__uid = `auto-${start + idx}-${baseKey}`;
+      }
+      return r;
+    });
     dbDialog.page = page;
     dbDialog.total = total;
+    dbSelectionRestoring.value = true;
+    await nextTick();
+    restoreDbSelection();
+    dbSelectionRestoring.value = false;
   } catch {
-    ElMessage.error('查询数据库目标失败');
+    ElMessage.error('?????????');
   } finally {
     dbDialog.loading = false;
+    dbSelectionRestoring.value = false;
   }
 }
 
 function onDbSelectionChange(rows: Poi[]) {
-  dbDialog.selection = rows || [];
+  if (dbSelectionRestoring.value) return;
+  // 仅处理当前页的增删，避免跨页选中被清空
+  const currentIds = (dbDialog.list || []).map((p) => getPoiKey(p));
+  const currentSelected = new Set((rows || []).map((r) => getPoiKey(r)));
+
+  currentIds.forEach((id) => {
+    if (!id) return;
+    if (currentSelected.has(id)) {
+      // 当前页被勾选
+      const row = (rows || []).find((r) => getPoiKey(r) === id);
+      if (row) dbSelectedMap[id] = row;
+    } else {
+      // 当前页取消勾选
+      delete dbSelectedMap[id];
+    }
+  });
+
+  dbDialog.selection = Object.values(dbSelectedMap);
 }
 
 function poiToTarget(p: Poi): TargetItem {
@@ -1023,18 +1071,47 @@ function poiToTarget(p: Poi): TargetItem {
     priority: String(p.level ?? (p as any)?.priority ?? 1),
   };
 }
-
 function confirmDbSelection() {
-  if (!dbDialog.selection.length) {
+  const selectedAll = Object.values(dbSelectedMap);
+  if (!selectedAll.length) {
     ElMessage.warning('请先选择目标点');
     return;
   }
-  const targets = dbDialog.selection.map(poiToTarget);
-  // 清空已选，再重新填充
+  const targets = selectedAll.map(poiToTarget);
   form.targetList.length = 0;
   targets.forEach((t) => form.targetList.push(t));
   dbDialog.visible = false;
   generateJson();
+}
+
+function restoreDbSelection() {
+  const table = dbTableRef.value as any;
+  if (!table) return;
+  try {
+    table.clearSelection();
+  } catch {}
+  (dbDialog.list || []).forEach((row: any) => {
+    const key = getPoiKey(row);
+    if (key && dbSelectedMap[key]) {
+      try {
+        table.toggleRowSelection(row, true);
+      } catch {}
+    }
+  });
+}
+
+function getPoiKey(p: Poi | any): string {
+  const id = p?.id;
+  if (id !== undefined && id !== null && String(id).trim() !== '') return String(id).trim();
+  const uid = p?.__uid;
+  if (uid) return String(uid);
+  const name = p?.name ? String(p.name).trim() : '';
+  const lon = p?.area_lon ?? p?.long ?? p?.longitude ?? '';
+  const lat = p?.area_lat ?? p?.lat ?? p?.latitude ?? '';
+  const priority = p?.level ?? p?.priority ?? p?.priorityLevel ?? '';
+  const key = `name:${name}|lon:${lon}|lat:${lat}|pri:${priority}`;
+  if (key !== 'name:|lon:|lat:|pri:') return key;
+  return `row:${String(JSON.stringify(p) || p || Math.random())}`;
 }
 
 async function fetchAllPois(keyword = '', satFilter = ''): Promise<Poi[]> {
@@ -1125,6 +1202,7 @@ watch(
     dbDialog.total = 0;
     dbDialog.list = [] as any;
     dbDialog.selection = [] as any;
+    Object.keys(dbSelectedMap).forEach((k) => delete dbSelectedMap[k]);
     if (targetPickMode.value === 'all') {
       await loadAllTargets();
     } else if (dbDialog.visible) {
