@@ -1,7 +1,6 @@
 <template>
 	<cl-crud ref="Crud">
 		<cl-row>
-			<!-- 切换表 -->
 			<el-radio-group v-model="currentName" size="small" @change="refresh" style="margin-left: 10px">
 				<el-radio-button v-for="item in options.name" :key="item.value" :label="item.value">
 					{{ item.label }}
@@ -10,7 +9,6 @@
 
 			<cl-flex1 />
 
-			<!-- 仅保留刷新 -->
 			<cl-refresh-btn />
 			<el-button type="primary" plain @click="openTaskDialog" style="margin-left: 8px">
 				制作固存删除任务
@@ -111,7 +109,6 @@ const COMMAND_API_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chai
 const DELETE_TEMPLATE_AS02 = "673c2d9049b1f446adc4623a";
 const DELETE_TEMPLATE_AS03 = "673c2d8f49b1f446adc46233";
 const DELETE_COMMAND_NAME = "删除固存";
-const DELETE_COMMAND_TYPE = "删除固存";
 const TOKEN_CREDENTIALS = {
 	username: "02ptemplate@yinhe.ht",
 	password: "123456",
@@ -255,6 +252,7 @@ function openTaskDialog() {
 	const { startFileNo, endFileNo } = computeSelectedRange();
 	taskDialog.form.startFileNo = startFileNo;
 	taskDialog.form.endFileNo = endFileNo;
+	taskDialog.form.summary = "";
 	taskDialog.open = true;
 }
 
@@ -294,6 +292,30 @@ function onGenerateTask() {
 		ElMessage.warning("请确认已选择固存行，自动填充开始/结束文件号");
 		return;
 	}
+	if (!isFutureOrNow(taskDialog.form.startTime)) {
+		ElMessage.warning("开始时间不能早于当前时间");
+		return;
+	}
+	const startNo = Number(taskDialog.form.startFileNo);
+	const endNo = Number(taskDialog.form.endFileNo);
+	if (!Number.isFinite(startNo) || !Number.isFinite(endNo)) {
+		ElMessage.warning("开始/结束文件号需为数字");
+		return;
+	}
+	if (startNo >= endNo) {
+		ElMessage.warning("开始文件号必须小于结束文件号");
+		return;
+	}
+	const intervalVal = Number(taskDialog.form.interval);
+	if (!Number.isFinite(intervalVal)) {
+		ElMessage.warning("指令链间隔需为数字");
+		return;
+	}
+	if (intervalVal < 3) {
+		ElMessage.warning("绝对延时指令的间隔不能小于3秒");
+		return;
+	}
+
 	createDeleteCommand().catch((err) => {
 		console.error("[delete-plan] create command failed", err);
 		ElMessage.error(err?.message || "生成指令失败");
@@ -303,10 +325,7 @@ function onGenerateTask() {
 async function createDeleteCommand() {
 	const satellite = taskDialog.form.satellite;
 	const token = await acquireToken();
-	const body =
-		satellite === "AS03"
-			? buildDeleteBodyAs03(taskDialog.form)
-			: buildDeleteBodyAs02(taskDialog.form);
+	const body = satellite === "AS03" ? buildDeleteBodyAs03(taskDialog.form) : buildDeleteBodyAs02(taskDialog.form);
 
 	const resp = await fetch(COMMAND_API_URL, {
 		method: "POST",
@@ -371,8 +390,6 @@ function mapModule(scope: string) {
 }
 
 function buildCommandName(form: typeof taskDialog.form) {
-	const start = form.startFileNo || "";
-	const end = form.endFileNo || "";
 	const time = form.startTime || "";
 	return `${DELETE_COMMAND_NAME}-${time}`;
 }
@@ -391,5 +408,13 @@ function buildSummary(form: typeof taskDialog.form) {
 	const time = form.startTime || "";
 	const execTime = time ? time.replace("T", " ") : "";
 	return `上注${scope}固存删除任务，删除文件号${start}~${end}，任务执行时间：${execTime}`;
+}
+
+function isFutureOrNow(time: string) {
+	if (!time) return false;
+	const normalized = time.includes("T") ? time : time.replace(" ", "T");
+	const ts = new Date(normalized).getTime();
+	if (Number.isNaN(ts)) return false;
+	return ts >= Date.now() - 1000;
 }
 </script>
