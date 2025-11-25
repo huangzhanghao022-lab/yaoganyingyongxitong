@@ -66,12 +66,13 @@ const TELECONTROL_STATES = [1, 2, 6];
 type TimelineItem = {
 	id: string;
 	name: string;
-	type: "" | "success" | "warning" | "info" | "danger";
+	type: "" | "success" | "warning" | "info" | "danger" | "data" | "delete";
 	time: string;
 	meta: string;
 	startTs: number;
 	cloud?: number | null;
 	priority?: number | null;
+	gapMinutes?: number | null;
 };
 
 type TargetPayload = {
@@ -181,13 +182,21 @@ async function runOneClickPlan() {
 		const cloudFiltered = withTs.filter((r) => r.cloud == null || r.cloud < 10);
 		const imagingLimit = form.value.satellite === "AS03" ? 2 : 4;
 
-		// 先确定数传任务，预留时间，再选成像任务，保证与数传/成像之间 80min 间隔
+		// 先确定数传/删除任务，预留时间，再选成像任务
 		const dataTask =
 			form.value.satellite === "AS02" ? await buildDataTransTask(token, planRange.value.start, planRange.value.end) : null;
-		const reservedTimes = dataTask ? [dataTask.startTs] : [];
-		const gapMs = 80 * 60 * 1000;
+		const deleteTask =
+			form.value.satellite === "AS02" ? await buildDeleteTask(planRange.value.start, planRange.value.end) : null;
+		const reservedTimes = [dataTask?.startTs, deleteTask?.startTs].filter(Boolean) as number[];
+		const gapMs = form.value.satellite === "AS03" ? 2.5 * 60 * 60 * 1000 : 80 * 60 * 1000;
+		const noonTs = new Date(planRange.value.start);
+		noonTs.setHours(12, 0, 0, 0);
 
-		const picked = pickTopTasks(cloudFiltered, imagingLimit, gapMs, reservedTimes);
+		const picked =
+			form.value.satellite === "AS03"
+				? pickWithPreference(cloudFiltered, imagingLimit, gapMs, reservedTimes, noonTs.getTime())
+				: pickTopTasks(cloudFiltered, imagingLimit, gapMs, reservedTimes);
+
 		let items = picked.map((r, idx) => {
 			const timeText = formatDisplay(new Date(r.startTs));
 			const type = mapTaskType(r);
@@ -204,9 +213,10 @@ async function runOneClickPlan() {
 				startTs: Number(r.startTs),
 				cloud: r.cloud ?? null,
 				priority: r.priority ?? null,
-			};
+			} as TimelineItem;
 		});
 		if (dataTask) items = [...items, dataTask];
+		if (deleteTask) items = [...items, deleteTask];
 		timeline.value = items;
 		ElMessage.success("Plan finished");
 	} catch (err: any) {
@@ -222,27 +232,52 @@ function updateChart() {
 	const startMs = start.getTime();
 	const endMs = end.getTime();
 
-	const data = timeline.value.map((t, idx) => ({
-		value: [t.startTs, idx % 2 === 0 ? 1 : -1],
-		name: t.name,
-		meta: t.meta,
-		time: t.time,
-		type: t.type,
-		cloud: t.cloud,
-		priority: t.priority,
-	}));
+	// 排序并计算相邻间隔
+	const sorted = [...timeline.value].sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+	const data: any[] = [];
+	const gapLines: Array<{ coords: number[][]; gap: number }> = [];
+	const gapLabels: any[] = [];
+	for (let i = 0; i < sorted.length; i++) {
+		const cur = sorted[i];
+		const prev = sorted[i - 1];
+		const gap = prev ? Math.round((cur.startTs - prev.startTs) / 60000) : null;
+		data.push({
+			value: [cur.startTs, 1],
+			name: cur.name,
+			meta: cur.meta,
+			time: cur.time,
+			type: cur.type,
+			cloud: cur.cloud,
+			priority: cur.priority,
+			gapMinutes: gap,
+		});
+		if (prev && gap != null) {
+			gapLines.push({
+				coords: [
+					[prev.startTs, 1],
+					[cur.startTs, 1],
+				],
+				gap,
+			});
+			const mid = (prev.startTs + cur.startTs) / 2;
+			gapLabels.push({
+				value: [mid, 1.1],
+				label: `${gap} min`,
+			});
+		}
+	}
 
 	chart.setOption({
-		grid: { left: 40, right: 20, top: 30, bottom: 40 },
+		grid: { left: 40, right: 20, top: 26, bottom: 34 },
 		xAxis: {
 			type: "time",
 			min: startMs,
 			max: endMs,
 			axisLabel: { formatter: "{HH}:{mm}" },
-			axisLine: { lineStyle: { color: "#c0c4cc" } },
-			axisTick: { alignWithLabel: true },
+			axisLine: { lineStyle: { color: "#909399" } },
+			axisTick: { alignWithLabel: true, lineStyle: { color: "#909399" } },
 		},
-		yAxis: { show: false, min: -2, max: 2 },
+		yAxis: { show: false, min: 0, max: 1.5 },
 		tooltip: {
 			trigger: "item",
 			borderRadius: 8,
@@ -250,11 +285,15 @@ function updateChart() {
 			textStyle: { color: "#303133" },
 			formatter: (p: any) => {
 				const d = p.data;
+				if (!d || !d.name) return "";
+				const gapText =
+					d.gapMinutes != null ? `<div style="color:#606266;font-weight:600;">Gap: ${d.gapMinutes} min</div>` : "";
 				return `
 					<div style="min-width:180px;">
 						<div style="font-weight:600;margin-bottom:4px;">${d.name}</div>
-						<div>${d.time}</div>
-						<div style="color:#606266;">${d.meta}</div>
+						<div>${d.time ?? ""}</div>
+						<div style="color:#606266;">${d.meta ?? ""}</div>
+						${gapText}
 					</div>
 				`;
 			},
@@ -263,48 +302,47 @@ function updateChart() {
 			{
 				type: "scatter",
 				symbolSize: 14,
+				symbolOffset: [0, -3],
 				itemStyle: {
-					color: (p: any) => (String(p.data?.type || "").toLowerCase().includes("data") ? "#f78fb3" : "#409EFF"),
+					color: (p: any) => {
+						const t = String(p.data?.type || "").toLowerCase();
+						if (t.includes("data")) return "#f78fb3";
+						if (t.includes("delete")) return "#ff6b6b";
+						return "#409EFF";
+					},
 				},
 				data,
+				z: 3,
+			},
+			{
+				type: "lines",
+				coordinateSystem: "cartesian2d",
+				polyline: false,
+				symbol: ["none", "none"],
+				lineStyle: { color: "#d3d7de", width: 1, type: "dashed" },
+				data: gapLines,
+				silent: true,
+				z: 1,
+			},
+			{
+				type: "scatter",
+				symbolSize: 1,
+				silent: true,
+				itemStyle: { color: "transparent" },
+				label: {
+					show: true,
+					formatter: (p: any) => (p.data?.label ? p.data.label : ""),
+					position: "top",
+					color: "#606266",
+					fontSize: 12,
+					fontWeight: "600",
+					align: "center",
+				},
+				data: gapLabels,
+				z: 2,
 			},
 		],
 	});
-}
-
-async function buildDataTransTask(token: string, start: Date, end: Date): Promise<TimelineItem | null> {
-	try {
-		const dateStr = formatDateYMD(start);
-		const records = await fetchTelecontrolRecords(token, dateStr, "12");
-		if (!records?.length) return null;
-		const thresholdUtc = new Date(`${dateStr}T17:00:00+08:00`).getTime(); // 北京 17:00 对应的 UTC
-		console.log("[one-click-plan] telecontrol date", dateStr, "thresholdUtc", thresholdUtc, "records", records);
-		const sorted = [...records].sort((a, b) => (a.beginTime ?? 0) - (b.beginTime ?? 0));
-		const afterEvening = sorted.filter((r) => (r.beginTime ?? 0) >= thresholdUtc);
-		const pass = afterEvening[0];
-		console.log("[one-click-plan] chosen data pass", pass);
-		if (!pass || !pass.beginTime) return null;
-		const slotBegin = Number(pass.beginTime);
-		const startTs = slotBegin + 60 * 1000; // +1min
-		console.log("[one-click-plan] dataTrans use outer beginTime", slotBegin, "startTs(+1m)", startTs);
-		if (startTs < start.getTime() || startTs > end.getTime()) return null;
-
-		const files = await fetchPendingFiles("AS02");
-		const filesText = files.length ? `Files: ${files.join(", ")}` : "Files: -";
-		return {
-			id: `data-${startTs}`,
-			name: "数传任务",
-			type: "data",
-			time: formatDisplay(new Date(startTs)),
-			meta: `Antenna: ${pass.antennaId ?? "-"} | ${filesText}`,
-			startTs,
-			cloud: null,
-			priority: null,
-		};
-	} catch (e) {
-		console.warn("[one-click-plan] buildDataTransTask failed", e);
-		return null;
-	}
 }
 
 async function fetchAllTargets(sat: string): Promise<{ targets: TargetPayload[]; priorityMap: Map<string, number> }> {
@@ -377,8 +415,7 @@ function parseStartTime(row: any): number | null {
 
 function mapTaskType(task: any): TimelineItem["type"] {
 	const name = String(task?.name || "").toLowerCase();
-	if (name.includes("数传")) return "success";
-	if (name.includes("固存") || name.includes("删除")) return "warning";
+	if (name.includes("数传")) return "data";
 	return "info";
 }
 
@@ -407,7 +444,7 @@ function resolvePriorityFromCache(name: string | undefined, priorityMap: Map<str
 	return hit != null ? hit : null;
 }
 
-function pickTopTasks(list: any[], limit: number, gapMs: number) {
+function pickTopTasks(list: any[], limit: number, gapMs: number, reserved: number[] = []) {
 	const sorted = [...list].sort((a, b) => {
 		const ta = a.startTs ?? 0;
 		const tb = b.startTs ?? 0;
@@ -420,6 +457,18 @@ function pickTopTasks(list: any[], limit: number, gapMs: number) {
 	let best: any[] = [];
 	const score = (arr: any[]) => arr.reduce((s, x) => s + (x.priority ?? 99), 0);
 
+	function ok(ts: number, lastTs: number, chosen: any[]) {
+		if (lastTs >= 0 && ts - lastTs < gapMs) return false;
+		for (const t of chosen) {
+			const v = Number(t.startTs ?? 0);
+			if (Number.isFinite(v) && Math.abs(ts - v) < gapMs) return false;
+		}
+		for (const r of reserved) {
+			if (Math.abs(ts - r) < gapMs) return false;
+		}
+		return true;
+	}
+
 	function dfs(idx: number, current: any[], lastTs: number) {
 		if (current.length > best.length || (current.length === best.length && score(current) < score(best))) {
 			best = [...current];
@@ -429,7 +478,7 @@ function pickTopTasks(list: any[], limit: number, gapMs: number) {
 
 		const cand = sorted[idx];
 		const ts = Number(cand.startTs ?? 0);
-		if (Number.isFinite(ts) && (lastTs < 0 || ts - lastTs >= gapMs)) {
+		if (Number.isFinite(ts) && ok(ts, lastTs, current)) {
 			current.push(cand);
 			dfs(idx + 1, current, ts);
 			current.pop();
@@ -439,6 +488,21 @@ function pickTopTasks(list: any[], limit: number, gapMs: number) {
 
 	dfs(0, [], -Infinity);
 	return best.slice(0, limit);
+}
+
+function pickWithPreference(list: any[], limit: number, gapMs: number, reserved: number[], preferAfter: number) {
+	const after = list.filter((x) => Number(x.startTs ?? 0) >= preferAfter);
+	const first = pickTopTasks(after, limit, gapMs, reserved);
+	if (first.length >= limit) return first;
+	const pickedTs = new Set(first.map((x) => x.startTs));
+	const remain = list.filter((x) => !pickedTs.has(x.startTs));
+	const second = pickTopTasks(
+		remain,
+		limit - first.length,
+		gapMs,
+		reserved.concat(first.map((x) => Number(x.startTs))),
+	);
+	return [...first, ...second].slice(0, limit);
 }
 
 async function getToken(): Promise<string> {
@@ -504,15 +568,14 @@ function formatDateYMD(d: Date) {
 }
 
 type TelecontrolRecord = {
-	dataTrans: any;
 	beginTime?: number;
 	endTime?: number;
 	antennaId?: string;
+	dataTrans?: { beginTime?: number; endTime?: number };
 };
 
 async function fetchTelecontrolRecords(token: string, date: string, spacecraftId: string): Promise<TelecontrolRecord[]> {
 	const { begin, end } = buildUtcRange(date);
-	console.log("[one-click-plan] telecontrol range", { date, begin, end });
 	const payload = {
 		keyword: "",
 		page: 1,
@@ -547,8 +610,7 @@ async function fetchTelecontrolRecords(token: string, date: string, spacecraftId
 }
 
 function buildUtcRange(date: string) {
-	const base = new Date(`${date}T00:00:00`).getTime() ;
-	console.log(base);
+	const base = new Date(`${date}T00:00:00`).getTime() + 8 * 60 * 60 * 1000;
 	const day = 24 * 60 * 60 * 1000;
 	return { begin: base, end: base + day };
 }
@@ -567,6 +629,95 @@ async function fetchPendingFiles(satellite: "AS02" | "AS03"): Promise<string[]> 
 		.filter((x: any) => Number.isFinite(x.startFileNo))
 		.sort((a: any, b: any) => a.startFileNo - b.startFileNo);
 	return sorted.slice(0, 4).map((x: any) => String(x.startFileNo));
+}
+
+async function fetchDeletableFiles(satellite: "AS02" | "AS03"): Promise<string[]> {
+	const api: any = (service as any)?.star?.fixed_storage_table;
+	if (!api?.page) return [];
+	const name = satellite === "AS02" ? 0 : 2;
+	const res = await api.page({ page: 1, size: 200, name, status: 6 });
+	const list = res?.list || res?.data?.list || [];
+	const sorted = list
+		.map((x: any) => ({
+			startFileNo: Number(x?.startFileNo),
+			endFileNo: Number(x?.endFileNo),
+		}))
+		.filter((x: any) => Number.isFinite(x.startFileNo))
+		.sort((a: any, b: any) => a.startFileNo - b.startFileNo);
+	return sorted.slice(0, 4).map((x: any) => String(x.startFileNo));
+}
+
+async function buildDataTransTask(token: string, start: Date, end: Date): Promise<TimelineItem | null> {
+	try {
+		const dateStr = formatDateYMD(start);
+		const records = await fetchTelecontrolRecords(token, dateStr, "12");
+		if (!records?.length) return null;
+		const thresholdUtc = new Date(`${dateStr}T17:00:00+08:00`).getTime(); // 北京 17:00
+		const sorted = [...records].sort((a, b) => (a.beginTime ?? 0) - (b.beginTime ?? 0));
+		const afterEvening = sorted.filter((r) => (r.beginTime ?? 0) >= thresholdUtc);
+		const pass = afterEvening[0];
+		if (!pass || !pass.beginTime) return null;
+		const slotBegin = Number(pass.beginTime);
+		const startTs = slotBegin + 60 * 1000; // +1min
+		if (startTs < start.getTime() || startTs > end.getTime()) return null;
+
+		const files = await fetchPendingFiles("AS02");
+		const filesText = files.length ? `Files: ${files.join(", ")}` : "Files: -";
+		return {
+			id: `data-${startTs}`,
+			name: "数传任务",
+			type: "data",
+			time: formatDisplay(new Date(startTs)),
+			meta: `Antenna: ${pass.antennaId ?? "-"} | ${filesText}`,
+			startTs,
+			cloud: null,
+			priority: null,
+		};
+	} catch (e) {
+		console.warn("[one-click-plan] buildDataTransTask failed", e);
+		return null;
+	}
+}
+
+async function buildDeleteTask(start: Date, end: Date): Promise<TimelineItem | null> {
+	try {
+		const sat: "AS02" | "AS03" = "AS02";
+		const files = await fetchDeletableFiles(sat);
+		if (!files.length) return null;
+		const base = new Date(start.getTime() + 24 * 60 * 60 * 1000); // 次次日 00:00
+		base.setHours(0, 0, 0, 0);
+		const windowStart = base.getTime();
+		const windowEnd = windowStart + 6 * 60 * 60 * 1000;
+		let chosen = windowStart;
+		const allReserved = [windowStart]; // include start to ensure gap calc init
+		for (const r of timeline.value) {
+			allReserved.push(r.startTs);
+		}
+		allReserved.sort((a, b) => a - b);
+		const minGap = 30 * 60 * 1000;
+		// find earliest slot in windowStart..windowEnd that is 30min away from existing
+		for (let t = windowStart; t <= windowEnd; t += 5 * 60 * 1000) {
+			const ok = allReserved.every((x) => Math.abs(t - x) >= minGap);
+			if (ok) {
+				chosen = t;
+				break;
+			}
+		}
+		if (chosen < windowStart || chosen > windowEnd) return null;
+		return {
+			id: `delete-${chosen}`,
+			name: "固存删除任务",
+			type: "delete",
+			time: formatDisplay(new Date(chosen)),
+			meta: `Delete files: ${files.join(", ")}`,
+			startTs: chosen,
+			cloud: null,
+			priority: null,
+		};
+	} catch (e) {
+		console.warn("[one-click-plan] buildDeleteTask failed", e);
+		return null;
+	}
 }
 </script>
 
