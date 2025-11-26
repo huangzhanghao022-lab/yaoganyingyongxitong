@@ -103,6 +103,7 @@ import { useCool } from "/@/cool";
 import { useI18n } from "vue-i18n";
 import { computed, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
+import { number } from "echarts";
 
 const TOKEN_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token";
 const COMMAND_API_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template";
@@ -298,6 +299,7 @@ function onGenerateTask() {
 	}
 	const startNo = Number(taskDialog.form.startFileNo);
 	const endNo = Number(taskDialog.form.endFileNo);
+	const jdyszl = Number(taskDialog.form.commandId);
 	if (!Number.isFinite(startNo) || !Number.isFinite(endNo)) {
 		ElMessage.warning("开始/结束文件号需为数字");
 		return;
@@ -311,8 +313,8 @@ function onGenerateTask() {
 		ElMessage.warning("指令链间隔需为数字");
 		return;
 	}
-	if (intervalVal < 3) {
-		ElMessage.warning("绝对延时指令的间隔不能小于3秒");
+	if (jdyszl < 3) {
+		ElMessage.warning("绝对延时指令不能小于3");
 		return;
 	}
 
