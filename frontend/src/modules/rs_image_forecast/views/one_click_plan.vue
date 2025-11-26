@@ -5,11 +5,21 @@
 				<div class="card-header">
 					<span>一键规划模块</span>
 					<el-space>
+						<el-date-picker
+							v-model="form.date"
+							type="date"
+							:clearable="false"
+							placeholder="选择日期"
+							format="YYYY-MM-DD"
+							value-format="x"
+							style="width: 160px"
+						/>
 						<el-select v-model="form.satellite" style="width: 140px">
 							<el-option label="AS02" value="AS02" />
 							<el-option label="AS03" value="AS03" />
 						</el-select>
 						<el-button type="primary" :loading="loading" @click="runOneClickPlan">一键规划</el-button>
+						<el-button type="success" :loading="submitting" :disabled="!timeline.length" @click="submitPlannedTasks">提交规划</el-button>
 					</el-space>
 				</div>
 			</template>
@@ -53,6 +63,7 @@ import * as echarts from "echarts/core";
 import { ScatterChart } from "echarts/charts";
 import { TooltipComponent, GridComponent, DataZoomComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
+import { TELECONTROL_ANTENNA_MAP } from "../../daily_plan/views/telecontrolAntennas";
 
 echarts.use([ScatterChart, TooltipComponent, GridComponent, DataZoomComponent, CanvasRenderer]);
 
@@ -62,6 +73,23 @@ const TELECONTROL_SEARCH_URLS = [
 	"https://ttnonc-webui.cyk3.yhroot.com/v2/api/tasks/telecontrol/search",
 ];
 const TELECONTROL_STATES = [1, 2, 6];
+const TRANSFER_API_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template";
+const TOKEN_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token";
+const ANTENNA_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi-transform/get-all-antenna";
+
+const AS02_IMAGING_TEMPLATE = "689d78a65526542523548b0f";
+const AS02_IMAGING_FOLDER = "6731752608e123893cf92873";
+const AS03_IMAGING_FOLDER = "6731755b08e123893cf92878";
+const AS03_IMAGING_TEMPLATES = [
+	"673c2d9049b1f446adc4623c",
+	"673c2d8f49b1f446adc46230",
+	"673c2d9049b1f446adc4623f",
+];
+const TRANSFER_TEMPLATE_ID = "673c2d9049b1f446adc4623e";
+const TRANSFER_FOLDER_ID = "6731752608e123893cf92873";
+
+const DELETE_TEMPLATE_AS02 = "673c2d9049b1f446adc4623a";
+const COMMAND_API_URL = TRANSFER_API_URL;
 
 type TimelineItem = {
 	id: string;
@@ -70,6 +98,14 @@ type TimelineItem = {
 	time: string;
 	meta: string;
 	startTs: number;
+	endTs?: number;
+	raw?: any;
+	rollAng?: number | string | null;
+	antennaId?: string | null;
+	teleBegin?: number | null;
+	teleEnd?: number | null;
+	files?: string[];
+	deleteFiles?: string[];
 	cloud?: number | null;
 	priority?: number | null;
 	gapMinutes?: number | null;
@@ -84,11 +120,12 @@ type TargetPayload = {
 	priority: number;
 };
 
-const form = ref({ satellite: "AS02" });
+const form = ref({ satellite: "AS02", date: Date.now() });
 const { service } = useCool();
 const loading = ref(false);
+const submitting = ref(false);
 const timeline = ref<TimelineItem[]>([]);
-const planRange = computed(() => buildRange());
+const planRange = computed(() => buildRange(form.value.date));
 const rangeText = computed(() => `${formatDisplay(planRange.value.start)} ~ ${formatDisplay(planRange.value.end)}`);
 
 const chartRef = ref<HTMLDivElement | null>(null);
@@ -116,14 +153,13 @@ watch(timeline, async () => {
 	updateChart();
 });
 
-function buildRange() {
-	const now = new Date();
-	const start = new Date(now);
-	start.setHours(0, 0, 0, 0);
-	start.setDate(start.getDate() + 1); // 次日 0 点
-	const end = new Date(start);
-	end.setDate(end.getDate() + 1); // 次次日
-	end.setHours(13, 0, 0, 0); // 13:00
+function buildRange(dateValue?: number | Date) {
+	const base = dateValue ? new Date(dateValue) : new Date();
+	base.setHours(0, 0, 0, 0); // 当日 0 点
+	const start = new Date(base);
+	const end = new Date(base);
+	end.setDate(end.getDate() + 1); // 次日
+	end.setHours(13, 0, 0, 0); // 次日 13:00
 	return { start, end };
 }
 
@@ -200,6 +236,7 @@ async function runOneClickPlan() {
 		let items = picked.map((r, idx) => {
 			const timeText = formatDisplay(new Date(r.startTs));
 			const type = mapTaskType(r);
+			const endTs = Number(r.startTs ?? 0) + 40 * 1000;
 			const metaParts: string[] = [];
 			if (r.cloud != null) metaParts.push(`Cloud: ${r.cloud}%`);
 			if (r.priority != null) metaParts.push(`Priority: ${r.priority}`);
@@ -211,6 +248,15 @@ async function runOneClickPlan() {
 				time: timeText,
 				meta: metaParts.join(" | ") || "Auto planned task",
 				startTs: Number(r.startTs),
+				endTs,
+				raw: r,
+				rollAng:
+					r.rollAng ??
+					r.roll_angle ??
+					r.rollAngle ??
+					r.roll_angle_value ??
+					r.side_swipe_angle ??
+					null,
 				cloud: r.cloud ?? null,
 				priority: r.priority ?? null,
 			} as TimelineItem;
@@ -506,7 +552,7 @@ function pickWithPreference(list: any[], limit: number, gapMs: number, reserved:
 }
 
 async function getToken(): Promise<string> {
-	const resp = await fetch("http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token", {
+	const resp = await fetch(TOKEN_URL, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ username: "02ptemplate@yinhe.ht", password: "123456", loginType: 2 }),
@@ -663,13 +709,19 @@ async function buildDataTransTask(token: string, start: Date, end: Date): Promis
 
 		const files = await fetchPendingFiles("AS02");
 		const filesText = files.length ? `Files: ${files.join(", ")}` : "Files: -";
+		const antennaId = pass.antennaId ?? (pass as any)?.antenna_id ?? null;
 		return {
 			id: `data-${startTs}`,
 			name: "数传任务",
 			type: "data",
 			time: formatDisplay(new Date(startTs)),
-			meta: `Antenna: ${pass.antennaId ?? "-"} | ${filesText}`,
+			meta: `Antenna: ${antennaId ?? "-"} | ${filesText}`,
 			startTs,
+			endTs: Number(pass.dataTrans?.endTime ?? pass.endTime ?? startTs),
+			antennaId: antennaId ? String(antennaId) : null,
+			teleBegin: slotBegin,
+			teleEnd: Number(pass.dataTrans?.endTime ?? pass.endTime ?? null) || null,
+			files,
 			cloud: null,
 			priority: null,
 		};
@@ -704,6 +756,8 @@ async function buildDeleteTask(start: Date, end: Date): Promise<TimelineItem | n
 			}
 		}
 		if (chosen < windowStart || chosen > windowEnd) return null;
+		const startFile = files[0];
+		const endFile = files[files.length - 1] ?? startFile;
 		return {
 			id: `delete-${chosen}`,
 			name: "固存删除任务",
@@ -711,12 +765,394 @@ async function buildDeleteTask(start: Date, end: Date): Promise<TimelineItem | n
 			time: formatDisplay(new Date(chosen)),
 			meta: `Delete files: ${files.join(", ")}`,
 			startTs: chosen,
+			endTs: chosen + 5 * 60 * 1000,
+			deleteFiles: files,
+			files,
+			raw: { startFile, endFile },
 			cloud: null,
 			priority: null,
 		};
 	} catch (e) {
 		console.warn("[one-click-plan] buildDeleteTask failed", e);
 		return null;
+	}
+}
+
+const antennaGeoCache = new Map<string, { longitude: number; latitude: number; altitude: number; name: string }>();
+let antennaListCache: any[] | null = null;
+
+function toIsoString(val: any): string {
+	if (val == null || val === "") return "";
+	if (typeof val === "number") {
+		return new Date(val).toISOString();
+	}
+	const raw = String(val);
+	const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+	const date = new Date(normalized);
+	return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function pickRollAngle(source: any): string {
+	const cand =
+		source?.rollAng ??
+		source?.roll_angle ??
+		source?.rollAngle ??
+		source?.roll_angle_value ??
+		source?.side_swipe_angle ??
+		source?.roll_ang ??
+		"";
+	return cand == null ? "" : String(cand);
+}
+
+function pickSolarAngle(source: any): string {
+	const cand =
+		source?.solarAng ??
+		source?.solar_angle ??
+		source?.solarAngle ??
+		source?.sunElevation ??
+		source?.sunElevationDeg ??
+		source?.sun_elevation ??
+		source?.sun_angle ??
+		"";
+	return cand == null ? "" : String(cand);
+}
+
+function formatBeijingTime(val: any): string {
+	const ts = (() => {
+		if (typeof val === "number") return val;
+		const num = Number(val);
+		if (Number.isFinite(num)) return num;
+		const d = new Date(val);
+		return d.getTime();
+	})();
+	if (!Number.isFinite(ts)) return "";
+	const offset = 8 * 60 * 60 * 1000;
+	const d = new Date(ts + offset);
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}-${pad(d.getUTCHours())}:${pad(
+		d.getUTCMinutes()
+	)}:${pad(d.getUTCSeconds())}`;
+}
+
+async function fetchEmptySlots(name: number, expect: number): Promise<any[]> {
+	const api: any = (service as any)?.star?.fixed_storage_table;
+	if (!api?.page) return [];
+	const size = Math.max(200, expect);
+	let page = 1;
+	let acc: any[] = [];
+	while (acc.length < expect) {
+		const res = await api.page({
+			page,
+			size,
+			name,
+			status: 0,
+			sort: "startFileNo",
+			order: "ASC",
+		});
+		const list = res?.list || res?.data?.list || [];
+		if (!list.length) break;
+		acc.push(...list);
+		page += 1;
+	}
+	const seen = new Set<number>();
+	return acc
+		.map((r) => ({ ...r, startFileNo: Number(r?.startFileNo) }))
+		.filter((r) => Number.isFinite(r.startFileNo))
+		.filter((r) => {
+			if (seen.has(r.startFileNo)) return false;
+			seen.add(r.startFileNo);
+			return true;
+		})
+		.sort((a, b) => Number(a.startFileNo) - Number(b.startFileNo))
+		.slice(0, expect);
+}
+
+async function updateFixedStorageSlot(name: number, slot: any, item: TimelineItem) {
+	const api: any = (service as any)?.star?.fixed_storage_table;
+	if (!api?.update || !slot?.id) return;
+	const payload: Record<string, any> = {
+		id: slot.id,
+		status: 1,
+	};
+	if (item?.name) payload.targetName = String(item.name);
+	const imagingTime = toIsoString(item?.startTs ?? item?.raw?.startAt ?? item?.raw?.startAtBeijing ?? "");
+	if (imagingTime) payload.imagingTime = imagingTime;
+	await api.update({ name, data: payload });
+}
+
+async function postTemplate(body: Record<string, any>, token: string) {
+	const resp = await fetch(TRANSFER_API_URL, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"x-web-token": token,
+		},
+		body: JSON.stringify(body),
+	});
+	if (!resp.ok) {
+		const txt = await resp.text();
+		throw new Error(txt || `HTTP ${resp.status}`);
+	}
+}
+
+async function ensureAntennaList(token: string) {
+	if (antennaListCache) return;
+	const resp = await fetch(ANTENNA_URL, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"x-web-token": token,
+		},
+		body: JSON.stringify({}),
+	});
+	if (!resp.ok) {
+		const txt = await resp.text();
+		throw new Error(txt || `HTTP ${resp.status}`);
+	}
+	const data = await resp.json();
+	antennaListCache = data?.data?.getAllAntenna || data?.data || data?.list || [];
+}
+
+async function resolveAntennaGeoById(
+	antennaId: string | null | undefined,
+	token: string
+): Promise<{ longitude: number; latitude: number; altitude: number; name: string }> {
+	if (!antennaId) {
+		throw new Error("数传天线缺少 antennaId");
+	}
+	const idStr = String(antennaId);
+	const mappedName = TELECONTROL_ANTENNA_MAP.get(idStr);
+	if (!mappedName) {
+		throw new Error(`未找到天线 ${idStr} 的名称映射`);
+	}
+	if (antennaGeoCache.has(mappedName)) {
+		return antennaGeoCache.get(mappedName)!;
+	}
+	await ensureAntennaList(token);
+	const hit =
+		antennaListCache?.find(
+			(item: any) =>
+				item?.name === mappedName ||
+				item?.code === mappedName ||
+				String(item?.id) === idStr ||
+				String(item?.stationId) === idStr
+		) ?? null;
+	if (!hit) {
+		throw new Error(`未在天线列表中找到 ${mappedName}`);
+	}
+	const geo = {
+		longitude: Number(hit?.config?.geographicLocation?.longitude ?? hit?.longitude ?? hit?.long ?? 0) || 0,
+		latitude: Number(hit?.config?.geographicLocation?.latitude ?? hit?.latitude ?? hit?.lat ?? 0) || 0,
+		altitude: Number(hit?.config?.geographicLocation?.altitude ?? hit?.altitude ?? hit?.alt ?? 0) || 0,
+		name: mappedName,
+	};
+	antennaGeoCache.set(mappedName, geo);
+	return geo;
+}
+
+function buildTransferBody(range: { start: number; end: number }, geo: any, t0Iso: string) {
+	const duration = "360";
+	const base: Record<string, string> = {
+		spacecraftCode: "AS02",
+		templateId: TRANSFER_TEMPLATE_ID,
+		folderId: TRANSFER_FOLDER_ID,
+		name: `${geo?.name || "数传"}数传任务-${t0Iso?.replace("T", " ").replace("Z", "") || ""}`,
+		start_seq: "3",
+		reset_seq: "true",
+		t0: t0Iso,
+		duration,
+		trans_count: "1",
+		long: String(geo?.longitude ?? ""),
+		lat: String(geo?.latitude ?? ""),
+		alt: String(geo?.altitude ?? ""),
+		start_file: String(range.start ?? ""),
+		end_file: String(range.end ?? ""),
+		trans_type: "1",
+		trans_time1: duration,
+	};
+
+	// 补齐 start_file1~8 / end_file1~8 / trans_type1~8 / trans_time2~9 为空串
+	for (let i = 1; i <= 8; i++) {
+		base[`start_file${i}`] = base[`start_file${i}`] || "";
+		base[`end_file${i}`] = base[`end_file${i}`] || "";
+		base[`trans_type${i}`] = base[`trans_type${i}`] || "";
+	}
+	for (let i = 2; i <= 9; i++) {
+		base[`trans_time${i}`] = base[`trans_time${i}`] || "";
+	}
+
+	return base;
+}
+
+function buildDeleteBody(range: { start: number; end: number }, startTimeIso: string) {
+	return {
+		spacecraftCode: "AS02",
+		templateId: DELETE_TEMPLATE_AS02,
+		folderId: AS02_IMAGING_FOLDER,
+		name: `固存删除任务-${formatBeijingTime(startTimeIso)}`,
+		start_file: String(range.start ?? ""),
+		end_file: String(range.end ?? ""),
+		start_seq: "3",
+		start_time: startTimeIso,
+	};
+}
+
+async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
+	const imaging = timeline.value
+		.filter((item) => item.type !== "data" && item.type !== "delete")
+		.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+	if (!imaging.length) return;
+
+	if (satellite === "AS02") {
+		const slots = await fetchEmptySlots(0, imaging.length);
+		if (slots.length < imaging.length) {
+			throw new Error(`AS02 固存空槽不足，需 ${imaging.length} 个，现有 ${slots.length} 个`);
+		}
+		let success = 0;
+		for (let i = 0; i < imaging.length; i++) {
+			const item = imaging[i];
+			const slot = slots[i];
+			const startIso = toIsoString(item.startTs);
+			const endIso = toIsoString(item.endTs ?? (Number(item.startTs) + 40 * 1000));
+			const body = {
+				spacecraftCode: "AS02",
+				templateId: AS02_IMAGING_TEMPLATE,
+				folderId: AS02_IMAGING_FOLDER,
+				name: `${item.name || "成像任务"}-${formatBeijingTime(item.startTs)}`,
+				scanMode: "0x02",
+				rollAng: pickRollAngle(item.raw ?? item),
+				solarAng: pickSolarAngle(item.raw ?? item),
+				startAt: startIso,
+				endAt: endIso,
+				fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
+			};
+			await postTemplate(body, token);
+			success += 1;
+			try {
+				await updateFixedStorageSlot(0, slot, item);
+			} catch (err) {
+				console.warn("[one-click-plan] 回填 AS02 固存失败", err);
+			}
+		}
+		ElMessage.success(`AS02 成像任务提交成功 ${success}/${imaging.length}`);
+		return;
+	}
+
+	// AS03
+	const slots = await fetchEmptySlots(2, imaging.length);
+	if (slots.length < imaging.length) {
+		throw new Error(`AS03 固存空槽不足，需 ${imaging.length} 个，现有 ${slots.length} 个`);
+	}
+	let success = 0;
+	for (let i = 0; i < imaging.length; i++) {
+		const item = imaging[i];
+		const slot = slots[i];
+		const startIso = toIsoString(item.startTs);
+		const endIso = toIsoString(item.endTs ?? (Number(item.startTs) + 40 * 1000));
+		const baseSeq = Number(slot?.startFileNo ?? slot?.start_file_no ?? 1) || 1;
+		const bodies = [
+			{
+				spacecraftCode: "AS03",
+				templateId: AS03_IMAGING_TEMPLATES[0],
+				folderId: AS03_IMAGING_FOLDER,
+				name: `${item.name || "成像任务"}-1-${formatBeijingTime(item.startTs)}`,
+				reset_seq: "1",
+				start_seq: String(baseSeq),
+				tf: endIso,
+			},
+			{
+				spacecraftCode: "AS03",
+				templateId: AS03_IMAGING_TEMPLATES[1],
+				folderId: AS03_IMAGING_FOLDER,
+				name: `${item.name || "成像任务"}-2-${formatBeijingTime(item.startTs)}`,
+				t0: startIso,
+				start_seq: String(baseSeq + 14),
+			},
+			{
+				spacecraftCode: "AS03",
+				templateId: AS03_IMAGING_TEMPLATES[2],
+				folderId: AS03_IMAGING_FOLDER,
+				name: `${item.name || "成像任务"}-3-${formatBeijingTime(item.startTs)}`,
+				start_seq: String(baseSeq + 47),
+				t0: startIso,
+				tf: endIso,
+				side_swipe_angle: pickRollAngle(item.raw ?? item),
+			},
+		];
+		for (const body of bodies) {
+			await postTemplate(body, token);
+		}
+		success += 1;
+		try {
+			await updateFixedStorageSlot(2, slot, item);
+		} catch (err) {
+			console.warn("[one-click-plan] 回填 AS03 固存失败", err);
+		}
+	}
+	ElMessage.success(`AS03 成像任务提交成功 ${success}/${imaging.length}`);
+}
+
+async function submitDataTransferTask(token: string) {
+	const task = timeline.value.find((item) => item.type === "data");
+	if (!task) return;
+	const files = task.files && task.files.length ? task.files : await fetchPendingFiles("AS02");
+	if (!files.length) {
+		throw new Error("待数传文件列表为空");
+	}
+	const start = Number(files[0]);
+	const end = Number(files[files.length - 1] ?? files[0]);
+	if (!Number.isFinite(start) || !Number.isFinite(end)) {
+		throw new Error("数传文件号异常");
+	}
+	const t0Iso = toIsoString(task.startTs || task.teleBegin || Date.now());
+	if (!t0Iso) {
+		throw new Error("数传开始时间无效");
+	}
+	const geo = await resolveAntennaGeoById(task.antennaId, token);
+	const body = buildTransferBody({ start, end }, geo, t0Iso);
+	await postTemplate(body, token);
+	ElMessage.success("数传任务提交成功");
+}
+
+async function submitDeleteTask(token: string) {
+	const task = timeline.value.find((item) => item.type === "delete");
+	if (!task) return;
+	const files = task.deleteFiles && task.deleteFiles.length ? task.deleteFiles : await fetchDeletableFiles("AS02");
+	if (!files.length) {
+		throw new Error("待删除文件列表为空");
+	}
+	const start = Number(files[0]);
+	const end = Number(files[files.length - 1] ?? files[0]);
+	if (!Number.isFinite(start) || !Number.isFinite(end)) {
+		throw new Error("删除文件号异常");
+	}
+	const startIso = toIsoString(task.startTs ?? Date.now());
+	if (!startIso) {
+		throw new Error("删除任务开始时间无效");
+	}
+	const body = buildDeleteBody({ start, end }, startIso);
+	await postTemplate(body, token);
+	ElMessage.success("固存删除任务提交成功");
+}
+
+async function submitPlannedTasks() {
+	if (!timeline.value.length) {
+		ElMessage.warning("请先生成时间轴任务");
+		return;
+	}
+	const satellite = form.value.satellite as "AS02" | "AS03";
+	submitting.value = true;
+	try {
+		const token = await getToken();
+		await submitImagingTasks(token, satellite);
+		if (satellite === "AS02") {
+			await submitDataTransferTask(token);
+			await submitDeleteTask(token);
+		}
+	} catch (err: any) {
+		ElMessage.error(err?.message || String(err) || "提交失败");
+	} finally {
+		submitting.value = false;
 	}
 }
 </script>
