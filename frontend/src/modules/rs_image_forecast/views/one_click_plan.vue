@@ -39,18 +39,23 @@
 			/>
 		</el-card>
 
-		<el-card shadow="never">
-			<template #header>
-				<div class="card-header">
-					<span>任务执行时间轴</span>
-					<el-tag v-if="timeline.length" type="success" effect="plain">共 {{ timeline.length }} 个</el-tag>
+	<el-card shadow="never">
+		<template #header>
+			<div class="card-header">
+				<span>任务执行时间轴</span>
+				<el-tag v-if="timeline.length" type="success" effect="plain">共 {{ timeline.length }} 个</el-tag>
 				</div>
 			</template>
 
-			<div v-if="timeline.length" class="timeline-chart" ref="chartRef"></div>
-			<el-empty v-else description="暂无任务" :image-size="120" />
-		</el-card>
-	</div>
+		<div v-if="timeline.length" class="timeline-chart" ref="chartRef"></div>
+		<el-empty v-else description="暂无任务" :image-size="120" />
+	</el-card>
+	<el-button v-if="submissionSummary" type="primary" plain @click="submissionDialogVisible = true">查看任务摘要</el-button>
+
+	<el-dialog v-model="submissionDialogVisible" title="任务摘要" width="720px" :append-to-body="true">
+		<div class="summary-text">{{ submissionSummary }}</div>
+	</el-dialog>
+</div>
 </template>
 
 <script lang="ts" setup>
@@ -130,6 +135,8 @@ const submitting = ref(false);
 const timeline = ref<TimelineItem[]>([]);
 const planRange = computed(() => buildRange(form.value.date));
 const rangeText = computed(() => `${formatDisplay(planRange.value.start)} ~ ${formatDisplay(planRange.value.end)}`);
+const submissionSummary = ref('');
+const submissionDialogVisible = ref(false);
 
 const chartRef = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
@@ -1199,7 +1206,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		const endIso = toIsoString(item.endTs ?? (Number(item.startTs) + 30 * 1000));
 		// AS03 绝对延时指令号：首个任务从 3 开始，每个任务占用 56 个序号，第二个任务起始 59
 		const baseSeq = 3 + i * 56;
-		const resetSeq = i === 0 ? true : false;
+		const resetSeq = i === 0 ? "1" : "0";
 		const bodies = [
 			{
 				spacecraftCode: "AS03",
@@ -1305,20 +1312,67 @@ async function submitPlannedTasks() {
 			const lastSeq = await submitDataTransferTask(token);
 			await submitDeleteTasks(token, lastSeq);
 		}
+		submissionSummary.value = buildSubmissionSummaryText();
+		submissionDialogVisible.value = true;
 	} catch (err: any) {
 		ElMessage.error(err?.message || String(err) || "提交失败");
 	} finally {
 		submitting.value = false;
 	}
 }
+
+function buildSubmissionSummaryText(): string {
+	const lines: string[] = [];
+	const imaging = timeline.value
+		.filter((item) => item.type !== "data" && item.type !== "delete")
+		.sort((a, b) => a.startTs - b.startTs);
+	if (imaging.length) {
+		lines.push("成像任务：");
+		imaging.forEach((it) => {
+			const time = formatDisplay(new Date(it.startTs));
+			const slot = it.storageSlot || "-";
+			const roll = it.rollText || "-";
+			const sun = it.solarText || "-";
+			lines.push(`- ${time} ${it.name} 文件:${slot} 侧摆角:${roll} 太阳角:${sun}`);
+		});
+	}
+
+	const dataTask = timeline.value.find((item) => item.type === "data");
+	if (dataTask) {
+		const time = formatDisplay(new Date(dataTask.startTs));
+		const ranges =
+			dataTask.raw?.groups?.length
+				? dataTask.raw.groups.map((g: any) => `${g.start}-${g.end}(${g.duration}s)`).join("；")
+				: dataTask.files?.join(",") || "-";
+		lines.push("数传任务：");
+		lines.push(`- ${time} 天线:${dataTask.antennaId || "-"} 文件:${ranges}`);
+	}
+
+	const deletes = timeline.value.filter((item) => item.type === "delete").sort((a, b) => a.startTs - b.startTs);
+	if (deletes.length) {
+		lines.push("固存删除任务：");
+		deletes.forEach((it) => {
+			const time = formatDisplay(new Date(it.startTs));
+			const start = it.raw?.startFile ?? "-";
+			const end = it.raw?.endFile ?? "-";
+			lines.push(`- ${time} 删除范围:${start}~${end}`);
+		});
+	}
+
+	return lines.join("\n");
+}
 </script>
 
 <style scoped>
 .one-click-page {
-	padding: 8px;
+	padding: 8px 8px 96px; /* 与其他页面一致，给底部留空间 */
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
+	box-sizing: border-box;
+	min-height: 100vh;      /* 由外层滚动 */
+	height: auto;
+	overflow: visible;
 }
 
 .card-header {
@@ -1342,4 +1396,19 @@ async function submitPlannedTasks() {
 	width: 100%;
 	height: 380px;
 }
+
+.summary-text {
+	white-space: pre-line;
+	line-height: 1.6;
+}
+
+.summary-card {
+	position: relative;
+}
+
+:global(.app-main) {
+	height: 100vh !important;
+	overflow: auto !important;
+}
+
 </style>

@@ -302,6 +302,7 @@ const statusTagMap: Record<number, TagStyle> = {
 };
 
 const TRANSFER_PLAN_CACHE_KEY = "transfer_plan_cache_v1";
+const TRANSFER_RELOAD_FLAG = "__transfer_plan_reload_handled";
 
 type TransferPlanFormState = {
 	satellite: "AS02" | "AS03";
@@ -415,6 +416,39 @@ type TransferPlanCachePayload = {
 	confirmedStorage: ConfirmedStorageState;
 	integratedGroups: IntegratedGroup[];
 };
+
+function detectPageReload(): boolean {
+	if (typeof window === "undefined" || typeof performance === "undefined") {
+		return false;
+	}
+
+	const entries = performance.getEntriesByType?.("navigation") || [];
+	const firstEntry = entries[0] as PerformanceNavigationTiming | undefined;
+	if (firstEntry && typeof firstEntry.type === "string") {
+		return firstEntry.type === "reload";
+	}
+
+	const nav = (performance as any).navigation;
+	if (nav?.type != null && nav?.TYPE_RELOAD != null) {
+		return nav.type === nav.TYPE_RELOAD;
+	}
+
+	return false;
+}
+
+const isPageReload = detectPageReload();
+
+if (isPageReload && typeof window !== "undefined") {
+	const win = window as any;
+	if (!win[TRANSFER_RELOAD_FLAG]) {
+		try {
+			window.localStorage.removeItem(TRANSFER_PLAN_CACHE_KEY);
+		} catch (err) {
+			console.warn("[transfer-plan] 清理缓存失败", err);
+		}
+		win[TRANSFER_RELOAD_FLAG] = true;
+	}
+}
 
 function restoreTransferPlanCache() {
 	if (typeof window === "undefined") {
