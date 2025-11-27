@@ -137,6 +137,7 @@ const planRange = computed(() => buildRange(form.value.date));
 const rangeText = computed(() => `${formatDisplay(planRange.value.start)} ~ ${formatDisplay(planRange.value.end)}`);
 const submissionSummary = ref('');
 const submissionDialogVisible = ref(false);
+const orbitElements = ref<any | null>(null);
 
 const chartRef = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
@@ -181,6 +182,34 @@ function formatDisplay(date: Date | string) {
 	)}:${pad(d.getSeconds())}`;
 }
 
+function formatNumberText(value: number | string | null | undefined, digits = 4): string {
+	if (value == null || value === "") return "--";
+	const num = Number(value);
+	if (!Number.isFinite(num)) {
+		return String(value);
+	}
+	return Number(num.toFixed(digits)).toString();
+}
+
+function formatPercentText(value: number | string | null | undefined): string {
+	if (value == null || value === "") return "--";
+	const num = Number(value);
+	if (!Number.isFinite(num)) {
+		return String(value);
+	}
+	if (num >= 0 && num <= 1) {
+		return `${(num * 100).toFixed(1)}%`;
+	}
+	return `${num}%`;
+}
+
+function formatMonthDay(value: number | Date | string): string {
+	const d = typeof value === "number" ? new Date(value) : typeof value === "string" ? new Date(value) : value;
+	if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "";
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 async function runOneClickPlan() {
 	const { start, end } = planRange.value;
 	loading.value = true;
@@ -189,6 +218,7 @@ async function runOneClickPlan() {
 		if (!targets.length) throw new Error("未获取到目标库数据");
 		const token = await getToken();
 		const ephemeris = await fetchOrbitElementsForSatellite(form.value.satellite, token);
+		orbitElements.value = ephemeris;
 
 		const body: any = {
 			satelliteCode: form.value.satellite,
@@ -902,6 +932,19 @@ function pickSolarAngle(source: any): string {
 	return cand == null ? "" : String(cand);
 }
 
+function mapSolarAngleCode(value: any): string {
+	const num = Number(value);
+	if (!Number.isFinite(num)) {
+		return value == null ? "" : String(value);
+	}
+	if (num >= 20 && num < 30) return "0x1111";
+	if (num >= 30 && num < 40) return "0x2222";
+	if (num >= 40 && num < 50) return "0x3333";
+	if (num >= 50 && num < 60) return "0x4444";
+	if (num >= 60 && num < 70) return "0x5555";
+	return String(num);
+}
+
 function formatBeijingTime(val: any): string {
 	const ts = (() => {
 		if (typeof val === "number") return val;
@@ -952,8 +995,8 @@ async function fetchEmptySlots(name: number, expect: number): Promise<any[]> {
 	const api: any = (service as any)?.star?.fixed_storage_table;
 	if (!api?.page) return [];
 	const size = Math.max(200, expect);
-	let page = 1;
-	let acc: any[] = [];
+		let page = 1;
+		const acc: any[] = [];
 	while (acc.length < expect) {
 		const res = await api.page({
 			page,
@@ -1176,7 +1219,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 				name: `${item.name || "成像任务"}-${formatBeijingTime(item.startTs)}`,
 				scanMode: "0x02",
 				rollAng: pickRollAngle(item.raw ?? item),
-				solarAng: pickSolarAngle(item.raw ?? item),
+				solarAng: mapSolarAngleCode(pickSolarAngle(item.raw ?? item)),
 				startAt: startIso,
 				endAt: endIso,
 				fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
@@ -1323,17 +1366,64 @@ async function submitPlannedTasks() {
 
 function buildSubmissionSummaryText(): string {
 	const lines: string[] = [];
+	const orbitText = orbitElements.value ? JSON.stringify(orbitElements.value) : "";
 	const imaging = timeline.value
 		.filter((item) => item.type !== "data" && item.type !== "delete")
 		.sort((a, b) => a.startTs - b.startTs);
 	if (imaging.length) {
-		lines.push("成像任务：");
-		imaging.forEach((it) => {
-			const time = formatDisplay(new Date(it.startTs));
+		imaging.forEach((it, idx) => {
+			const monthDay = formatMonthDay(it.startTs);
+			const priority = formatNumberText(it.raw?.priority ?? it.priority, 0, "1");
+			const scanMode = "直通"; // AS02 默认直通
+			const cameraState = "双相机";
+			const lon = formatNumberText(
+				it.raw?.long ?? it.raw?.longitude ?? it.raw?.lon ?? it.raw?.area_lon ?? it.raw?.areaLon,
+				4,
+				"-"
+			);
+			const lat = formatNumberText(
+				it.raw?.lat ?? it.raw?.latitude ?? it.raw?.area_lat ?? it.raw?.areaLat,
+				4,
+				"-"
+			);
+			const cloud = formatPercentText(it.raw?.cloud ?? it.cloud);
+			const roll = it.rollText ?? "-";
+			const sun = it.solarText ?? "-";
+			const startTime = formatDisplay(new Date(it.startTs));
 			const slot = it.storageSlot || "-";
-			const roll = it.rollText || "-";
-			const sun = it.solarText || "-";
-			lines.push(`- ${time} ${it.name} 文件:${slot} 侧摆角:${roll} 太阳角:${sun}`);
+			const satellite = String(it.raw?.satellite || form.value.satellite || "").toUpperCase();
+			if (satellite === "AS03") {
+				const alt = formatNumberText(
+					it.raw?.alt ?? it.raw?.altitude ?? it.raw?.area_alt ?? it.raw?.areaAlt ?? 0,
+					0,
+					"0"
+				);
+				const tf = formatDisplay(new Date(it.endTs ?? it.startTs));
+				const imageKind = "推扫成像";
+				const fileRef = slot ? `记录文件号${slot}。` : "记录文件号未知。";
+				lines.push(
+					`${idx + 1}.上注${monthDay} ${it.name}目标点任务：\n` +
+						`${priority}级目标，目标点为\n` +
+						`${it.name}，经度${lon}，纬度${lat}，高度${alt}m，云量${cloud}，侧摆角${roll}，\n` +
+						`太阳高度角${sun}，${imageKind}成像时间${startTime}~${tf}，${fileRef}\n` +
+						`预报星历：${orbitText}\n` +
+						`预报方法：姿轨控新方法`
+				);
+			} else {
+				const startNum = Number(slot);
+				const fileRange =
+					Number.isFinite(startNum) && satellite === "AS02"
+						? `${startNum}~${startNum + 7}(${scanMode})`
+						: `${slot}`;
+				lines.push(
+					`${idx + 1}.上注${monthDay} ${it.name}目标点任务：\n` +
+						`${priority}级目标 ${scanMode}推扫成像任务，${cameraState}成像，目标点为\n` +
+						`${it.name}，经度${lon}，纬度${lat}，云量${cloud}，侧摆角${roll}，\n` +
+						`太阳高度角${sun}，成像时间${startTime}，记录文件号${fileRange}。\n` +
+						`预报星历：${orbitText}\n` +
+						`预报方法：姿轨控新方法`
+				);
+			}
 		});
 	}
 
@@ -1342,24 +1432,31 @@ function buildSubmissionSummaryText(): string {
 		const time = formatDisplay(new Date(dataTask.startTs));
 		const ranges =
 			dataTask.raw?.groups?.length
-				? dataTask.raw.groups.map((g: any) => `${g.start}-${g.end}(${g.duration}s)`).join("；")
+				? dataTask.raw.groups.map((g: any) => `${g.start}-${g.end}`).join("，")
 				: dataTask.files?.join(",") || "-";
-		lines.push("数传任务：");
-		lines.push(`- ${time} 天线:${dataTask.antennaId || "-"} 文件:${ranges}`);
+		const station =
+			form.stationName ||
+			form.station ||
+			(dataTask.antennaId ? TELECONTROL_ANTENNA_MAP.get(String(dataTask.antennaId)) : "-") ||
+			"-";
+		lines.push(
+			`${lines.length + 1}.上注数传任务，数传站：${station}，开始下数时间：${time}，数传文件号：载荷${ranges}`
+		);
 	}
 
 	const deletes = timeline.value.filter((item) => item.type === "delete").sort((a, b) => a.startTs - b.startTs);
 	if (deletes.length) {
-		lines.push("固存删除任务：");
 		deletes.forEach((it) => {
 			const time = formatDisplay(new Date(it.startTs));
 			const start = it.raw?.startFile ?? "-";
 			const end = it.raw?.endFile ?? "-";
-			lines.push(`- ${time} 删除范围:${start}~${end}`);
+			lines.push(
+				`${lines.length + 1}.上注载荷固存删除任务，删除文件号${start}~${end}，任务执行时间：${time}`
+			);
 		});
 	}
 
-	return lines.join("\n");
+	return lines.join("\n\n");
 }
 </script>
 
