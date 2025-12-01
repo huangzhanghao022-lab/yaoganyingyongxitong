@@ -29,6 +29,11 @@
 				<el-tag type="info" effect="plain">{{ rangeText }}</el-tag>
 				<el-tag type="warning" effect="plain">自动筛选云量 &lt; 10% 且任务间隔 &gt; 1.5h</el-tag>
 			</div>
+			<el-space :size="12" style="margin-top: 8px; flex-wrap: wrap;">
+				<el-checkbox v-model="taskSwitches.imaging">规划成像</el-checkbox>
+				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.transfer">规划数传</el-checkbox>
+				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.delete">规划固存删除</el-checkbox>
+			</el-space>
 
 			<el-alert
 				v-if="!timeline.length"
@@ -61,7 +66,7 @@
 <script lang="ts" setup>
 defineOptions({ name: "one-click-plan" });
 
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, reactive } from "vue";
 import { ElMessage } from "element-plus";
 import { useCool } from "/@/cool";
 import * as echarts from "echarts/core";
@@ -128,7 +133,14 @@ type TargetPayload = {
 	priority: number;
 };
 
-const form = ref({ satellite: "AS02", date: Date.now() });
+// 默认日期：北京时间次日 00:00
+const tomorrow = (() => {
+	const d = new Date();
+	d.setHours(0, 0, 0, 0);
+	d.setDate(d.getDate() + 1);
+	return d.getTime();
+})();
+const form = ref({ satellite: "AS02", date: tomorrow });
 const { service } = useCool();
 const loading = ref(false);
 const submitting = ref(false);
@@ -138,6 +150,21 @@ const rangeText = computed(() => `${formatDisplay(planRange.value.start)} ~ ${fo
 const submissionSummary = ref('');
 const submissionDialogVisible = ref(false);
 const orbitElements = ref<any | null>(null);
+const taskSwitches = reactive({
+	imaging: true,
+	transfer: true,
+	delete: true,
+});
+const UID_EPOCH = new Date("2025-01-01T00:00:00Z").getTime();
+const UID_TIMESTAMP_BITS = 41;
+const UID_MACHINE_BITS = 10;
+const UID_PID_BITS = 6;
+const UID_SEQUENCE_BITS = 7;
+const UID_TIMESTAMP_MOD = Math.pow(2, UID_TIMESTAMP_BITS);
+const UID_MACHINE_ID = Math.floor(Math.random() * Math.pow(2, UID_MACHINE_BITS));
+const UID_PID = Math.floor(Math.random() * Math.pow(2, UID_PID_BITS));
+let uidSequence = 0;
+let uidLastTimestamp = -1;
 
 const chartRef = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
@@ -203,6 +230,11 @@ function formatPercentText(value: number | string | null | undefined): string {
 	return `${num}%`;
 }
 
+function normalizeDecimal(value: unknown, fallback: number): number {
+	const num = Number(value);
+	return Number.isFinite(num) ? num : fallback;
+}
+
 function formatMonthDay(value: number | Date | string): string {
 	const d = typeof value === "number" ? new Date(value) : typeof value === "string" ? new Date(value) : value;
 	if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "";
@@ -260,18 +292,24 @@ async function runOneClickPlan() {
 
 		// 先确定数传/删除任务，预留时间，再选成像任务
 		const dataTask =
-			form.value.satellite === "AS02" ? await buildDataTransTask(token, planRange.value.start, planRange.value.end) : null;
+			taskSwitches.transfer && form.value.satellite === "AS02"
+				? await buildDataTransTask(token, planRange.value.start, planRange.value.end)
+				: null;
 		const deleteTasks =
-			form.value.satellite === "AS02" ? await buildDeleteTasks(planRange.value.start, planRange.value.end) : [];
+			taskSwitches.delete && form.value.satellite === "AS02"
+				? await buildDeleteTasks(planRange.value.start, planRange.value.end)
+				: [];
 		const reservedTimes = [dataTask?.startTs, ...(deleteTasks.map((d) => d.startTs))].filter(Boolean) as number[];
 		const gapMs = form.value.satellite === "AS03" ? 2.5 * 60 * 60 * 1000 : 80 * 60 * 1000;
 		const noonTs = new Date(planRange.value.start);
 		noonTs.setHours(12, 0, 0, 0);
 
 		const picked =
-			form.value.satellite === "AS03"
+			taskSwitches.imaging && form.value.satellite === "AS03"
 				? pickWithPreference(cloudFiltered, imagingLimit, gapMs, reservedTimes, noonTs.getTime())
-				: pickTopTasks(cloudFiltered, imagingLimit, gapMs, reservedTimes);
+				: taskSwitches.imaging
+				? pickTopTasks(cloudFiltered, imagingLimit, gapMs, reservedTimes)
+				: [];
 
 		const imagingDuration = form.value.satellite === "AS03" ? 30 : 40; // seconds
 		let items = picked.map((r, idx) => {
@@ -1350,11 +1388,20 @@ async function submitPlannedTasks() {
 	submitting.value = true;
 	try {
 		const token = await getToken();
-		await submitImagingTasks(token, satellite);
-		if (satellite === "AS02") {
-			const lastSeq = await submitDataTransferTask(token);
-			await submitDeleteTasks(token, lastSeq);
+		if (taskSwitches.imaging) {
+			await submitImagingTasks(token, satellite);
 		}
+		if (satellite === "AS02") {
+			let lastSeq: number | null = null;
+			if (taskSwitches.transfer) {
+				lastSeq = await submitDataTransferTask(token);
+			}
+			if (taskSwitches.delete) {
+				await submitDeleteTasks(token, lastSeq);
+			}
+		}
+		await recordImagingUids();
+		await recordImagingTasks();
 		submissionSummary.value = buildSubmissionSummaryText();
 		submissionDialogVisible.value = true;
 	} catch (err: any) {
@@ -1457,6 +1504,170 @@ function buildSubmissionSummaryText(): string {
 	}
 
 	return lines.join("\n\n");
+}
+
+// 生成 imaging UID 并推送
+async function recordImagingUids() {
+	const svc = form.value.satellite === "AS03" ? (service as any)?.task?.as03 : (service as any)?.task?.as02;
+	if (!svc?.page || !svc?.update) return;
+	const imaging = timeline.value.filter((it) => it.type !== "data" && it.type !== "delete");
+	for (const it of imaging) {
+		const uid = generateImagingUid();
+		it.raw = it.raw || {};
+		it.raw.imagingUid = uid;
+	}
+	// 逐条更新 task 表
+	for (const it of imaging) {
+		const uid = it.raw?.imagingUid;
+		if (!uid) continue;
+		try {
+			const res = await svc.page({ page: 1, size: 1, imagingTime: toIsoString(it.startTs) });
+			const list = res?.list || res?.data?.list || [];
+			const row = list[0];
+			if (!row?.id) continue;
+			await svc.update({
+				id: row.id,
+				imagingUID: uid,
+			});
+		} catch (err) {
+			console.warn("[one-click-plan] recordImagingUids failed", err);
+		}
+	}
+}
+
+async function recordImagingTasks() {
+	const imaging = timeline.value.filter((it) => it.type !== "data" && it.type !== "delete");
+	if (!imaging.length) return;
+	const satellite = String(form.value.satellite || "").toUpperCase();
+	const svc = satellite === "AS03" ? (service as any)?.task?.as03 : (service as any)?.task?.as02;
+	if (!svc) return;
+
+	const tasks = imaging.map((it) => {
+		const payload: Record<string, any> = {
+			satelliteCode: satellite,
+			imagingTarget: it.name || it.raw?.name || "",
+			imagingUID:
+				it.raw?.imagingUid ||
+				it.raw?.imagingUID ||
+				it.raw?.imaging_uid ||
+				it.raw?.__imagingUid ||
+				generateImagingUid(),
+			longitude: normalizeDecimal(
+				it.raw?.long ?? it.raw?.longitude ?? it.raw?.lon ?? it.raw?.area_lon ?? it.raw?.areaLon,
+				0
+			),
+			latitude: normalizeDecimal(it.raw?.lat ?? it.raw?.latitude ?? it.raw?.area_lat ?? it.raw?.areaLat, 0),
+			cloudCoverage: normalizeDecimal(it.raw?.cloud ?? it.cloud, 0),
+			sunElevation: normalizeDecimal(it.solarText ?? it.raw?.solarAng ?? it.raw?.solar_angle ?? it.raw?.solarAngle, 0),
+			status: 0,
+		};
+		const imagingSource =
+			it.raw?.startAtBeijing ||
+			it.raw?.start_at_beijing ||
+			it.raw?.t0_beijing ||
+			it.raw?.startAt ||
+			it.raw?.start_at ||
+			it.raw?.t0 ||
+			it.startTs;
+		if (imagingSource) payload.imagingTime = toIsoString(imagingSource);
+		if (orbitElements.value) {
+			try {
+				payload.orbitElements = orbitElements.value;
+			} catch {
+				payload.orbitElements = null;
+			}
+		}
+		return payload;
+	});
+
+	const normalizedTasks = tasks.map((task) => {
+		const payload: Record<string, any> = {
+			satelliteCode: task.satelliteCode ?? satellite,
+			imagingTarget: task.imagingTarget ?? "",
+			imagingUID: task.imagingUID ?? generateImagingUid(),
+			longitude: normalizeDecimal(task.longitude, 0),
+			latitude: normalizeDecimal(task.latitude, 0),
+			cloudCoverage: normalizeDecimal(task.cloudCoverage, 0),
+			sunElevation: normalizeDecimal(task.sunElevation, 0),
+			status: Number.isFinite(Number(task.status)) ? Number(task.status) : 0,
+		};
+		if (task.imagingTime) payload.imagingTime = task.imagingTime;
+		if (task.ephemerisTime) payload.ephemerisTime = task.ephemerisTime;
+		if (task.transferName) payload.transferName = task.transferName;
+		if (task.transferTime) payload.transferTime = task.transferTime;
+		if (task.transferUID) payload.transferUID = task.transferUID;
+		if (task.thumbnailUrl) payload.thumbnailUrl = task.thumbnailUrl;
+		if (task.orbitElements) {
+			try {
+				payload.orbitElements = task.orbitElements;
+			} catch {
+				payload.orbitElements = null;
+			}
+		}
+		return payload;
+	});
+
+	let lastError: any = null;
+	const createFromForecast = (svc as any)?.createFromForecast;
+	if (typeof createFromForecast === "function") {
+		try {
+			await createFromForecast({ tasks: normalizedTasks });
+			return;
+		} catch (err) {
+			lastError = err;
+			console.warn("[one-click-plan] createFromForecast failed, fallback request", err);
+		}
+	}
+	if (typeof svc?.request === "function") {
+		try {
+			await svc.request({
+				url: "/createFromForecast",
+				method: "POST",
+				data: { tasks: normalizedTasks },
+			});
+			return;
+		} catch (err) {
+			lastError = err;
+			console.warn("[one-click-plan] /createFromForecast request failed, fallback add", err);
+		}
+	}
+	if (typeof svc?.add === "function") {
+		for (const payload of normalizedTasks) {
+			try {
+				await svc.add(payload);
+			} catch (err) {
+				lastError = err;
+				console.warn("[one-click-plan] add task failed", err);
+			}
+		}
+		return;
+	}
+	if (lastError) {
+		throw lastError;
+	}
+}
+
+function generateImagingUid(): string {
+	let timestamp = Date.now() - UID_EPOCH;
+	if (timestamp === uidLastTimestamp) {
+		const maxSeq = Math.pow(2, UID_SEQUENCE_BITS) - 1;
+		uidSequence = (uidSequence + 1) & maxSeq;
+		if (uidSequence === 0) {
+			while (timestamp === uidLastTimestamp) {
+				timestamp = Date.now() - UID_EPOCH;
+			}
+		}
+	} else {
+		uidSequence = 0;
+	}
+	uidLastTimestamp = timestamp;
+	const tsPart = timestamp % UID_TIMESTAMP_MOD;
+	const id =
+		(BigInt(tsPart) << BigInt(UID_MACHINE_BITS + UID_PID_BITS + UID_SEQUENCE_BITS)) |
+		(BigInt(UID_MACHINE_ID) << BigInt(UID_PID_BITS + UID_SEQUENCE_BITS)) |
+		(BigInt(UID_PID) << BigInt(UID_SEQUENCE_BITS)) |
+		BigInt(uidSequence);
+	return id.toString();
 }
 </script>
 
