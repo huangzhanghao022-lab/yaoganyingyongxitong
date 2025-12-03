@@ -292,7 +292,23 @@
 
 	onSubmit(form, { next }) {
 	  const name = form?.name ?? currentName.value ?? 0;
-	  return next({ ...form, name });
+	  const clearFields = Number(form?.status) === 0;
+	  const payload: any = { ...form, name };
+
+	  // 与批量编辑保持一致：状态为“空”时清空名称与时间字段，后端才会真正置空
+	  if (clearFields) {
+		if (isPayload.value) {
+		  payload.targetName = null;
+		  payload.imagingTime = null;
+		  payload.imagingUid = null;
+		} else {
+		  payload.fileName = null;
+		  payload.executingTime = null;
+		  payload.imagingUid = null;
+		}
+	  }
+
+	  return next(payload);
 	},
   });
 
@@ -457,8 +473,8 @@
       status: batchForm.status!,
       ...(clearFields
         ? (isPayload.value
-            ? { targetName: null, imagingTime: null }
-            : { fileName: null, executingTime: null })
+            ? { targetName: null, imagingTime: null, imagingUid: null }
+            : { fileName: null, executingTime: null, imagingUid: null })
         : {}),
     } as any;
 

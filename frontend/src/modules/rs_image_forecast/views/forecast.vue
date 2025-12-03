@@ -1437,10 +1437,10 @@ function buildSubmissionSummary(
           // AS02 显示 start ~ start+8
           if (sat === 'AS02') {
             if (Number.isFinite(startNum)) {
-              return `${startNum}~${startNum + 8}`;
+              return `${startNum}~${startNum + 7}`;
             }
             // 起始号不是数字的话就用原样
-            return `${entry.startFileNo}~${entry.startFileNo}+8`;
+            return `${entry.startFileNo}~${entry.startFileNo}+7`;
           }
 
           // 其它卫星走原来的兜底
