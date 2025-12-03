@@ -72,12 +72,23 @@ export class AdminRsPoiPoiController extends BaseController {
     const page = Number(body?.page ?? 1) || 1;
     const size = Number(body?.size ?? 10) || 10;
     const keyWord = String(body?.keyWord ?? body?.keyword ?? '').trim();
+    const satFilter = body?.satellites;
 
     const repo = this.rsPoiPoiService.rsPoiEntity;
     const qb = repo.createQueryBuilder('a');
     if (keyWord) {
       // Postgres ILIKE（不区分大小写）；若为其他库可替换为 LIKE
       qb.where('a.name ILIKE :kw', { kw: `%${keyWord}%` });
+    }
+    if (satFilter !== undefined && satFilter !== null && satFilter !== '') {
+      const token = String(satFilter).trim();
+      if (token) {
+        if (qb.expressionMap.wheres.length) {
+          qb.andWhere('a.satellites LIKE :sat', { sat: `%${token}%` });
+        } else {
+          qb.where('a.satellites LIKE :sat', { sat: `%${token}%` });
+        }
+      }
     }
 
     qb.orderBy('a.level', 'ASC').addOrderBy('a.name', 'ASC');
@@ -90,4 +101,3 @@ export class AdminRsPoiPoiController extends BaseController {
     return this.ok({ list, pagination: { page, size, total } });
   }
 }
-
