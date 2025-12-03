@@ -166,6 +166,25 @@ const UID_PID = Math.floor(Math.random() * Math.pow(2, UID_PID_BITS));
 let uidSequence = 0;
 let uidLastTimestamp = -1;
 
+function ensureImagingUid(item: TimelineItem): string {
+	item.raw = item.raw || {};
+	const existing =
+		item.raw.imagingUid ||
+		item.raw.imagingUID ||
+		item.raw.imaging_uid ||
+		item.raw.__imagingUid;
+	if (existing) {
+		const uidText = String(existing);
+		if (uidText && uidText.length > 4) {
+			item.raw.imagingUid = uidText;
+			return uidText;
+		}
+	}
+	const uid = generateImagingUid();
+	item.raw.imagingUid = uid;
+	return uid;
+}
+
 const chartRef = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
 
@@ -1072,6 +1091,8 @@ async function updateFixedStorageSlot(name: number, slot: any, item: TimelineIte
 	if (item?.name) payload.targetName = String(item.name);
 	const imagingTime = toIsoString(item?.startTs ?? item?.raw?.startAt ?? item?.raw?.startAtBeijing ?? "");
 	if (imagingTime) payload.imagingTime = imagingTime;
+	const imagingUid = ensureImagingUid(item);
+	if (imagingUid) payload.imagingUid = imagingUid;
 	await api.update({ name, data: payload });
 }
 
@@ -1239,6 +1260,9 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
 	if (!imaging.length) return;
 
+	// 先为本次成像任务生成并缓存 UID，供固存回填/任务落库/数传关联复用
+	imaging.forEach((item) => ensureImagingUid(item));
+
 	if (satellite === "AS02") {
 		const slots = await fetchEmptySlots(0, imaging.length);
 		if (slots.length < imaging.length) {
@@ -1250,6 +1274,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 			const slot = slots[i];
 			const startIso = toIsoString(item.startTs);
 			const endIso = toIsoString(item.endTs ?? (Number(item.startTs) + 40 * 1000));
+			const imagingUid = ensureImagingUid(item);
 			const body = {
 				spacecraftCode: "AS02",
 				templateId: AS02_IMAGING_TEMPLATE,
@@ -1261,6 +1286,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 				startAt: startIso,
 				endAt: endIso,
 				fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
+				imagingUid,
 			};
 			await postTemplate(body, token);
 			success += 1;
@@ -1285,6 +1311,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		const slot = slots[i];
 		const startIso = toIsoString(item.startTs);
 		const endIso = toIsoString(item.endTs ?? (Number(item.startTs) + 30 * 1000));
+		const imagingUid = ensureImagingUid(item);
 		// AS03 绝对延时指令号：首个任务从 3 开始，每个任务占用 56 个序号，第二个任务起始 59
 		const baseSeq = 3 + i * 56;
 		const resetSeq = i === 0 ? "1" : "0";
@@ -1315,6 +1342,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 				t0: startIso,
 				tf: endIso,
 				side_swipe_angle: pickRollAngle(item.raw ?? item),
+				imagingUid,
 			},
 		];
 		for (const body of bodies) {
@@ -1348,8 +1376,42 @@ async function submitDataTransferTask(token: string): Promise<number | null> {
 	await postTemplate(body, token);
 	const consumption = groups.length + 2;
 	const lastSeq = startSeq + consumption - 1;
+
+	// 数传回填：依据文件号 -> 固存 -> imagingUid -> 任务记录表
+	try {
+		const transferUid = generateImagingUid();
+		const transferName = resolveTransferStation(task);
+		const fileStarts: Array<string | number> = [
+			...(Array.isArray(task.files) ? task.files : []),
+			...(Array.isArray(task.raw?.files) ? task.raw.files : []),
+			...parseStartNosFromMeta(task.meta),
+			...parseStartNosFromMeta(task.raw?.meta),
+		];
+		await syncTransferToTasks("AS02", groups, transferName, t0Iso, transferUid, fileStarts);
+	} catch (err) {
+		console.warn("[one-click-plan] sync transfer info failed", err);
+	}
+
 	ElMessage.success("数传任务提交成功");
 	return lastSeq;
+}
+
+function resolveTransferStation(task: TimelineItem): string {
+	const name =
+		task?.raw?.station ||
+		task?.raw?.stationName ||
+		(task?.antennaId ? TELECONTROL_ANTENNA_MAP.get(String(task.antennaId)) : "") ||
+		"";
+	const trimmed = String(name || "").trim();
+	// transferName 字段后端长度为 50，防止超长
+	return trimmed ? trimmed.slice(0, 48) : "-";
+}
+
+function parseStartNosFromMeta(meta: string | undefined | null): number[] {
+	if (!meta) return [];
+	const matches = String(meta).match(/\d+/g);
+	if (!matches) return [];
+	return matches.map((n) => Number(n)).filter((n) => Number.isFinite(n));
 }
 
 async function submitDeleteTasks(token: string, baseSeq: number | null) {
@@ -1377,6 +1439,93 @@ async function submitDeleteTasks(token: string, baseSeq: number | null) {
 		currentSeq += consumption;
 	}
 	ElMessage.success("固存删除任务提交成功");
+}
+
+async function fetchFixedStorageByStartList(starts: number[]): Promise<any[]> {
+	const api: any = (service as any)?.star?.fixed_storage_table;
+	if (!api?.page) return [];
+	const name = 0; // AS02 载荷
+	const uniq = Array.from(new Set(starts.filter((n) => Number.isFinite(n))));
+	if (!uniq.length) return [];
+	const records: any[] = [];
+	for (const start of uniq) {
+		try {
+			const res = await api.page({ page: 1, size: 5, name, startFileNo: start });
+			const list = res?.list || res?.data?.list || [];
+			if (Array.isArray(list) && list.length) {
+				records.push(...list);
+			}
+		} catch (err) {
+			console.warn("[one-click-plan] fetchFixedStorageByStartList failed", err);
+		}
+	}
+	return records;
+}
+
+async function syncTransferToTasks(
+	satellite: "AS02" | "AS03",
+	groups: Array<{ start: number; end: number; duration: number }>,
+	transferName: string,
+	transferTimeIso: string,
+	transferUid: string,
+	fileStarts: Array<string | number> = []
+) {
+	const svc = satellite === "AS03" ? (service as any)?.task?.as03 : (service as any)?.task?.as02;
+	if (!svc?.page || !svc?.update) return;
+
+	// 汇总候选起始号：显式文件列表 + 分组的 start/end + 连续块推导（步长 8，仅限有 count 的场景）
+	const startSet = new Set<number>();
+	const pushNum = (n: number) => {
+		if (Number.isFinite(n)) startSet.add(Number(n));
+	};
+
+	fileStarts.forEach((v) => pushNum(Number(v)));
+	groups.forEach((g) => {
+		pushNum(Number(g.start));
+		pushNum(Number(g.end));
+		const count = Number(g.count);
+		if (Number.isFinite(count) && count > 1) {
+			const step = 8; // AS02 载荷默认步长
+			for (let i = 1; i < count; i++) {
+				pushNum(Number(g.start) + i * step);
+			}
+		}
+	});
+
+	const storageRows = await fetchFixedStorageByStartList(Array.from(startSet));
+
+	const uidSet = new Set<string>();
+	for (const row of storageRows) {
+		const uid =
+			row?.imagingUid ||
+			row?.imaging_uid ||
+			row?.imagingUID ||
+			row?.__imagingUid ||
+			row?.__imagingUID;
+		if (uid != null && uid !== "") {
+			uidSet.add(String(uid));
+		}
+	}
+
+	if (!uidSet.size) {
+		console.warn("[one-click-plan] 未在固存记录中找到 imagingUid，跳过数传回填");
+		return;
+	}
+
+	for (const uid of uidSet) {
+		const res = await svc.page({ page: 1, size: 20, imagingUID: uid });
+		const list = res?.list || res?.data?.list || [];
+		if (!Array.isArray(list) || !list.length) continue;
+		for (const item of list) {
+			if (!item?.id) continue;
+			await svc.update({
+				id: item.id,
+				transferName,
+				transferTime: transferTimeIso,
+				transferUID: transferUid,
+			});
+		}
+	}
 }
 
 async function submitPlannedTasks() {
@@ -1512,7 +1661,7 @@ async function recordImagingUids() {
 	if (!svc?.page || !svc?.update) return;
 	const imaging = timeline.value.filter((it) => it.type !== "data" && it.type !== "delete");
 	for (const it of imaging) {
-		const uid = generateImagingUid();
+		const uid = ensureImagingUid(it);
 		it.raw = it.raw || {};
 		it.raw.imagingUid = uid;
 	}
@@ -1653,21 +1802,31 @@ function generateImagingUid(): string {
 		const maxSeq = Math.pow(2, UID_SEQUENCE_BITS) - 1;
 		uidSequence = (uidSequence + 1) & maxSeq;
 		if (uidSequence === 0) {
-			while (timestamp === uidLastTimestamp) {
-				timestamp = Date.now() - UID_EPOCH;
-			}
+			timestamp = waitNextMillis(timestamp);
 		}
 	} else {
 		uidSequence = 0;
 	}
 	uidLastTimestamp = timestamp;
-	const tsPart = timestamp % UID_TIMESTAMP_MOD;
-	const id =
-		(BigInt(tsPart) << BigInt(UID_MACHINE_BITS + UID_PID_BITS + UID_SEQUENCE_BITS)) |
-		(BigInt(UID_MACHINE_ID) << BigInt(UID_PID_BITS + UID_SEQUENCE_BITS)) |
-		(BigInt(UID_PID) << BigInt(UID_SEQUENCE_BITS)) |
-		BigInt(uidSequence);
-	return id.toString();
+
+	const timestampPart = padBase36(timestamp % UID_TIMESTAMP_MOD, Math.ceil(UID_TIMESTAMP_BITS / 5));
+	const machinePart = padBase36(UID_MACHINE_ID, Math.ceil(UID_MACHINE_BITS / 5));
+	const pidPart = padBase36(UID_PID, Math.ceil(UID_PID_BITS / 5));
+	const seqPart = padBase36(uidSequence, Math.ceil(UID_SEQUENCE_BITS / 5));
+	return `${timestampPart}${machinePart}${pidPart}${seqPart}`;
+}
+
+function waitNextMillis(current: number): number {
+	let ts = Date.now() - UID_EPOCH;
+	while (ts <= current) {
+		ts = Date.now() - UID_EPOCH;
+	}
+	return ts;
+}
+
+function padBase36(value: number, length: number): string {
+	const text = Math.max(0, value).toString(36);
+	return text.padStart(length, "0").slice(-length);
 }
 </script>
 
