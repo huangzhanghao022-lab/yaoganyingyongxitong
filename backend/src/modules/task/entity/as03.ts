@@ -42,6 +42,10 @@ export class TaskAs03Entity extends BaseEntity {
   @Column({ comment: '数传UID', type: 'text', nullable: true })
   transferUID: string;
 
+  // 数传记录：支持多次数传 [{ name, time, uid }]
+  @Column({ comment: '数传记录', type: 'jsonb', nullable: true })
+  transferRecords: Array<{ name?: string; time?: string; uid?: string }>;
+
   @Column({
     comment: '状态',
     dict: ['待处理', '处理中', '已完成', '失败'],

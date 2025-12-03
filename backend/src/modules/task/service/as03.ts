@@ -35,6 +35,8 @@ export class TaskAs03Service extends BaseService {
       entity.transferTime = parseOptionalDate(item.transferTime);
       entity.imagingUID = String(item.imagingUID ?? defaultSnowflake.nextId());
       entity.transferUID = String(item.transferUID ?? '');
+      const records = normalizeTransferRecords(item.transferRecords, entity.transferName, entity.transferTime, entity.transferUID);
+      entity.transferRecords = records;
       entity.status = Number.isFinite(Number(item.status)) ? Number(item.status) : 0;
       entity.thumbnailUrl = item.thumbnailUrl ?? '';
       entity.orbitElements = serializeOrbitElements(item.orbitElements);
@@ -58,6 +60,7 @@ type ForecastTaskPayload = {
   transferTime?: string;
   imagingUID?: string;
   transferUID?: string;
+  transferRecords?: Array<{ name?: string; time?: string; uid?: string }>;
   thumbnailUrl?: string;
   status?: number;
   orbitElements?: Record<string, any> | string | null;
@@ -90,4 +93,38 @@ function serializeOrbitElements(val: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+function normalizeTransferRecords(
+  records: unknown,
+  transferName: string,
+  transferTime: Date | null,
+  transferUid: string
+): Array<{ name?: string; time?: string; uid?: string }> {
+  const arr: Array<{ name?: string; time?: string; uid?: string }> = Array.isArray(records) ? records as any[] : [];
+  const result = arr
+    .map((r) => ({
+      name: r?.name ? String(r.name) : undefined,
+      time: r?.time ? String(r.time) : undefined,
+      uid: r?.uid ? String(r.uid) : undefined,
+    }))
+    .filter((r) => r.name || r.time || r.uid);
+
+  if (transferName || transferTime || transferUid) {
+    const hasSame =
+      result.find(
+        (r) =>
+          (transferUid && r.uid === String(transferUid)) ||
+          (transferTime && r.time === String(transferTime)) ||
+          (transferName && r.name === String(transferName))
+      ) != null;
+    if (!hasSame) {
+      result.push({
+        name: transferName || undefined,
+        time: transferTime ? transferTime.toISOString() : undefined,
+        uid: transferUid || undefined,
+      });
+    }
+  }
+  return result;
 }
