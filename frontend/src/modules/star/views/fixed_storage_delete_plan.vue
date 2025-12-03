@@ -101,9 +101,11 @@ defineOptions({
 import { useCrud, useTable } from "@cool-vue/crud";
 import { useCool } from "/@/cool";
 import { useI18n } from "vue-i18n";
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { number } from "echarts";
+import { config as appConfig } from "/@/config";
+import { request } from "/@/cool/service/request";
 
 const TOKEN_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token";
 const COMMAND_API_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template";
@@ -121,6 +123,8 @@ const { t } = useI18n();
 
 const currentName = ref(0);
 const selection = ref<any[]>([]);
+const DELETE_PLAN_CACHE_KEY = "fixed_storage_delete_plan_cache_v1";
+const DELETE_PLAN_RELOAD_FLAG = "__fixed_storage_delete_plan_reload_handled";
 
 const isPayload = computed(() => currentName.value === 0 || currentName.value === 2);
 const isPlatform = computed(() => !isPayload.value);
@@ -246,6 +250,67 @@ const taskDialog = reactive({
 	},
 });
 
+function detectPageReload(): boolean {
+	if (typeof window === "undefined" || typeof performance === "undefined") return false;
+	const entries = performance.getEntriesByType?.("navigation") || [];
+	const firstEntry = entries[0] as PerformanceNavigationTiming | undefined;
+	if (firstEntry && typeof firstEntry.type === "string") return firstEntry.type === "reload";
+	const nav = (performance as any).navigation;
+	if (nav?.type != null && nav?.TYPE_RELOAD != null) return nav.type === nav.TYPE_RELOAD;
+	return false;
+}
+
+const isDeletePlanReload = detectPageReload();
+if (isDeletePlanReload && typeof window !== "undefined") {
+	const win = window as any;
+	if (!win[DELETE_PLAN_RELOAD_FLAG]) {
+		try {
+			window.localStorage.removeItem(DELETE_PLAN_CACHE_KEY);
+		} catch (err) {
+			console.warn("[delete-plan] clear cache on reload failed", err);
+		}
+		win[DELETE_PLAN_RELOAD_FLAG] = true;
+	}
+}
+
+function restoreDeletePlanCache() {
+	if (typeof window === "undefined") return;
+	const raw = window.localStorage.getItem(DELETE_PLAN_CACHE_KEY);
+	if (!raw) return;
+	try {
+		const payload = JSON.parse(raw);
+		if (typeof payload?.currentName === "number") currentName.value = payload.currentName;
+		if (payload?.form) {
+			Object.assign(taskDialog.form, payload.form);
+		}
+	} catch (err) {
+		console.warn("[delete-plan] restore cache failed", err);
+	}
+}
+
+function persistDeletePlanCache() {
+	if (typeof window === "undefined") return;
+	const snapshot = {
+		currentName: currentName.value,
+		form: { ...taskDialog.form },
+	};
+	try {
+		window.localStorage.setItem(DELETE_PLAN_CACHE_KEY, JSON.stringify(snapshot));
+	} catch (err) {
+		console.warn("[delete-plan] persist cache failed", err);
+	}
+}
+
+restoreDeletePlanCache();
+
+watch(
+	[currentName, () => taskDialog.form],
+	() => {
+		persistDeletePlanCache();
+	},
+	{ deep: true }
+);
+
 function openTaskDialog() {
 	const sat = currentName.value === 0 || currentName.value === 1 ? "AS02" : "AS03";
 	taskDialog.form.satellite = sat;
@@ -329,6 +394,7 @@ async function createDeleteCommand() {
 	const token = await acquireToken();
 	const body = satellite === "AS03" ? buildDeleteBodyAs03(taskDialog.form) : buildDeleteBodyAs02(taskDialog.form);
 
+	await validateCommandRequest("delete", satellite, body);
 	const resp = await fetch(COMMAND_API_URL, {
 		method: "POST",
 		headers: {
@@ -418,5 +484,25 @@ function isFutureOrNow(time: string) {
 	const ts = new Date(normalized).getTime();
 	if (Number.isNaN(ts)) return false;
 	return ts >= Date.now() - 1000;
+}
+
+async function validateCommandRequest(type: "image" | "transfer" | "delete", satellite: string, params: any) {
+	const payload = { type, satellite, params };
+	const url = `${appConfig.baseUrl}/admin/task/command/validate`;
+	try {
+		const res = await request({
+			url,
+			method: "POST",
+			data: payload,
+			NProgress: false,
+		} as any);
+		const result = (res as any)?.data ?? res;
+		if (result?.ok === false && Array.isArray(result?.errors)) {
+			const msg = result.errors.map((e: any) => `${e.field}: ${e.message}`).join("；");
+			throw new Error(msg || "指令参数校验未通过");
+		}
+	} catch (err: any) {
+		throw new Error(err?.message || "指令参数校验失败");
+	}
 }
 </script>

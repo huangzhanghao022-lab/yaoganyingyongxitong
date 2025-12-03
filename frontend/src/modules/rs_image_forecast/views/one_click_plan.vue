@@ -69,6 +69,8 @@ defineOptions({ name: "one-click-plan" });
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, reactive } from "vue";
 import { ElMessage } from "element-plus";
 import { useCool } from "/@/cool";
+import { config as appConfig } from "/@/config";
+import { request } from "/@/cool/service/request";
 import * as echarts from "echarts/core";
 import { ScatterChart } from "echarts/charts";
 import { TooltipComponent, GridComponent, DataZoomComponent } from "echarts/components";
@@ -155,6 +157,8 @@ const taskSwitches = reactive({
 	transfer: true,
 	delete: true,
 });
+const ONE_CLICK_PLAN_CACHE_KEY = "one_click_plan_cache_v1";
+const ONE_CLICK_PLAN_RELOAD_FLAG = "__one_click_plan_reload_handled";
 const UID_EPOCH = new Date("2025-01-01T00:00:00Z").getTime();
 const UID_TIMESTAMP_BITS = 41;
 const UID_MACHINE_BITS = 10;
@@ -188,12 +192,87 @@ function ensureImagingUid(item: TimelineItem): string {
 const chartRef = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
 
+function detectPageReload(): boolean {
+	if (typeof window === "undefined" || typeof performance === "undefined") return false;
+	const entries = performance.getEntriesByType?.("navigation") || [];
+	const firstEntry = entries[0] as PerformanceNavigationTiming | undefined;
+	if (firstEntry && typeof firstEntry.type === "string") return firstEntry.type === "reload";
+	const nav = (performance as any).navigation;
+	if (nav?.type != null && nav?.TYPE_RELOAD != null) return nav.type === nav.TYPE_RELOAD;
+	return false;
+}
+
+const isOneClickReload = detectPageReload();
+if (isOneClickReload && typeof window !== "undefined") {
+	const win = window as any;
+	if (!win[ONE_CLICK_PLAN_RELOAD_FLAG]) {
+		try {
+			window.localStorage.removeItem(ONE_CLICK_PLAN_CACHE_KEY);
+		} catch (err) {
+			console.warn("[one-click-plan] clear cache on reload failed", err);
+		}
+		win[ONE_CLICK_PLAN_RELOAD_FLAG] = true;
+	}
+}
+
+function restoreOneClickCache() {
+	if (typeof window === "undefined") return;
+	const raw = window.localStorage.getItem(ONE_CLICK_PLAN_CACHE_KEY);
+	if (!raw) return;
+	try {
+		const payload = JSON.parse(raw);
+		if (payload?.form) {
+			form.value = { ...form.value, ...payload.form };
+		}
+		if (payload?.taskSwitches) {
+			Object.assign(taskSwitches, payload.taskSwitches);
+		}
+		if (Array.isArray(payload?.timeline)) {
+			timeline.value = payload.timeline;
+		}
+		if (payload?.orbitElements !== undefined) {
+			orbitElements.value = payload.orbitElements;
+		}
+		if (payload?.submissionSummary !== undefined) {
+			submissionSummary.value = payload.submissionSummary;
+		}
+	} catch (err) {
+		console.warn("[one-click-plan] restore cache failed", err);
+	}
+}
+
+function persistOneClickCache() {
+	if (typeof window === "undefined") return;
+	const payload = {
+		form: form.value,
+		taskSwitches: { ...taskSwitches },
+		timeline: timeline.value,
+		orbitElements: orbitElements.value,
+		submissionSummary: submissionSummary.value,
+	};
+	try {
+		window.localStorage.setItem(ONE_CLICK_PLAN_CACHE_KEY, JSON.stringify(payload));
+	} catch (err) {
+		console.warn("[one-click-plan] persist cache failed", err);
+	}
+}
+
+restoreOneClickCache();
+
 onMounted(() => {
 	if (chartRef.value) {
 		chart = echarts.init(chartRef.value);
 	}
 	updateChart();
 });
+
+watch(
+	[form, taskSwitches, timeline, submissionSummary],
+	() => {
+		persistOneClickCache();
+	},
+	{ deep: true }
+);
 
 onBeforeUnmount(() => {
 	if (chart) {
@@ -1096,7 +1175,8 @@ async function updateFixedStorageSlot(name: number, slot: any, item: TimelineIte
 	await api.update({ name, data: payload });
 }
 
-async function postTemplate(body: Record<string, any>, token: string) {
+async function postTemplate(body: Record<string, any>, token: string, type: "image" | "transfer" | "delete" = "image") {
+	await validateCommandRequest(type, String(body.spacecraftCode || form.value.satellite || ""), body);
 	const resp = await fetch(TRANSFER_API_URL, {
 		method: "POST",
 		headers: {
@@ -1108,6 +1188,26 @@ async function postTemplate(body: Record<string, any>, token: string) {
 	if (!resp.ok) {
 		const txt = await resp.text();
 		throw new Error(txt || `HTTP ${resp.status}`);
+	}
+}
+
+async function validateCommandRequest(type: "image" | "transfer" | "delete", satellite: string, params: any) {
+	const payload = { type, satellite, params };
+	const url = `${appConfig.baseUrl}/admin/task/command/validate`;
+	try {
+		const res = await request({
+			url,
+			method: "POST",
+			data: payload,
+			NProgress: false,
+		} as any);
+		const result = (res as any)?.data ?? res;
+		if (result?.ok === false && Array.isArray(result?.errors)) {
+			const msg = result.errors.map((e: any) => `${e.field}: ${e.message}`).join("；");
+			throw new Error(msg || "指令参数校验未通过");
+		}
+	} catch (err: any) {
+		throw new Error(err?.message || "指令参数校验失败");
 	}
 }
 
@@ -1191,7 +1291,7 @@ function buildTransferGroups(pending: PendingFile[]) {
 }
 
 function buildTransferBody(
-	groups: Array<{ start: number; end: number; duration: number }>,
+	groups: Array<{ start: number; end: number; duration: number; count?: number }>,
 	geo: any,
 	t0Iso: string,
 	startSeq: number
@@ -1374,7 +1474,7 @@ async function submitDataTransferTask(token: string): Promise<number | null> {
 	const geo = await resolveAntennaGeoById(task.antennaId, token);
 	const startSeq = 3;
 	const body = buildTransferBody(groups, geo, t0Iso, startSeq);
-	await postTemplate(body, token);
+	await postTemplate(body, token, "transfer");
 	const consumption = groups.length + 2;
 	const lastSeq = startSeq + consumption - 1;
 
@@ -1434,7 +1534,7 @@ async function submitDeleteTasks(token: string, baseSeq: number | null) {
 			throw new Error("删除任务开始时间无效");
 		}
 		const body = buildDeleteBody({ start: deleteStart, end: deleteEnd }, startIso, currentSeq);
-		await postTemplate(body, token);
+		await postTemplate(body, token, "delete");
 		const fileCount = Number(task.raw?.count ?? task.deleteFiles?.length ?? 1);
 		const consumption = 3 + (Number.isFinite(fileCount) ? fileCount : 1);
 		currentSeq += consumption;
@@ -1465,7 +1565,7 @@ async function fetchFixedStorageByStartList(starts: number[]): Promise<any[]> {
 
 async function syncTransferToTasks(
 	satellite: "AS02" | "AS03",
-	groups: Array<{ start: number; end: number; duration: number }>,
+	groups: Array<{ start: number; end: number; duration: number; count?: number }>,
 	transferName: string,
 	transferTimeIso: string,
 	transferUid: string,
@@ -1484,7 +1584,7 @@ async function syncTransferToTasks(
 	groups.forEach((g) => {
 		pushNum(Number(g.start));
 		pushNum(Number(g.end));
-		const count = Number(g.count);
+		const count = Number((g as any)?.count);
 		if (Number.isFinite(count) && count > 1) {
 			const step = 8; // AS02 载荷默认步长
 			for (let i = 1; i < count; i++) {
@@ -1573,19 +1673,20 @@ function buildSubmissionSummaryText(): string {
 	if (imaging.length) {
 		imaging.forEach((it, idx) => {
 			const monthDay = formatMonthDay(it.startTs);
-			const priority = formatNumberText(it.raw?.priority ?? it.priority, 0, "1");
+			const priorityText = formatNumberText(it.raw?.priority ?? it.priority, 0);
+			const priority = priorityText && priorityText !== "--" ? priorityText : "1";
 			const scanMode = "直通"; // AS02 默认直通
 			const cameraState = "双相机";
-			const lon = formatNumberText(
+			const lonText = formatNumberText(
 				it.raw?.long ?? it.raw?.longitude ?? it.raw?.lon ?? it.raw?.area_lon ?? it.raw?.areaLon,
-				4,
-				"-"
+				4
 			);
-			const lat = formatNumberText(
+			const lon = lonText && lonText !== "--" ? lonText : "-";
+			const latText = formatNumberText(
 				it.raw?.lat ?? it.raw?.latitude ?? it.raw?.area_lat ?? it.raw?.areaLat,
-				4,
-				"-"
+				4
 			);
+			const lat = latText && latText !== "--" ? latText : "-";
 			const cloud = formatPercentText(it.raw?.cloud ?? it.cloud);
 			const roll = it.rollText ?? "-";
 			const sun = it.solarText ?? "-";
@@ -1593,11 +1694,11 @@ function buildSubmissionSummaryText(): string {
 			const slot = it.storageSlot || "-";
 			const satellite = String(it.raw?.satellite || form.value.satellite || "").toUpperCase();
 			if (satellite === "AS03") {
-				const alt = formatNumberText(
+				const altText = formatNumberText(
 					it.raw?.alt ?? it.raw?.altitude ?? it.raw?.area_alt ?? it.raw?.areaAlt ?? 0,
-					0,
-					"0"
+					0
 				);
+				const alt = altText && altText !== "--" ? altText : "0";
 				const tf = formatDisplay(new Date(it.endTs ?? it.startTs));
 				const imageKind = "推扫成像";
 				const fileRef = slot ? `记录文件号${slot}。` : "记录文件号未知。";
@@ -1635,8 +1736,8 @@ function buildSubmissionSummaryText(): string {
 				? dataTask.raw.groups.map((g: any) => `${g.start}-${g.end}`).join("，")
 				: dataTask.files?.join(",") || "-";
 		const station =
-			form.stationName ||
-			form.station ||
+			(form.value as any).stationName ||
+			(form.value as any).station ||
 			(dataTask.antennaId ? TELECONTROL_ANTENNA_MAP.get(String(dataTask.antennaId)) : "-") ||
 			"-";
 		lines.push(

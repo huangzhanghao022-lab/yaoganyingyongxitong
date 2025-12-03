@@ -2885,6 +2885,25 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface TaskCommand {
+		/**
+		 * validate
+		 */
+		validate(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: { validate: string };
+
+		/**
+		 * 权限状态
+		 */
+		_permission: { validate: boolean };
+
+		request: Service["request"];
+	}
+
 	interface TaskAs02 {
 		/**
 		 * createFromForecast
@@ -3202,7 +3221,7 @@ declare namespace Eps {
 		rs_poi: { poi: Rs_poiPoi };
 		space: { info: SpaceInfo; type: SpaceType };
 		star: { fixed_storage_table: StarFixed_storage_table; history_excel: StarHistory_excel };
-		task: { as02: TaskAs02; as03: TaskAs03 };
+		task: { command: TaskCommand; as02: TaskAs02; as03: TaskAs03 };
 		user: { address: UserAddress; info: UserInfo };
 	};
 

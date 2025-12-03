@@ -16,6 +16,15 @@
 			>
 			
 			<el-button type="primary" @click="importExcel">Excel导入</el-button>
+			<el-divider direction="vertical" />
+			<div class="sat-filter">
+				<span class="sat-filter__label">{{ t('卫星筛选') }}：</span>
+				<el-radio-group v-model="filterSat" size="small" @change="onFilterSatChange">
+					<el-radio-button label="">{{ t('全部') }}</el-radio-button>
+					<el-radio-button label="0">AS02</el-radio-button>
+					<el-radio-button label="1">AS03</el-radio-button>
+				</el-radio-group>
+			</div>
 			<cl-flex1 />
 			<!-- 条件搜索 -->
 			<cl-search ref="Search">
@@ -97,6 +106,7 @@ const { t } = useI18n();
 const dialogVisible = ref(false);
 const selectedSatellites = ref<number[]>([]);
 const upsertLoading = ref(false);
+const filterSat = ref<string>("");
 
 // 选项
 const options = reactive({
@@ -350,6 +360,30 @@ const Crud = useCrud(
 
 // 刷新
 function refresh(params?: any) {
-	Crud.value?.refresh(params);
+	const extra =
+		filterSat.value !== ""
+			? { satellites: filterSat.value }
+			: { satellites: undefined };
+	Crud.value?.refresh({ ...(params || {}), ...extra });
+}
+
+function onFilterSatChange() {
+	refresh({ reset: true, satellites: filterSat.value || undefined });
 }
 </script>
+<style scoped>
+.sat-filter {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 10px;
+	border: 1px solid var(--el-border-color-light, #ebeef5);
+	border-radius: 8px;
+	background: var(--el-fill-color-light, #f5f7fa);
+}
+
+.sat-filter__label {
+	color: var(--el-text-color-secondary);
+	font-size: 13px;
+}
+</style>

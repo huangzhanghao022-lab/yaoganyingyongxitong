@@ -28,16 +28,18 @@
           <el-date-picker v-model="form.endAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" :clearable="true" placeholder="选择结束时间" />
         </el-form-item>
 
-        <el-form-item label="时长(秒)">
+        <el-form-item v-if="form.satellite === 'AS03'" label="时长(秒)">
           <el-input-number v-model="form.imageTime" :min="1" :step="1" />
         </el-form-item>
 
         <el-form-item label="成像模式">
           <el-select v-model="form.pushKind" placeholder="选择模式" style="width: 130px">
-            <el-option label="直通" value="0" />
-            <el-option label="压缩" value="1" />
-            <el-option label="推扫" value="2" />
-            <el-option label="凝视" value="3" />
+            <el-option
+              v-for="opt in pushKindOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
           </el-select>
         </el-form-item>
 
@@ -267,8 +269,22 @@ defineOptions({ name: 'rs-image-forecast-forecast' });
 import { reactive, ref, watch, computed, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useCool } from '/@/cool';
+import { config as appConfig } from '/@/config';
+import { request } from '/@/cool/service/request';
 
 const { service } = useCool();
+const pushKindOptions = computed(() => {
+  if (form.satellite === 'AS03') {
+    return [
+      { label: '推扫', value: '2' },
+      { label: '凝视', value: '3' },
+    ];
+  }
+  return [
+    { label: '直通', value: '0' },
+    { label: '压缩', value: '1' },
+  ];
+});
 
 const priorityCache = new Map<string, string>();
 const priorityFetchMap = new Map<string, Promise<string | undefined>>();
@@ -1189,6 +1205,18 @@ watch(
   { immediate: true }
 );
 
+// 成像模式变化时按卫星调整时长
+watch(
+  () => form.pushKind,
+  (mode) => {
+    if (isForecastRestoring) return;
+    if (form.satellite === 'AS02') {
+      form.imageTime = mode === '1' ? 30 : 10;
+    }
+    // AS03 保持用户可编辑，默认在切换卫星时已设置 30
+  }
+);
+
 // 卫星切换后，重置缓存并刷新当前选取方式的数据
 watch(
   () => form.satellite,
@@ -1737,6 +1765,7 @@ async function createWithTemplate() {
         fileStart: String(startFileNoMap[i] ?? ''),
       } as any;
 
+      await validateCommandRequest('image', String(body.spacecraftCode || 'AS02'), body);
       const resp = await fetch('http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template', {
         method: 'POST',
         headers: {
@@ -1958,6 +1987,7 @@ async function createWithTemplateAS03() {
       let rowSuccess = true;
       for (const body of bodies) {
         total += 1;
+        await validateCommandRequest('image', String(body.spacecraftCode || 'AS03'), body);
         const resp = await fetch('http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template', {
           method: 'POST',
           headers: {
@@ -2299,6 +2329,30 @@ function parseCloud(v: any): number | undefined {
 function normalizeDecimal(value: unknown, fallback: number): number {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
+}
+
+async function validateCommandRequest(
+  type: 'image' | 'transfer' | 'delete',
+  satellite: string,
+  params: any
+): Promise<void> {
+  const payload = { type, satellite, params };
+  const url = `${appConfig.baseUrl}/admin/task/command/validate`;
+  try {
+    const res = await request({
+      url,
+      method: 'POST',
+      data: payload,
+      NProgress: false,
+    } as any);
+    const result = (res as any)?.data ?? res;
+    if (result?.ok === false && Array.isArray(result?.errors)) {
+      const msg = result.errors.map((e: any) => `${e.field}: ${e.message}`).join('；');
+      throw new Error(msg || '指令参数校验未通过');
+    }
+  } catch (err: any) {
+    throw new Error(err?.message || '指令参数校验失败');
+  }
 }
 </script>
 

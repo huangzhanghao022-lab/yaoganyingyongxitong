@@ -183,8 +183,8 @@
 				<el-tab-pane label="载荷固存表" name="payload">
 					<el-table
 						:data="storageDialog.payload"
-						border
-						height="280"
+						:border="true"
+						:height="280"
 						style="width: 100%"
 						@selection-change="rows => (storageDialog.selectedPayload = rows)"
 					>
@@ -211,8 +211,8 @@
 				<el-tab-pane label="平台固存表" name="platform">
 					<el-table
 						:data="storageDialog.platform"
-						border
-						height="280"
+						:border="true"
+						:height="280"
 						style="width: 100%"
 						@selection-change="rows => (storageDialog.selectedPlatform = rows)"
 					>
@@ -264,6 +264,8 @@ import { ElMessage } from "element-plus";
 import { View } from "@element-plus/icons-vue";
 import axios from "axios";
 import { useCool } from "/@/cool";
+import { config as appConfig } from "/@/config";
+import { request } from "/@/cool/service/request";
 
 const { service } = useCool();
 const { t } = useI18n();
@@ -1281,6 +1283,30 @@ function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 	return body;
 }
 
+async function validateCommandRequest(
+	type: 'image' | 'transfer' | 'delete',
+	satellite: string,
+	params: any
+): Promise<void> {
+	const payload = { type, satellite, params };
+	const url = `${appConfig.baseUrl}/admin/task/command/validate`;
+	try {
+		const res = await request({
+			url,
+			method: 'POST',
+			data: payload,
+			NProgress: false,
+		} as any);
+		const result = (res as any)?.data ?? res;
+		if (result?.ok === false && Array.isArray(result?.errors)) {
+			const msg = result.errors.map((e: any) => `${e.field}: ${e.message}`).join('；');
+			throw new Error(msg || '指令参数校验未通过');
+		}
+	} catch (err: any) {
+		throw new Error(err?.message || '指令参数校验失败');
+	}
+}
+
 async function submitTransferTask() {
 	const satellite = form.satellite;
 	resetTransferNotice();
@@ -1312,6 +1338,7 @@ async function submitTransferTask() {
 		const token = await acquireToken();
 		const body = buildTransferBody(integratedGroups.value);
 		console.log('[transfer-plan] submit payload:', body);
+		await validateCommandRequest('transfer', satellite, body);
 		const resp = await fetch(TRANSFER_API_URL, {
 			method: 'POST',
 			headers: {
