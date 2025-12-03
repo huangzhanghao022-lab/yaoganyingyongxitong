@@ -35,16 +35,21 @@
 					<el-descriptions-item :label="t('云量')">{{ detailDialog.data?.cloudCoverage ?? '-' }}</el-descriptions-item>
 					<el-descriptions-item :label="t('太阳高度角')">{{ detailDialog.data?.sunElevation ?? '-' }}</el-descriptions-item>
 					<el-descriptions-item :label="t('成像时间')">{{ detailDialog.data?.imagingTime ?? '-' }}</el-descriptions-item>
-					<el-descriptions-item :label="t('数传站')">{{ detailDialog.data?.transferName ?? '-' }}</el-descriptions-item>
 					<el-descriptions-item :label="t('成像UID')">{{ detailDialog.data?.imagingUID ?? '-' }}</el-descriptions-item>
-					<el-descriptions-item :label="t('数传时间')">{{ detailDialog.data?.transferTime ?? '-' }}</el-descriptions-item>
 					<el-descriptions-item :label="t('状态')">{{ getStatusLabel(detailDialog.data?.status) }}</el-descriptions-item>
-					<el-descriptions-item :label="t('数传UID')">
+					<el-descriptions-item :label="t('数传记录')" :span="2">
 						<template #default>
-							<div v-if="detailTransferUidList.length" class="uid-flex-column">
-								<el-tag v-for="uid in detailTransferUidList" :key="uid" size="small" class="uid-tag">
-									{{ uid }}
-								</el-tag>
+							<div v-if="detailTransferRecords.length" class="transfer-records">
+								<div
+									v-for="(rec, idx) in detailTransferRecords"
+									:key="idx"
+									class="transfer-record"
+									:style="{ borderLeft: '4px solid ' + recordColor(idx) }"
+								>
+									<el-input size="small" v-model="rec.name" readonly class="record-input" />
+									<el-input size="small" v-model="rec.timeDisplay" readonly class="record-input" />
+									<el-input size="small" v-model="rec.uid" readonly class="record-input" />
+								</div>
 							</div>
 							<span v-else>-</span>
 						</template>
@@ -92,6 +97,8 @@ import { computed, reactive, watch } from 'vue';
 
 const { service } = useCool();
 const { t } = useI18n();
+
+const recordColors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399', '#8e44ad'];
 
 const options = reactive({
 	status: [
@@ -203,41 +210,24 @@ const Upsert = useUpsert({
 			required: false,
 		},
 		{
-			label: t('数传站'),
-			prop: 'transferName',
-			component: { name: 'el-input', props: { clearable: true } },
-			span: 12,
-			required: false,
-		},
-		{
-			label: t('数传时间'),
-			prop: 'transferTime',
+			label: t('数传记录'),
+			prop: 'transferRecords',
 			component: {
-				name: 'el-date-picker',
-				props: { type: 'datetime', valueFormat: 'YYYY-MM-DD HH:mm:ss' },
+				name: 'el-input',
+				props: {
+					type: 'textarea',
+					clearable: true,
+					autosize: { minRows: 3, maxRows: 8 },
+					placeholder: t('JSON 数组，例如 [{\"name\":\"站\",\"time\":\"2025-01-01T00:00:00Z\",\"uid\":\"...\"}]'),
+				},
 			},
-			span: 12,
+			span: 24,
 			required: false,
 		},
 		{
 			label: t('成像UID'),
 			prop: 'imagingUID',
 			component: { name: 'el-input', props: { clearable: true } },
-			span: 12,
-			required: false,
-		},
-		{
-			label: t('数传UID'),
-			prop: 'transferUID',
-			component: {
-				name: 'el-input',
-				props: {
-					type: 'textarea',
-					clearable: true,
-					autosize: { minRows: 2, maxRows: 6 },
-					placeholder: t('可输入多个 UID，使用逗号、空格或换行分隔'),
-				},
-			},
 			span: 12,
 			required: false,
 		},
@@ -286,15 +276,11 @@ const Table = useTable({
 			component: { name: 'cl-date-text' },
 		},
 		{
-			label: t('数传站'),
-			prop: 'transferName',
-			minWidth: 140,
-		},
-		{
-			label: t('数传时间'),
-			prop: 'transferTime',
-			minWidth: 170,
-			component: { name: 'cl-date-text' },
+			label: t('数传记录'),
+			prop: 'transferRecords',
+			minWidth: 240,
+			formatter: (row: any) => formatTransferRecordsCell(row, true),
+			className: 'transfer-record-col',
 		},
 		{
 			label: t('状态'),
@@ -328,19 +314,9 @@ const Search = useSearch({
 			component: { name: 'el-input', props: { clearable: true, placeholder: t('支持模糊匹配') } },
 		},
 		{
-			label: t('数传站'),
-			prop: 'transferName',
-			component: { name: 'el-input', props: { clearable: true } },
-		},
-		{
 			label: t('成像UID'),
 			prop: 'imagingUID',
 			component: { name: 'el-input', props: { clearable: true } },
-		},
-		{
-			label: t('数传UID'),
-			prop: 'transferUID',
-			component: { name: 'el-input', props: { clearable: true, placeholder: t('支持部分匹配') } },
 		},
 		{
 			label: t('状态'),
@@ -365,7 +341,7 @@ const detailDialog = reactive({
 	data: {} as Record<string, any>,
 });
 
-const detailTransferUidList = computed(() => splitTransferUid(detailDialog.data?.transferUID));
+const detailTransferRecords = computed(() => parseTransferRecords(detailDialog.data?.transferRecords));
 const detailOrbitRows = computed(() => parseOrbitElements(detailDialog.data?.orbitElements));
 
 watch(
@@ -405,13 +381,31 @@ function getStatusLabel(value: unknown): string {
 	return '-';
 }
 
-function splitTransferUid(value: unknown): string[] {
-	if (value == null) return [];
-	const raw = String(value);
-	return raw
-		.split(/[\s,，；;]+/)
-		.map(item => item.trim())
-		.filter(Boolean);
+function parseTransferRecords(value: unknown): Array<{ name: string; time: string; uid: string; timeDisplay: string }> {
+	if (!value) return [];
+	let arr: any = [];
+	if (typeof value === 'string') {
+		try {
+			arr = JSON.parse(value);
+		} catch {
+			arr = [];
+		}
+	} else if (Array.isArray(value)) {
+		arr = value;
+	} else if (typeof value === 'object') {
+		arr = (value as any) ?? [];
+	}
+	return (Array.isArray(arr) ? arr : [])
+		.map(item => {
+			const time = item?.time ? String(item.time) : '';
+			return {
+				name: item?.name ? String(item.name) : '',
+				time,
+				uid: item?.uid ? String(item.uid) : '',
+				timeDisplay: time ? formatBeijingTime(time) : '',
+			};
+		})
+		.filter(item => item.name || item.time || item.uid);
 }
 
 function parseOrbitElements(value: unknown): Array<{ label: string; value: string }> {
@@ -463,6 +457,33 @@ function formatOrbitElementsForForm(value: unknown): string {
 	}
 	return String(value);
 }
+
+function formatTransferRecordsCell(row: any, multiline = false): string {
+	const records = parseTransferRecords(row?.transferRecords);
+	if (!records.length) return '-';
+	const sep = multiline ? '\n' : '; ';
+	return records
+		.map(rec => [rec.name || '-', rec.timeDisplay || '-'].join(' | '))
+		.join(sep);
+}
+
+function formatBeijingTime(value: string): string {
+	if (!value) return '';
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return value;
+	const pad = (n: number) => String(n).padStart(2, '0');
+	const y = date.getFullYear();
+	const m = pad(date.getMonth() + 1);
+	const d = pad(date.getDate());
+	const hh = pad(date.getHours());
+	const mm = pad(date.getMinutes());
+	const ss = pad(date.getSeconds());
+	return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+}
+
+function recordColor(idx: number): string {
+	return recordColors[idx % recordColors.length];
+}
 </script>
 
 <style scoped>
@@ -494,5 +515,25 @@ function formatOrbitElementsForForm(value: unknown): string {
 
 .orbit-value {
 	color: var(--el-text-color-primary);
+}
+
+.transfer-records {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.transfer-record {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.record-input {
+	width: 100%;
+}
+
+:deep(.transfer-record-col .cell) {
+	white-space: pre-line;
 }
 </style>

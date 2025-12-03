@@ -1367,6 +1367,7 @@ async function submitDataTransferTask(token: string): Promise<number | null> {
 		throw new Error("待数传文件不足或分组失败");
 	}
 	const t0Iso = toIsoString(task.startTs || task.teleBegin || Date.now());
+	const t0Beijing = formatBeijingTime(task.startTs || task.teleBegin || Date.now());
 	if (!t0Iso) {
 		throw new Error("数传开始时间无效");
 	}
@@ -1518,11 +1519,14 @@ async function syncTransferToTasks(
 		if (!Array.isArray(list) || !list.length) continue;
 		for (const item of list) {
 			if (!item?.id) continue;
+			const records = Array.isArray(item.transferRecords) ? [...item.transferRecords] : [];
+			records.push({ name: transferName, time: transferTimeIso, uid: transferUid });
 			await svc.update({
 				id: item.id,
 				transferName,
 				transferTime: transferTimeIso,
 				transferUID: transferUid,
+				transferRecords: records,
 			});
 		}
 	}

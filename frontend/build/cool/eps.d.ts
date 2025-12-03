@@ -1234,6 +1234,11 @@ declare namespace Eps {
 		transferUID?: string;
 
 		/**
+		 * 数传记录
+		 */
+		transferRecords?: jsonb;
+
+		/**
 		 * 状态
 		 */
 		status?: number;
@@ -1329,6 +1334,11 @@ declare namespace Eps {
 		 * 数传UID
 		 */
 		transferUID?: string;
+
+		/**
+		 * 数传记录
+		 */
+		transferRecords?: jsonb;
 
 		/**
 		 * 状态

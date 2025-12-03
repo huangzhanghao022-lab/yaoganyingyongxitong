@@ -773,6 +773,20 @@ function formatTransferTimeDisplay(value: unknown): string {
 	return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
+function formatBeijingTimeString(value: unknown): string {
+	if (!value) return '';
+	const normalized = String(value).replace('T', ' ');
+	const date = new Date(normalized);
+	if (Number.isNaN(date.getTime())) return '';
+	const yyyy = date.getFullYear();
+	const mm = String(date.getMonth() + 1).padStart(2, '0');
+	const dd = String(date.getDate()).padStart(2, '0');
+	const hh = String(date.getHours()).padStart(2, '0');
+	const mi = String(date.getMinutes()).padStart(2, '0');
+	const ss = String(date.getSeconds()).padStart(2, '0');
+	return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+}
+
 function resetTransferNotice() {
 	transferNotice.visible = false;
 	transferNotice.type = 'info';
@@ -1112,11 +1126,14 @@ async function updateTaskTransferRecords(
 		if (!Array.isArray(list) || !list.length) continue;
 		for (const item of list) {
 			if (!item?.id) continue;
+			const records = Array.isArray(item.transferRecords) ? [...item.transferRecords] : [];
+			records.push({ name: transferName, time: transferTime, uid: transferUid });
 			await svc.update({
 				id: item.id,
 				transferName,
 				transferTime,
 				transferUID: transferUid,
+				transferRecords: records,
 			});
 		}
 	}
@@ -1129,8 +1146,8 @@ async function syncTransferAfterSubmit(satellite: string): Promise<string | null
 	}
 	const transferUid = await generateTransferUid(satellite);
 	const transferName = form.stationName || form.station || "";
-	const transferTimeIso = toIsoString(form.transferT0) || new Date().toISOString();
-	await updateTaskTransferRecords(satellite, rows, transferName, transferTimeIso, transferUid);
+	const transferTimeLocal = formatBeijingTimeString(form.transferT0) || formatBeijingTimeString(new Date());
+	await updateTaskTransferRecords(satellite, rows, transferName, transferTimeLocal, transferUid);
 	await updateFixedStorageStatus(rows, satellite, STORAGE_STATUS_TRANSFER_SCHEDULED);
 	applyLocalStorageStatus(rows, STORAGE_STATUS_TRANSFER_SCHEDULED);
 	return transferUid;
@@ -1307,7 +1324,7 @@ async function submitTransferTask() {
 			const errText = await resp.text();
 			throw new Error(errText || `HTTP ${resp.status}`);
 		}
-		const transferUid = await syncTransferAfterSubmit(satellite);
+	const transferUid = await syncTransferAfterSubmit(satellite);
 		const summary = buildTransferSummary([...integratedGroups.value], satellite);
 		if (transferUid) {
 			ElMessage.success(`数传任务提交成功，流程UID：${transferUid}`);
