@@ -65,9 +65,18 @@ export class CommandValidateService {
       this.ensureFileStart(p.fileStart, 'fileStart', errors);
       await this.ensureAs02SlotEmpty(p.fileStart, errors);
     } else {
-      this.ensureBoolean(p.reset_seq, 'reset_seq', errors);
+      // AS03 三条模板拆开发送：第一条需 reset_seq，其他可不传；共通 start_seq 必填
+      const tplId = String(p.templateId || p.template_id || '');
+      const isFirst = tplId.includes('673c2d9049b1f446adc4623c');
+      const isSecond = tplId.includes('673c2d8f49b1f446adc46230');
+      const isThird = tplId.includes('673c2d9049b1f446adc4623f');
+
+      if (isFirst) {
+        this.ensureBoolean(p.reset_seq, 'reset_seq', errors);
+      }
       this.ensureIntRange(p.start_seq, 3, Infinity, 'start_seq', errors);
-      // AS03 三条模板分开提交，t0/tf/side_swipe_angle 可能分布在不同 body：有值才校验，无值不报错
+
+      // t0/tf 仅在提供时校验未来时间，且若同时存在要求 tf>t0
       if (start !== null) {
         this.ensureFuture(start, now, 't0', errors);
       }
@@ -75,8 +84,8 @@ export class CommandValidateService {
         this.ensureFuture(end, now, 'tf', errors);
       }
       if (start && end && end <= start) errors.push({ field: 'tf', message: 'tf 必须晚于 t0' });
-      const isThirdTemplate = String(p.templateId || p.template_id || '').includes('673c2d9049b1f446adc4623f');
-      if (isThirdTemplate) {
+
+      if (isThird) {
         // 第三条模板必须提供侧摆角
         this.ensureAngle(p.side_swipe_angle, 'side_swipe_angle', errors);
       } else if (p.side_swipe_angle != null && p.side_swipe_angle !== '') {
@@ -94,9 +103,9 @@ export class CommandValidateService {
     this.ensureBoolean(p.reset_seq, 'reset_seq', errors);
     this.ensureFuture(t0, now, 't0', errors);
     this.ensureIntRange(p.duration, 0, durationLimit, 'duration', errors, true);
-    this.ensureInt(p.long, 'long', errors);
-    this.ensureInt(p.lat, 'lat', errors);
-    this.ensureInt(p.alt, 'alt', errors);
+    this.ensureNumber(p.long, 'long', errors);
+    this.ensureNumber(p.lat, 'lat', errors);
+    this.ensureNumber(p.alt, 'alt', errors);
 
     if (sat === 'AS02') {
       // trans_type0-8, trans_time1-9
@@ -121,15 +130,24 @@ export class CommandValidateService {
         const eVal = p[ek];
         const mVal = p[mk];
         const tVal = p[tk];
-        if (sVal !== undefined) this.ensureIntRange(sVal, 0, 127, sk, errors, true);
-        if (eVal !== undefined) {
+        const filled = sVal !== undefined && sVal !== '' && eVal !== undefined && eVal !== '';
+        if (sVal !== undefined && sVal !== '') this.ensureIntRange(sVal, 0, 127, sk, errors, true);
+        if (eVal !== undefined && eVal !== '') {
           this.ensureIntRange(eVal, 0, 127, ek, errors, true);
           if (this.isInt(sVal) && this.isInt(eVal) && Number(eVal) <= Number(sVal)) {
             errors.push({ field: ek, message: `${ek} 必须大于 ${sk}` });
           }
         }
-        if (mVal !== undefined) this.ensureIntEnum(mVal, [0, 1], mk, errors);
-        if (tVal !== undefined) this.ensureInt(tVal, tk, errors);
+        if (filled && mVal === undefined) {
+          errors.push({ field: mk, message: `${mk} 不能为空` });
+        } else if (mVal !== undefined && mVal !== '') {
+          this.ensureIntEnum(mVal, [0, 1], mk, errors);
+        }
+        if (filled && tVal === undefined) {
+          errors.push({ field: tk, message: `${tk} 不能为空` });
+        } else if (tVal !== undefined && tVal !== '') {
+          this.ensureInt(tVal, tk, errors);
+        }
       }
     }
   }
@@ -242,6 +260,10 @@ export class CommandValidateService {
   }
 
   private ensureInt(val: any, field: string, errors: Array<{ field: string; message: string }>) {
+    if (this.containsAlpha(val)) {
+      errors.push({ field, message: `${field} 不可包含字母` });
+      return;
+    }
     const num = Number(val);
     if (!Number.isInteger(num)) {
       errors.push({ field, message: `${field} 必须为整数` });
@@ -250,6 +272,10 @@ export class CommandValidateService {
 
   private ensureIntRange(val: any, min: number, max: number, field: string, errors: Array<{ field: string; message: string }>, allowEmpty = false) {
     if ((val === undefined || val === '' || val === null) && allowEmpty) return;
+    if (this.containsAlpha(val)) {
+      errors.push({ field, message: `${field} 不可包含字母` });
+      return;
+    }
     const num = Number(val);
     if (!Number.isInteger(num)) {
       errors.push({ field, message: `${field} 必须为整数` });
@@ -292,5 +318,20 @@ export class CommandValidateService {
 
   private isInt(val: any): boolean {
     return Number.isInteger(Number(val));
+  }
+
+  private containsAlpha(val: any): boolean {
+    return typeof val === 'string' && /[A-Za-z]/.test(val);
+  }
+
+  private ensureNumber(val: any, field: string, errors: Array<{ field: string; message: string }>) {
+    if (this.containsAlpha(val)) {
+      errors.push({ field, message: `${field} 不可包含字母` });
+      return;
+    }
+    const num = Number(val);
+    if (!Number.isFinite(num)) {
+      errors.push({ field, message: `${field} 必须为数值` });
+    }
   }
 }
