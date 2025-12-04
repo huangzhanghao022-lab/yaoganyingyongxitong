@@ -1414,7 +1414,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		const imagingUid = ensureImagingUid(item);
 		// AS03 绝对延时指令号：首个任务从 3 开始，每个任务占用 56 个序号，第二个任务起始 59
 		const baseSeq = 3 + i * 56;
-		const resetSeq = i === 0 ? "1" : "0";
+		const resetSeq = i === 0;
 		const bodies = [
 			{
 				spacecraftCode: "AS03",
