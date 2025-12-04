@@ -19,7 +19,14 @@
 							<el-option label="AS03" value="AS03" />
 						</el-select>
 						<el-button type="primary" :loading="loading" @click="runOneClickPlan">一键规划</el-button>
-						<el-button type="success" :loading="submitting" :disabled="!timeline.length" @click="submitPlannedTasks">提交规划</el-button>
+						<el-button
+							type="success"
+							:loading="submitting"
+							:disabled="!timeline.length"
+							@click="openSubmitSummaryDialog"
+						>
+							提交规划
+						</el-button>
 					</el-space>
 				</div>
 			</template>
@@ -27,21 +34,86 @@
 			<div class="plan-range">
 				<span>规划时间窗：</span>
 				<el-tag type="info" effect="plain">{{ rangeText }}</el-tag>
-				<el-tag type="warning" effect="plain">自动筛选云量 &lt; 10% 且任务间隔 &gt; 1.5h</el-tag>
+				<el-tag type="warning" effect="plain">
+					任务间隔 &gt;
+					{{ form.satellite === "AS03" ? "2.5h" : "1.5h" }}
+				</el-tag>
 			</div>
 			<el-space :size="12" style="margin-top: 8px; flex-wrap: wrap;">
 				<el-checkbox v-model="taskSwitches.imaging">规划成像</el-checkbox>
 				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.transfer">规划数传</el-checkbox>
 				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.delete">规划固存删除</el-checkbox>
 			</el-space>
+			<br />
+			<el-space :size="12" style="margin-top: 8px; flex-wrap: wrap;">
+				<el-space align="center">
+					<span class="field-label">是否重新加载表：</span>
+					<el-checkbox v-model="reloadTableFlag">重新加载表</el-checkbox>
+				</el-space>
+				
+				<el-space align="center">
+					<span class="field-label">绝对延时起始号：</span>
+					<el-input-number
+						v-model="absStartSeq"
+						:min="1"
+						:max="400"
+						:step="1"
+						controls-position="right"
+						style="width: 150px"
+					/>
+				</el-space>
 
-			<el-alert
-				v-if="!timeline.length"
-				title="点击“一键规划”后，将自动生成次日的成像/数传/固存删除任务并展示时间轴"
-				type="info"
-				show-icon
-				:closable="false"
-			/>
+				<el-space align="center">
+					<span class="field-label">成像任务数量：</span>
+					<el-input-number
+						v-model="imagingTaskCount"
+						:min="1"
+						:max="8"
+						:step="1"
+						controls-position="right"
+						style="width: 150px"
+					/>
+				</el-space>
+
+				<el-space v-if="form.satellite === 'AS02'" align="center">
+					<span class="field-label">数传任务数量：</span>
+					<el-input-number
+						v-model="transferTaskCount"
+						:min="1"
+						:max="9"
+						:step="1"
+						controls-position="right"
+						style="width: 150px"
+					/>
+				</el-space>
+
+				<el-space align="center">
+					<span class="field-label">云量上限(%)：</span>
+					<el-input-number
+						v-model="cloudLimit"
+						:min="0"
+						:max="100"
+						:step="1"
+						controls-position="right"
+						style="width: 150px"
+					/>
+				</el-space>
+
+				<el-space align="center">
+					<span class="field-label">侧摆角上限(°)：</span>
+					<el-input-number
+						v-model="rollLimitAbs"
+						:min="0"
+						:max="60"
+						:step="1"
+						controls-position="right"
+						style="width: 150px"
+					/>
+				</el-space>
+			</el-space>
+
+
+
 		</el-card>
 
 	<el-card shadow="never">
@@ -55,10 +127,34 @@
 		<div v-if="timeline.length" class="timeline-chart" ref="chartRef"></div>
 		<el-empty v-else description="暂无任务" :image-size="120" />
 	</el-card>
-	<el-button v-if="submissionSummary" type="primary" plain @click="submissionDialogVisible = true">查看任务摘要</el-button>
+	<el-button v-if="submissionSummary" type="primary" plain @click="openSubmitSummaryDialog">查看任务摘要</el-button>
+	<el-button v-if="timeline.length" type="info" plain @click="sequenceDialogVisible = true">查看时序图</el-button>
 
 	<el-dialog v-model="submissionDialogVisible" title="任务摘要" width="720px" :append-to-body="true">
 		<div class="summary-text">{{ submissionSummary }}</div>
+		<template #footer>
+			<el-space>
+				<el-button @click="submissionDialogVisible = false">取消</el-button>
+				<el-button type="primary" :loading="submitting" @click="submitPlannedTasks">确认提交</el-button>
+			</el-space>
+		</template>
+	</el-dialog>
+
+	<el-dialog v-model="sequenceDialogVisible" title="任务时序" width="760px" :append-to-body="true">
+		<el-timeline style="max-height: 480px; overflow: auto;">
+			<el-timeline-item
+				v-for="item in sequenceItems"
+				:key="item.id"
+				:timestamp="item.time"
+				:type="item.type"
+			>
+				<div class="seq-title">{{ item.name || "任务" }}</div>
+				<div class="seq-meta">{{ item.meta || "-" }}</div>
+			</el-timeline-item>
+		</el-timeline>
+		<template #footer>
+			<el-button type="primary" @click="sequenceDialogVisible = false">关闭</el-button>
+		</template>
 	</el-dialog>
 </div>
 </template>
@@ -149,7 +245,7 @@ const submitting = ref(false);
 const timeline = ref<TimelineItem[]>([]);
 const planRange = computed(() => buildRange(form.value.date));
 const rangeText = computed(() => `${formatDisplay(planRange.value.start)} ~ ${formatDisplay(planRange.value.end)}`);
-const submissionSummary = ref('');
+const submissionSummary = ref("");
 const submissionDialogVisible = ref(false);
 const orbitElements = ref<any | null>(null);
 const taskSwitches = reactive({
@@ -157,6 +253,28 @@ const taskSwitches = reactive({
 	transfer: true,
 	delete: true,
 });
+const absStartSeq = ref(3);
+const reloadTableFlag = ref(true);
+const transferTaskCount = ref(1);
+const imagingTaskCount = ref(4);
+const cloudLimit = ref(10);
+const rollLimitAbs = ref(10);
+const planPreviewVisible = ref(false);
+const planPreviewText = ref("");
+const planningNotes = ref<string[]>([]);
+const sequenceDialogVisible = ref(false);
+const sequenceItems = computed(() =>
+	timeline.value
+		.slice()
+		.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0))
+		.map((it) => ({
+			id: it.id,
+			name: it.name,
+			time: formatDisplay(new Date(it.startTs)),
+			meta: buildMeta(it),
+			type: it.type === "data" ? "primary" : it.type === "delete" ? "danger" : "success",
+		}))
+);
 const ONE_CLICK_PLAN_CACHE_KEY = "one_click_plan_cache_v1";
 const ONE_CLICK_PLAN_RELOAD_FLAG = "__one_click_plan_reload_handled";
 const UID_EPOCH = new Date("2025-01-01T00:00:00Z").getTime();
@@ -236,6 +354,24 @@ function restoreOneClickCache() {
 		if (payload?.submissionSummary !== undefined) {
 			submissionSummary.value = payload.submissionSummary;
 		}
+	if (payload?.absStartSeq !== undefined) {
+		absStartSeq.value = payload.absStartSeq;
+	}
+	if (payload?.reloadTableFlag !== undefined) {
+		reloadTableFlag.value = payload.reloadTableFlag;
+	}
+	if (payload?.transferTaskCount !== undefined) {
+		transferTaskCount.value = payload.transferTaskCount;
+	}
+	if (payload?.imagingTaskCount !== undefined) {
+		imagingTaskCount.value = payload.imagingTaskCount;
+	}
+	if (payload?.cloudLimit !== undefined) {
+		cloudLimit.value = payload.cloudLimit;
+	}
+	if (payload?.rollLimitAbs !== undefined) {
+		rollLimitAbs.value = payload.rollLimitAbs;
+	}
 	} catch (err) {
 		console.warn("[one-click-plan] restore cache failed", err);
 	}
@@ -249,6 +385,12 @@ function persistOneClickCache() {
 		timeline: timeline.value,
 		orbitElements: orbitElements.value,
 		submissionSummary: submissionSummary.value,
+		absStartSeq: absStartSeq.value,
+		reloadTableFlag: reloadTableFlag.value,
+		transferTaskCount: transferTaskCount.value,
+		imagingTaskCount: imagingTaskCount.value,
+		cloudLimit: cloudLimit.value,
+		rollLimitAbs: rollLimitAbs.value,
 	};
 	try {
 		window.localStorage.setItem(ONE_CLICK_PLAN_CACHE_KEY, JSON.stringify(payload));
@@ -267,7 +409,18 @@ onMounted(() => {
 });
 
 watch(
-	[form, taskSwitches, timeline, submissionSummary],
+	[
+		form,
+		taskSwitches,
+		timeline,
+		submissionSummary,
+		absStartSeq,
+		reloadTableFlag,
+		transferTaskCount,
+		imagingTaskCount,
+		cloudLimit,
+		rollLimitAbs,
+	],
 	() => {
 		persistOneClickCache();
 	},
@@ -344,70 +497,135 @@ async function runOneClickPlan() {
 	const { start, end } = planRange.value;
 	loading.value = true;
 	try {
-		const { targets, priorityMap } = await fetchAllTargets(form.value.satellite);
-		if (!targets.length) throw new Error("未获取到目标库数据");
 		const token = await getToken();
-		const ephemeris = await fetchOrbitElementsForSatellite(form.value.satellite, token);
-		orbitElements.value = ephemeris;
+		let withTs: any[] = [];
+		let priorityMap = new Map<string, number>();
+		if (taskSwitches.imaging) {
+			const targetRes = await fetchAllTargets(form.value.satellite);
+			if (!targetRes.targets.length) throw new Error("未获取到目标库数据");
+			priorityMap = targetRes.priorityMap;
+			const ephemeris = await fetchOrbitElementsForSatellite(form.value.satellite, token);
+			orbitElements.value = ephemeris;
 
-		const body: any = {
-			satelliteCode: form.value.satellite,
-			forecastStartAt: start.getTime(),
-			forecastEndAt: end.getTime(),
-			targetList: targets,
-		};
-		if (ephemeris) body.ephemeris = ephemeris;
+			const body: any = {
+				satelliteCode: form.value.satellite,
+				forecastStartAt: start.getTime(),
+				forecastEndAt: end.getTime(),
+				targetList: targetRes.targets,
+			};
+			if (ephemeris) body.ephemeris = ephemeris;
 
-		const resp = await fetch(ONE_CLICK_PLAN_URL, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(body),
+			const resp = await fetch(ONE_CLICK_PLAN_URL, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+			if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+			const data = await resp.json();
+			const rawList: any[] = data?.result || data?.tasks || data?.data || [];
+			withTs = rawList
+				.map((r) => {
+					const ts = parseStartTime(r);
+					const cloud = parseCloudPercent(r?.cloud ?? r?.cloudCoverage ?? r?.cloud_percent ?? r?.cloudPercent);
+					const priority =
+						resolvePriorityFromCache(r?.name || r?.targetName, priorityMap) ||
+						parsePriority(r?.priority ?? r?.priorityLevel ?? r?.level);
+					return ts
+						? {
+								...r,
+								startTs: ts,
+								name: r?.name || r?.targetName || "Task",
+								cloud,
+								priority,
+						  }
+						: null;
+				})
+				.filter((x): x is any => Boolean(x));
+		} else {
+			orbitElements.value = null;
+		}
+
+		const cloudLimitVal = Number(cloudLimit.value) || 10;
+		const rollLimitVal = Number(rollLimitAbs.value) || 10;
+		const cloudFiltered = withTs.filter((r) => r.cloud == null || r.cloud <= cloudLimitVal);
+		const rollFiltered = cloudFiltered.filter((r) => {
+			const rollNum = Number(pickRollAngle(r));
+			if (!Number.isFinite(rollNum)) return true;
+			return Math.abs(rollNum) <= rollLimitVal;
 		});
-		if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-		const data = await resp.json();
-		const rawList: any[] = data?.result || data?.tasks || data?.data || [];
-		const withTs = rawList
-			.map((r) => {
-				const ts = parseStartTime(r);
-				const cloud = parseCloudPercent(r?.cloud ?? r?.cloudCoverage ?? r?.cloud_percent ?? r?.cloudPercent);
-				const priority =
-					resolvePriorityFromCache(r?.name || r?.targetName, priorityMap) ||
-					parsePriority(r?.priority ?? r?.priorityLevel ?? r?.level);
-				return ts
-					? {
-							...r,
-							startTs: ts,
-							name: r?.name || r?.targetName || "Task",
-							cloud,
-							priority,
-					  }
-					: null;
-			})
-			.filter((x): x is any => Boolean(x));
-
-		const cloudFiltered = withTs.filter((r) => r.cloud == null || r.cloud < 10);
-		const imagingLimit = form.value.satellite === "AS03" ? 2 : 4;
+		const defaultLimit = form.value.satellite === "AS03" ? 2 : 4;
+		const imagingLimit = Math.max(1, Number(imagingTaskCount.value) || defaultLimit);
+		const notes: string[] = [];
 
 		// 先确定数传/删除任务，预留时间，再选成像任务
-		const dataTask =
-			taskSwitches.transfer && form.value.satellite === "AS02"
-				? await buildDataTransTask(token, planRange.value.start, planRange.value.end)
-				: null;
+		const excludeStarts = new Set<number>();
+		const dataTasks: TimelineItem[] = [];
+		if (taskSwitches.transfer && form.value.satellite === "AS02") {
+			let need = Math.max(1, Number(transferTaskCount.value) || 1);
+			console.log("[one-click-plan] transfer planning need", need);
+			let dayOffset = 0;
+			while (need > 0 && dayOffset < 3) {
+				const dayMs = dayOffset * 24 * 60 * 60 * 1000;
+				const dayStart = new Date(planRange.value.start.getTime() + dayMs);
+				const dayEnd = new Date(planRange.value.end.getTime() + dayMs);
+				const tasks = await buildDataTransTasks(token, dayStart, dayEnd, need, excludeStarts, notes);
+				if (tasks.length) {
+					dataTasks.push(...tasks);
+					need -= tasks.length;
+				}
+				console.log("[one-click-plan] transfer day", dayOffset, {
+					got: tasks.map((t) => ({ start: t.startTs, files: t.raw?.groups?.map((g: any) => g.start) })),
+					remain: need,
+				});
+				dayOffset += 1;
+			}
+		}
 		const deleteTasks =
 			taskSwitches.delete && form.value.satellite === "AS02"
 				? await buildDeleteTasks(planRange.value.start, planRange.value.end)
 				: [];
-		const reservedTimes = [dataTask?.startTs, ...(deleteTasks.map((d) => d.startTs))].filter(Boolean) as number[];
+		const reservedTimes = [...dataTasks.map((d) => d.startTs), ...(deleteTasks.map((d) => d.startTs))].filter(
+			Boolean
+		) as number[];
 		const gapMs = form.value.satellite === "AS03" ? 2.5 * 60 * 60 * 1000 : 80 * 60 * 1000;
 		const noonTs = new Date(planRange.value.start);
 		noonTs.setHours(12, 0, 0, 0);
 
-		const picked =
+		let picked =
 			taskSwitches.imaging && form.value.satellite === "AS03"
-				? pickWithPreference(cloudFiltered, imagingLimit, gapMs, reservedTimes, noonTs.getTime())
+				? pickWithPreference(rollFiltered, imagingLimit, gapMs, reservedTimes, noonTs.getTime())
 				: taskSwitches.imaging
-				? pickTopTasks(cloudFiltered, imagingLimit, gapMs, reservedTimes)
+				? pickTopTasks(rollFiltered, imagingLimit, gapMs, reservedTimes)
 				: [];
+
+		// 若未达到指定成像数量，保持间隔规则从剩余候选补齐
+		if (picked.length < imagingLimit && taskSwitches.imaging) {
+			const need = imagingLimit - picked.length;
+			const pickedSet = new Set(picked.map((x) => x.startTs));
+			const okGap = (ts: number, chosen: any[]) => {
+				for (const c of chosen) {
+					const v = Number(c.startTs ?? 0);
+					if (Number.isFinite(v) && Math.abs(ts - v) < gapMs) return false;
+				}
+				for (const r of reservedTimes) {
+					if (Math.abs(ts - r) < gapMs) return false;
+				}
+				return true;
+			};
+			const remaining = cloudFiltered
+				.filter((x) => !pickedSet.has(x.startTs))
+				.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+			for (const cand of remaining) {
+				if (picked.length >= imagingLimit) break;
+				const ts = Number(cand.startTs ?? 0);
+				if (!Number.isFinite(ts)) continue;
+				if (!okGap(ts, picked)) continue;
+				picked.push(cand);
+			}
+		}
+		if (taskSwitches.imaging && picked.length < imagingLimit) {
+			notes.push(`成像任务期望 ${imagingLimit} 个，实际生成 ${picked.length} 个，可能因云量/间隔/预留时间限制。`);
+		}
 
 		const imagingDuration = form.value.satellite === "AS03" ? 30 : 40; // seconds
 		let items = picked.map((r, idx) => {
@@ -440,7 +658,9 @@ async function runOneClickPlan() {
 		priority: r.priority ?? null,
 	} as TimelineItem;
 	});
-		if (dataTask) items = [...items, dataTask];
+		if (dataTasks.length) {
+			items = [...items, ...dataTasks];
+		}
 		if (deleteTasks.length) items = [...items, ...deleteTasks];
 
 		// 预览固存槽并丰富展示信息
@@ -460,7 +680,16 @@ async function runOneClickPlan() {
 		}
 		items = items.map((it) => ({ ...it, meta: buildMeta(it) }));
 		timeline.value = items;
+		// 规划提示
+		if (taskSwitches.transfer && form.value.satellite === "AS02") {
+			const expected = Math.max(1, Number(transferTaskCount.value) || 1);
+			if (dataTasks.length < expected) {
+				notes.push(`数传任务期望 ${expected} 次，实际生成 ${dataTasks.length} 次。`);
+			}
+		}
+		planningNotes.value = notes;
 		ElMessage.success("Plan finished");
+		planPreviewText.value = buildSubmissionSummaryText();
 	} catch (err: any) {
 		ElMessage.error(err?.message || "Plan failed");
 	} finally {
@@ -858,13 +1087,44 @@ function buildUtcRange(date: string) {
 }
 
 type PendingFile = { start: number; end: number };
+type TransferGroup = { start: number; end: number; count: number; duration: number };
 
-async function fetchPendingFiles(satellite: "AS02" | "AS03"): Promise<PendingFile[]> {
+async function fetchPendingFiles(satellite: "AS02" | "AS03", statuses: number[] = [2]): Promise<PendingFile[]> {
 	const api: any = (service as any)?.star?.fixed_storage_table;
 	if (!api?.page) return [];
 	const name = satellite === "AS02" ? 0 : 2;
-	const res = await api.page({ page: 1, size: 200, name, status: 2 });
-	const list = res?.list || res?.data?.list || [];
+	const seenStart = new Set<number>();
+	const all: any[] = [];
+	for (const status of statuses) {
+		let page = 1;
+		const size = 200;
+		// 遍历分页，防止接口只返回部分
+		while (true) {
+			const res = await api.page({ page, size, name, status, sort: "startFileNo", order: "ASC" });
+			const list = res?.list || res?.data?.list || [];
+			console.log(
+				"[one-click-plan] fetchPendingFiles page",
+				{ page, status, got: list.length },
+				list.map((x: any) => x?.startFileNo ?? x?.start_file_no)
+			);
+			for (const x of list || []) {
+				const start = Number(x?.startFileNo ?? x?.start_file_no);
+				if (seenStart.has(start)) continue;
+				seenStart.add(start);
+				all.push(x);
+			}
+			if (!Array.isArray(list) || list.length < size) break;
+			page += 1;
+		}
+	}
+	console.log("[one-click-plan] fetchPendingFiles total", { statuses, count: all.length });
+	// 若首选状态不足，再尝试 status 6（已写入待数传）
+	if (!all.length && !statuses.includes(6)) {
+		const res = await api.page({ page: 1, size: 200, name, status: 6 });
+		const list = res?.list || res?.data?.list || [];
+		all.push(...list);
+	}
+	const list = all;
 	const sorted = list
 		.map((x: any) => {
 			const start = Number(x?.startFileNo ?? x?.start_file_no);
@@ -880,7 +1140,6 @@ async function fetchPendingFiles(satellite: "AS02" | "AS03"): Promise<PendingFil
 		if (seen.has(r.start)) continue;
 		seen.add(r.start);
 		unique.push({ start: r.start, end: Number.isFinite(r.end) ? r.end : r.start + 7 });
-		if (unique.length >= 4) break;
 	}
 	return unique;
 }
@@ -910,47 +1169,102 @@ async function fetchDeletableFiles(satellite: "AS02" | "AS03"): Promise<PendingF
 	return unique;
 }
 
-async function buildDataTransTask(token: string, start: Date, end: Date): Promise<TimelineItem | null> {
+async function buildDataTransTasks(
+	token: string,
+	start: Date,
+	end: Date,
+	limit: number,
+	excludeStarts: Set<number> = new Set(),
+	notes?: string[]
+): Promise<TimelineItem[]> {
 	try {
 		const dateStr = formatDateYMD(start);
 		const records = await fetchTelecontrolRecords(token, dateStr, "12");
-		if (!records?.length) return null;
-		const thresholdUtc = new Date(`${dateStr}T17:00:00+08:00`).getTime(); // 北京 17:00
+		console.log(
+			"[one-click-plan] telecontrol records",
+			dateStr,
+			(records || []).map((r: any) => ({
+				begin: r.beginTime,
+				end: r.endTime,
+				antenna: r.antennaId ?? (r as any)?.antenna_id,
+			}))
+		);
+		if (!records?.length || limit <= 0) return [];
+		const thresholdEvening = new Date(`${dateStr}T17:00:00+08:00`).getTime(); // 北京 17:00
+		const thresholdMorning = new Date(`${dateStr}T08:00:00+08:00`).getTime(); // 北京 08:00
 		const sorted = [...records].sort((a, b) => (a.beginTime ?? 0) - (b.beginTime ?? 0));
-		const afterEvening = sorted.filter((r) => (r.beginTime ?? 0) >= thresholdUtc);
-		const pass = afterEvening[0];
-		if (!pass || !pass.beginTime) return null;
-		const slotBegin = Number(pass.beginTime);
-		const startTs = slotBegin + 60 * 1000; // +1min
-		if (startTs < start.getTime() || startTs > end.getTime()) return null;
-
-		const pending = await fetchPendingFiles("AS02");
-		if (pending.length < 3) {
-			ElMessage.warning("数传文件较少(<3)，不生成数传任务");
-			return null;
+		const eveningPass = sorted.find((r) => (r.beginTime ?? 0) >= thresholdEvening);
+		const morningPass = sorted.find((r) => (r.beginTime ?? 0) >= thresholdMorning);
+		let candidates: any[] = [];
+		if (limit === 1) {
+			candidates = eveningPass ? [eveningPass] : morningPass ? [morningPass] : [];
+		} else {
+			candidates = [eveningPass, morningPass]
+				.filter((x): x is any => Boolean(x?.beginTime))
+				.filter((x, idx, arr) => arr.findIndex((y) => y.beginTime === x.beginTime) === idx)
+				.sort((a, b) => (a.beginTime ?? 0) - (b.beginTime ?? 0))
+				.slice(0, limit);
 		}
-		const groups = buildTransferGroups(pending);
-		const filesText = pending.length ? `Files: ${pending.map((p) => p.start).join(", ")}` : "Files: -";
-		const antennaId = pass.antennaId ?? (pass as any)?.antenna_id ?? null;
-		return {
-			id: `data-${startTs}`,
-			name: "数传任务",
-			type: "data",
-			time: formatDisplay(new Date(startTs)),
-			meta: `Antenna: ${antennaId ?? "-"} | ${filesText}`,
-			startTs,
-			endTs: Number(pass.dataTrans?.endTime ?? pass.endTime ?? startTs),
-			antennaId: antennaId ? String(antennaId) : null,
-			teleBegin: slotBegin,
-			teleEnd: Number(pass.dataTrans?.endTime ?? pass.endTime ?? null) || null,
-			files: pending.map((p) => String(p.start)),
-			raw: { groups },
-			cloud: null,
-			priority: null,
-		};
+		console.log(
+			"[one-click-plan] transfer candidates",
+			candidates.map((c) => ({ begin: c?.beginTime, end: c?.endTime, antenna: c?.antennaId ?? (c as any)?.antenna_id }))
+		);
+		const tasks: TimelineItem[] = [];
+		for (const pass of candidates) {
+			if (tasks.length >= limit) break;
+			if (!pass || !pass.beginTime) continue;
+			const slotBegin = Number(pass.beginTime);
+			const startTs = slotBegin + 60 * 1000; // +1min
+			if (startTs < start.getTime() || startTs > end.getTime()) continue;
+
+			// 仅取待写入/待数传状态 2
+			const pendingRaw = await fetchPendingFiles("AS02", [2]);
+			console.log("[one-click-plan] pending files raw", pendingRaw.map((p) => p.start));
+			const pending = pendingRaw.filter((p) => !excludeStarts.has(p.start));
+			console.log(
+				"[one-click-plan] pending after exclude",
+				{ exclude: Array.from(excludeStarts), kept: pending.map((p) => p.start) }
+			);
+			// 单次数传最多 4 个文件
+			const pendingLimited = pending.slice(0, 4);
+			if (pending.length < 3) {
+				console.log("[one-click-plan] skip transfer, pending <3");
+				notes?.push(
+					`数传轨次 ${formatDisplay(new Date(startTs))} 跳过：可用文件数 ${pending.length} < 3（状态2且排除已用后）`
+				);
+				continue;
+			}
+			const groups = buildTransferGroups(pendingLimited);
+			console.log("[one-click-plan] transfer groups", groups);
+			const filesText = pendingLimited.length ? `Files: ${pendingLimited.map((p) => p.start).join(", ")}` : "Files: -";
+			const antennaId = pass.antennaId ?? (pass as any)?.antenna_id ?? null;
+			const resetSeq = tasks.length === 0 ? Boolean(reloadTableFlag.value) : false; // 首个按勾选，其余固定 false
+			tasks.push({
+				id: `data-${startTs}`,
+				name: "数传任务",
+				type: "data",
+				time: formatDisplay(new Date(startTs)),
+				meta: `Antenna: ${antennaId ?? "-"} | ${filesText}`,
+				startTs,
+				endTs: Number(pass.dataTrans?.endTime ?? pass.endTime ?? startTs),
+				antennaId: antennaId ? String(antennaId) : null,
+				teleBegin: slotBegin,
+				teleEnd: Number(pass.dataTrans?.endTime ?? pass.endTime ?? null) || null,
+				files: pendingLimited.map((p) => String(p.start)),
+				raw: { groups, resetSeq },
+				cloud: null,
+				priority: null,
+			});
+			(groups || []).forEach((g: TransferGroup) => {
+				for (let i = 0; i < (g.count || 1); i++) {
+					excludeStarts.add(Number(g.start) + i * 8);
+				}
+			});
+		}
+		return tasks;
 	} catch (e) {
 		console.warn("[one-click-plan] buildDataTransTask failed", e);
-		return null;
+		return [];
 	}
 }
 
@@ -1101,29 +1415,32 @@ function formatBeijingTime(val: any): string {
 function buildMeta(item: TimelineItem): string {
 	const parts: string[] = [];
 	if (item.type === "data") {
-		if (item.files?.length) parts.push(`Files: ${item.files.join(",")}`);
+		if (item.files?.length) parts.push(`文件号: ${item.files.join(",")}`);
 		if (item.raw?.groups?.length) {
 			const ranges = item.raw.groups
-				.map((g: any, idx: number) => `${g.start}-${g.end}(${g.duration || g.time || ""}s)`)
-				.join("; ");
-			if (ranges) parts.push(`Ranges: ${ranges}`);
+				.map((g: any) => `${g.start}-${g.end}(${g.duration || g.time || ""}s)`)
+				.join("；");
+			if (ranges) parts.push(`范围: ${ranges}`);
 		}
-		if (item.antennaId) parts.push(`Antenna: ${item.antennaId}`);
+		if (item.antennaId) {
+			const antennaName = TELECONTROL_ANTENNA_MAP.get(String(item.antennaId)) || item.antennaId;
+			parts.push(`数传站: ${antennaName}`);
+		}
 		return parts.join(" | ") || "数传任务";
 	}
 	if (item.type === "delete") {
 		if (item.raw?.startFile != null && item.raw?.endFile != null) {
-			parts.push(`Delete: ${item.raw.startFile}-${item.raw.endFile}`);
+			parts.push(`删除文件: ${item.raw.startFile}-${item.raw.endFile}`);
 		} else if (item.deleteFiles?.length) {
-			parts.push(`Delete: ${item.deleteFiles.join(",")}`);
+			parts.push(`删除文件: ${item.deleteFiles.join(",")}`);
 		}
 		return parts.join(" | ") || "固存删除任务";
 	}
-	if (item.cloud != null) parts.push(`Cloud: ${item.cloud}%`);
-	if (item.priority != null) parts.push(`Priority: ${item.priority}`);
-	if (item.rollText) parts.push(`Roll: ${item.rollText}`);
-	if (item.solarText) parts.push(`Sun: ${item.solarText}`);
-	if (item.storageSlot) parts.push(`Slot: ${item.storageSlot}`);
+	if (item.cloud != null) parts.push(`云量: ${item.cloud}%`);
+	if (item.priority != null) parts.push(`优先级: ${item.priority}`);
+	if (item.rollText) parts.push(`侧摆角: ${item.rollText}`);
+	if (item.solarText) parts.push(`太阳角: ${item.solarText}`);
+	if (item.storageSlot) parts.push(`记录文件号: ${item.storageSlot}`);
 	return parts.join(" | ") || "任务";
 }
 
@@ -1266,26 +1583,27 @@ async function resolveAntennaGeoById(
 	return geo;
 }
 
-function buildTransferGroups(pending: PendingFile[]) {
-	const sorted = [...pending].sort((a, b) => a.start - b.start).slice(0, 4);
-	const groups: Array<{ start: number; end: number; count: number; duration: number }> = [];
-	let current: { start: number; end: number; count: number } | null = null;
+function buildTransferGroups(pending: PendingFile[]): TransferGroup[] {
+	const sorted = [...pending].sort((a, b) => a.start - b.start);
+	const groups: TransferGroup[] = [];
+	let current: TransferGroup | null = null;
 	for (const p of sorted) {
 		if (!current) {
-			current = { start: p.start, end: p.end, count: 1 };
+			current = { start: p.start, end: p.end, count: 1, duration: 90 };
 			continue;
 		}
 		const expectedNextStart = current.start + current.count * 8;
 		if (p.start === expectedNextStart) {
 			current.count += 1;
 			current.end = p.end;
+			current.duration = current.count * 90;
 		} else {
-			groups.push({ ...current, duration: current.count * 90 });
-			current = { start: p.start, end: p.end, count: 1 };
+			groups.push({ ...current });
+			current = { start: p.start, end: p.end, count: 1, duration: 90 };
 		}
 	}
 	if (current) {
-		groups.push({ ...current, duration: current.count * 90 });
+		groups.push({ ...current });
 	}
 	return groups;
 }
@@ -1294,15 +1612,16 @@ function buildTransferBody(
 	groups: Array<{ start: number; end: number; duration: number; count?: number }>,
 	geo: any,
 	t0Iso: string,
-	startSeq: number
+	startSeq: number,
+	resetSeqFlag?: boolean
 ) {
-	const base: Record<string, string> = {
+	const base: Record<string, any> = {
 		spacecraftCode: "AS02",
 		templateId: TRANSFER_TEMPLATE_ID,
 		folderId: TRANSFER_FOLDER_ID,
 		name: `${geo?.name || "数传"}数传任务-${formatBeijingTime(t0Iso)}`,
 		start_seq: String(startSeq),
-		reset_seq: "true",
+		reset_seq: resetSeqFlag ?? Boolean(reloadTableFlag.value),
 		t0: t0Iso,
 		duration: "",
 		trans_count: String(groups.length || 1),
@@ -1412,9 +1731,10 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		const startIso = toIsoString(item.startTs);
 		const endIso = toIsoString(item.endTs ?? (Number(item.startTs) + 30 * 1000));
 		const imagingUid = ensureImagingUid(item);
-		// AS03 绝对延时指令号：首个任务从 3 开始，每个任务占用 56 个序号，第二个任务起始 59
-		const baseSeq = 3 + i * 56;
-		const resetSeq = i === 0;
+		// AS03 绝对延时指令号：首个任务从外部输入起算，每个任务占用 56 个序号
+		const baseSeqStart = Number(absStartSeq.value) || 3;
+		const baseSeq = baseSeqStart + i * 56;
+		const resetSeq = i === 0 ? Boolean(reloadTableFlag.value) : false;
 		const bodies = [
 			{
 				spacecraftCode: "AS03",
@@ -1458,11 +1778,13 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 	ElMessage.success(`AS03 成像任务提交成功 ${success}/${imaging.length}`);
 }
 
-async function submitDataTransferTask(token: string): Promise<number | null> {
-	const task = timeline.value.find((item) => item.type === "data");
-	if (!task) return null;
+async function submitDataTransferTask(
+	token: string,
+	task: TimelineItem,
+	startSeqOverride?: number
+): Promise<number | null> {
 	const pending = task.raw?.groups ? null : await fetchPendingFiles("AS02");
-	const groups = task.raw?.groups ?? buildTransferGroups(pending || []);
+	const groups = (task.raw?.groups as TransferGroup[]) ?? buildTransferGroups(pending || []);
 	if (!groups.length || (pending && pending.length < 3)) {
 		throw new Error("待数传文件不足或分组失败");
 	}
@@ -1472,8 +1794,9 @@ async function submitDataTransferTask(token: string): Promise<number | null> {
 		throw new Error("数传开始时间无效");
 	}
 	const geo = await resolveAntennaGeoById(task.antennaId, token);
-	const startSeq = 3;
-	const body = buildTransferBody(groups, geo, t0Iso, startSeq);
+	const startSeq = startSeqOverride ?? (Number(absStartSeq.value) || 3);
+	const resetSeq = task.raw?.resetSeq ?? Boolean(reloadTableFlag.value);
+	const body = buildTransferBody(groups, geo, t0Iso, startSeq, resetSeq);
 	await postTemplate(body, token, "transfer");
 	const consumption = groups.length + 2;
 	const lastSeq = startSeq + consumption - 1;
@@ -1518,7 +1841,7 @@ function parseStartNosFromMeta(meta: string | undefined | null): number[] {
 async function submitDeleteTasks(token: string, baseSeq: number | null) {
 	const tasks = timeline.value.filter((item) => item.type === "delete").sort((a, b) => a.startTs - b.startTs);
 	if (!tasks.length) return;
-	let currentSeq = baseSeq != null ? baseSeq + 1 : 3; // if transfer existed, start after它; else默认3
+	let currentSeq = baseSeq != null ? baseSeq + 1 : Number(absStartSeq.value) || 3; // if transfer existed, start after它; else默认
 	for (const task of tasks) {
 		const files = task.raw?.startFile ? null : await fetchDeletableFiles("AS02");
 		const deleteStart = Number(task.raw?.startFile ?? (files?.[0]?.start));
@@ -1565,7 +1888,7 @@ async function fetchFixedStorageByStartList(starts: number[]): Promise<any[]> {
 
 async function syncTransferToTasks(
 	satellite: "AS02" | "AS03",
-	groups: Array<{ start: number; end: number; duration: number; count?: number }>,
+	groups: Array<TransferGroup>,
 	transferName: string,
 	transferTimeIso: string,
 	transferUid: string,
@@ -1632,7 +1955,20 @@ async function syncTransferToTasks(
 	}
 }
 
+function openSubmitSummaryDialog() {
+	if (!timeline.value.length) {
+		ElMessage.warning("请先生成时间轴任务");
+		return;
+	}
+	submissionSummary.value = buildSubmissionSummaryText();
+	submissionDialogVisible.value = true;
+}
+
 async function submitPlannedTasks() {
+	if (!submissionSummary.value) {
+		submissionSummary.value = buildSubmissionSummaryText();
+	}
+	submissionDialogVisible.value = false;
 	if (!timeline.value.length) {
 		ElMessage.warning("请先生成时间轴任务");
 		return;
@@ -1647,7 +1983,13 @@ async function submitPlannedTasks() {
 		if (satellite === "AS02") {
 			let lastSeq: number | null = null;
 			if (taskSwitches.transfer) {
-				lastSeq = await submitDataTransferTask(token);
+				const transfers = timeline.value
+					.filter((item) => item.type === "data")
+					.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+				for (let i = 0; i < transfers.length; i++) {
+					const startSeq = i === 0 ? Number(absStartSeq.value) || 3 : (lastSeq ?? 3) + 1;
+					lastSeq = await submitDataTransferTask(token, transfers[i], startSeq);
+				}
 			}
 			if (taskSwitches.delete) {
 				await submitDeleteTasks(token, lastSeq);
@@ -1655,8 +1997,7 @@ async function submitPlannedTasks() {
 		}
 		await recordImagingUids();
 		await recordImagingTasks();
-		submissionSummary.value = buildSubmissionSummaryText();
-		submissionDialogVisible.value = true;
+		ElMessage.success("提交成功");
 	} catch (err: any) {
 		ElMessage.error(err?.message || String(err) || "提交失败");
 	} finally {
@@ -1728,21 +2069,23 @@ function buildSubmissionSummaryText(): string {
 		});
 	}
 
-	const dataTask = timeline.value.find((item) => item.type === "data");
-	if (dataTask) {
-		const time = formatDisplay(new Date(dataTask.startTs));
-		const ranges =
-			dataTask.raw?.groups?.length
-				? dataTask.raw.groups.map((g: any) => `${g.start}-${g.end}`).join("，")
-				: dataTask.files?.join(",") || "-";
-		const station =
-			(form.value as any).stationName ||
-			(form.value as any).station ||
-			(dataTask.antennaId ? TELECONTROL_ANTENNA_MAP.get(String(dataTask.antennaId)) : "-") ||
-			"-";
-		lines.push(
-			`${lines.length + 1}.上注数传任务，数传站：${station}，开始下数时间：${time}，数传文件号：载荷${ranges}`
-		);
+	const dataTasks = timeline.value.filter((item) => item.type === "data").sort((a, b) => a.startTs - b.startTs);
+	if (dataTasks.length) {
+		dataTasks.forEach((task) => {
+			const time = formatDisplay(new Date(task.startTs));
+			const ranges =
+				task.raw?.groups?.length
+					? task.raw.groups.map((g: any) => `${g.start}-${g.end}`).join("，")
+					: task.files?.join(",") || "-";
+			const station =
+				task.raw?.stationName ||
+				task.raw?.station ||
+				(task.antennaId ? TELECONTROL_ANTENNA_MAP.get(String(task.antennaId)) : "-") ||
+				"-";
+			lines.push(
+				`${lines.length + 1}.上注数传任务，数传站：${station}，开始下数时间：${time}，数传文件号：载荷${ranges}`
+			);
+		});
 	}
 
 	const deletes = timeline.value.filter((item) => item.type === "delete").sort((a, b) => a.startTs - b.startTs);
@@ -1755,6 +2098,10 @@ function buildSubmissionSummaryText(): string {
 				`${lines.length + 1}.上注载荷固存删除任务，删除文件号${start}~${end}，任务执行时间：${time}`
 			);
 		});
+	}
+
+	if (planningNotes.value.length) {
+		lines.push(`提示：\n${planningNotes.value.map((n, idx) => `${idx + 1}) ${n}`).join("\n")}`);
 	}
 
 	return lines.join("\n\n");
@@ -1934,6 +2281,13 @@ function padBase36(value: number, length: number): string {
 	return text.padStart(length, "0").slice(-length);
 }
 </script>
+
+<style scoped>
+.field-label {
+	color: #606266;
+	font-size: 16px;
+}
+</style>
 
 <style scoped>
 .one-click-page {
