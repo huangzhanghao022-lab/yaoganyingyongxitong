@@ -1921,11 +1921,11 @@ async function createWithTemplateAS03() {
     // 为固存同步准备足量的空槽（AS03 载荷 name=2，status=0），按 startFileNo 升序
     const emptySlots = await fetchAs03EmptySlots(idxs.length);
     let slotPtr = 0;
-    for (const i of idxs) {
-      const row: any = list[i] || {};
-      const sat = String(row.satellite || form.satellite || '');
-      if (sat !== 'AS03') continue;
-      const generatedUid = generateImagingUid();
+  for (const i of idxs) {
+    const row: any = list[i] || {};
+    const sat = String(row.satellite || form.satellite || '');
+    if (sat !== 'AS03') continue;
+    const generatedUid = generateImagingUid();
       (row as any).__imagingUid = generatedUid;
 
       const name = String(row.name || '');
@@ -1936,27 +1936,31 @@ async function createWithTemplateAS03() {
         row.startAt ??
         row.start_at ??
         row.t0;
-      const tfRaw =
-        row.endAtBeijing ??
-        row.end_beijing ??
-        row.endAt ??
-        row.end_at ??
-        row.tf;
-      const t0 = toIsoString(t0Raw);
-      const tf = toIsoString(tfRaw);
-      const baseSeq = Number(startFileNoMap[i] ?? '') || 0;
-      const resetSeq = String((reloadMap as any)?.[i] ?? '1');
+    const tfRaw =
+      row.endAtBeijing ??
+      row.end_beijing ??
+      row.endAt ??
+      row.end_at ??
+      row.tf;
+    const t0 = toIsoString(t0Raw);
+    const tf = toIsoString(tfRaw);
+    const baseSeq = Number(startFileNoMap[i] ?? '') || 0;
+    const resetSeqRaw = (reloadMap as any)?.[i];
+    const resetSeq =
+      resetSeqRaw === true ||
+      String(resetSeqRaw ?? '').toLowerCase() === 'true' ||
+      String(resetSeqRaw ?? '') === '1';
 
-      const bodies = [
-        {
-          spacecraftCode: sat,
-          templateId: '673c2d9049b1f446adc4623c',
-          folderId: '6731755b08e123893cf92878',
-          name:name+"焦面断电-"+t0Raw,
-          reset_seq: resetSeq,
-          start_seq: String(baseSeq),
-          tf,
-        },
+    const bodies = [
+      {
+        spacecraftCode: sat,
+        templateId: '673c2d9049b1f446adc4623c',
+        folderId: '6731755b08e123893cf92878',
+        name:name+"焦面断电-"+t0Raw,
+        reset_seq: resetSeq,
+        start_seq: String(baseSeq),
+        tf,
+      },
         {
           spacecraftCode: sat,
           templateId: '673c2d8f49b1f446adc46230',
