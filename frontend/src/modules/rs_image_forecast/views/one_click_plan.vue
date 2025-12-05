@@ -31,19 +31,36 @@
 				</div>
 			</template>
 
-			<div class="plan-range">
-				<span>规划时间窗：</span>
-				<el-tag type="info" effect="plain">{{ rangeText }}</el-tag>
-				<el-tag type="warning" effect="plain">
-					任务间隔 &gt;
-					{{ form.satellite === "AS03" ? "2.5h" : "1.5h" }}
-				</el-tag>
-			</div>
 			<el-space :size="12" style="margin-top: 8px; flex-wrap: wrap;">
 				<el-checkbox v-model="taskSwitches.imaging">规划成像</el-checkbox>
 				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.transfer">规划数传</el-checkbox>
 				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.delete">规划固存删除</el-checkbox>
 			</el-space>
+			<br />
+			<el-space :size="12" style="margin-top: 8px; flex-wrap: wrap;">
+				<el-space align="center">
+					<span class="field-label">成像开始时间：</span>
+					<el-date-picker
+						v-model="form.rangeStart"
+						type="datetime"
+						placeholder="选择开始时间"
+						value-format="x"
+						style="width: 200px"
+					/>
+				</el-space>
+				<el-space align="center">
+					<span class="field-label">成像结束时间：</span>
+					<el-date-picker
+						v-model="form.rangeEnd"
+						type="datetime"
+						placeholder="选择结束时间"
+						value-format="x"
+						style="width: 200px"
+					/>
+				</el-space>
+			</el-space>
+			
+
 			<br />
 			<el-space :size="12" style="margin-top: 8px; flex-wrap: wrap;">
 				<el-space align="center">
@@ -238,12 +255,27 @@ const tomorrow = (() => {
 	d.setDate(d.getDate() + 1);
 	return d.getTime();
 })();
-const form = ref({ satellite: "AS02", date: tomorrow });
+const defaultStart = (() => {
+	const d = new Date();
+	d.setHours(0, 0, 0, 0);
+	d.setDate(d.getDate() + 1); // 次日 00:00
+	return d.getTime();
+})();
+const defaultEnd = (() => {
+	const d = new Date(defaultStart);
+	d.setDate(d.getDate() + 1); // 次次日 00:00
+	d.setHours(13, 0, 0, 0); // 次次日 13:00
+	return d.getTime();
+})();
+const form = ref({ satellite: "AS02", date: tomorrow, rangeStart: defaultStart, rangeEnd: defaultEnd });
 const { service } = useCool();
 const loading = ref(false);
 const submitting = ref(false);
 const timeline = ref<TimelineItem[]>([]);
-const planRange = computed(() => buildRange(form.value.date));
+// 时间轴/数传/删除使用顶部日期的固定窗口（当日 00:00 ~ 次日 13:00）
+const planRange = computed(() => buildDefaultRange(form.value.date));
+// 成像预报可使用自定义开始/结束时间
+const imagingRange = computed(() => buildRange(form.value.date));
 const rangeText = computed(() => `${formatDisplay(planRange.value.start)} ~ ${formatDisplay(planRange.value.end)}`);
 const submissionSummary = ref("");
 const submissionDialogVisible = ref(false);
@@ -372,6 +404,12 @@ function restoreOneClickCache() {
 	if (payload?.rollLimitAbs !== undefined) {
 		rollLimitAbs.value = payload.rollLimitAbs;
 	}
+	if (payload?.rangeStart) {
+		form.value.rangeStart = payload.rangeStart;
+	}
+	if (payload?.rangeEnd) {
+		form.value.rangeEnd = payload.rangeEnd;
+	}
 	} catch (err) {
 		console.warn("[one-click-plan] restore cache failed", err);
 	}
@@ -391,6 +429,8 @@ function persistOneClickCache() {
 		imagingTaskCount: imagingTaskCount.value,
 		cloudLimit: cloudLimit.value,
 		rollLimitAbs: rollLimitAbs.value,
+		rangeStart: form.value.rangeStart,
+		rangeEnd: form.value.rangeEnd,
 	};
 	try {
 		window.localStorage.setItem(ONE_CLICK_PLAN_CACHE_KEY, JSON.stringify(payload));
@@ -427,6 +467,15 @@ watch(
 	{ deep: true }
 );
 
+watch(
+	() => form.value.date,
+	(newDate) => {
+		const range = buildDefaultRange(newDate);
+		form.value.rangeStart = range.start.getTime();
+		form.value.rangeEnd = range.end.getTime();
+	}
+);
+
 onBeforeUnmount(() => {
 	if (chart) {
 		chart.dispose();
@@ -443,9 +492,19 @@ watch(timeline, async () => {
 });
 
 function buildRange(dateValue?: number | Date) {
+	// 以 form 中的自定义时间为主，否则按默认规则
+	if (form.value.rangeStart && form.value.rangeEnd) {
+		const start = new Date(form.value.rangeStart);
+		const end = new Date(form.value.rangeEnd);
+		return { start, end };
+	}
+	return buildDefaultRange(dateValue);
+}
+
+function buildDefaultRange(dateValue?: number | Date) {
 	const base = dateValue ? new Date(dateValue) : new Date();
 	base.setHours(0, 0, 0, 0); // 当日 0 点
-	const start = new Date(base);
+	const start = new Date(base); // 选中日期 00:00
 	const end = new Date(base);
 	end.setDate(end.getDate() + 1); // 次日
 	end.setHours(13, 0, 0, 0); // 次日 13:00
@@ -494,7 +553,8 @@ function formatMonthDay(value: number | Date | string): string {
 }
 
 async function runOneClickPlan() {
-	const { start, end } = planRange.value;
+	const { start: imagingStart, end: imagingEnd } = imagingRange.value;
+	const { start: opsStart, end: opsEnd } = planRange.value;
 	loading.value = true;
 	try {
 		const token = await getToken();
@@ -509,8 +569,8 @@ async function runOneClickPlan() {
 
 			const body: any = {
 				satelliteCode: form.value.satellite,
-				forecastStartAt: start.getTime(),
-				forecastEndAt: end.getTime(),
+				forecastStartAt: imagingStart.getTime(),
+				forecastEndAt: imagingEnd.getTime(),
 				targetList: targetRes.targets,
 			};
 			if (ephemeris) body.ephemeris = ephemeris;
@@ -566,8 +626,8 @@ async function runOneClickPlan() {
 			let dayOffset = 0;
 			while (need > 0 && dayOffset < 3) {
 				const dayMs = dayOffset * 24 * 60 * 60 * 1000;
-				const dayStart = new Date(planRange.value.start.getTime() + dayMs);
-				const dayEnd = new Date(planRange.value.end.getTime() + dayMs);
+				const dayStart = new Date(opsStart.getTime() + dayMs);
+				const dayEnd = new Date(opsEnd.getTime() + dayMs);
 				const tasks = await buildDataTransTasks(token, dayStart, dayEnd, need, excludeStarts, notes);
 				if (tasks.length) {
 					dataTasks.push(...tasks);
@@ -582,12 +642,12 @@ async function runOneClickPlan() {
 		}
 		const deleteTasks =
 			taskSwitches.delete && form.value.satellite === "AS02"
-				? await buildDeleteTasks(planRange.value.start, planRange.value.end)
+				? await buildDeleteTasks(opsStart, opsEnd)
 				: [];
 		const reservedTimes = [...dataTasks.map((d) => d.startTs), ...(deleteTasks.map((d) => d.startTs))].filter(
 			Boolean
 		) as number[];
-		const gapMs = form.value.satellite === "AS03" ? 2.5 * 60 * 60 * 1000 : 80 * 60 * 1000;
+		const gapMs = form.value.satellite === "AS03" ? 2.5 * 60 * 60 * 1000 : 1.5 * 60 * 60 * 1000;
 		const noonTs = new Date(planRange.value.start);
 		noonTs.setHours(12, 0, 0, 0);
 
