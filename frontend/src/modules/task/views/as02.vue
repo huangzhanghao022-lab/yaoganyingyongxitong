@@ -219,6 +219,8 @@ const Upsert = useUpsert({
 					clearable: true,
 					autosize: { minRows: 3, maxRows: 8 },
 					placeholder: t('JSON 数组，例如 [{\"name\":\"站\",\"time\":\"2025-01-01T00:00:00Z\",\"uid\":\"...\"}]'),
+					parser: (val: any) => formatTransferRecordsForForm(val),
+					formatter: (val: any) => formatTransferRecordsForForm(val),
 				},
 			},
 			span: 24,
@@ -355,6 +357,21 @@ watch(
 	},
 );
 
+watch(
+	() => Upsert.value?.form?.transferRecords,
+	raw => {
+		if (!Upsert.value || raw == null) return;
+		// 将数组或对象转成可读 JSON 字符串，避免 [object Object]
+		if (typeof raw !== 'string') {
+			const formatted = formatTransferRecordsForForm(raw);
+			if (formatted !== raw) {
+				Upsert.value?.setForm('transferRecords', formatted);
+			}
+		}
+	},
+	{ deep: true },
+);
+
 async function openDetail(row: Record<string, any>) {
 	try {
 		detailDialog.visible = true;
@@ -465,6 +482,24 @@ function formatTransferRecordsCell(row: any, multiline = false): string {
 	return records
 		.map(rec => [rec.name || '-', rec.timeDisplay || '-'].join(' | '))
 		.join(sep);
+}
+
+function formatTransferRecordsForForm(value: any): string {
+	const records = parseTransferRecords(value);
+	if (!records.length) return '';
+	try {
+		return JSON.stringify(
+			records.map(r => ({
+				name: r.name || '',
+				time: r.time || r.timeDisplay || '',
+				uid: r.uid || '',
+			})),
+			null,
+			2,
+		);
+	} catch {
+		return '';
+	}
 }
 
 function formatBeijingTime(value: string): string {
