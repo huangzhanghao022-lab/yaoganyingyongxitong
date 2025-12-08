@@ -1371,6 +1371,378 @@ declare namespace Eps {
 		[key: string]: any;
 	}
 
+	interface TaskLogDeleteAs02Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 任务执行时间
+		 */
+		taskExecutionTime?: Date;
+
+		/**
+		 * 删除文件号范围/列表
+		 */
+		deleteFileNumber?: string;
+
+		/**
+		 * 固存删除任务指令链id
+		 */
+		deleteCommandChainId?: string;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
+	interface TaskLogDeleteAs03Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 任务执行时间
+		 */
+		taskExecutionTime?: Date;
+
+		/**
+		 * 删除文件号范围/列表
+		 */
+		deleteFileNumber?: string;
+
+		/**
+		 * 固存删除任务指令链id
+		 */
+		deleteCommandChainId?: string;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
+	interface TaskLogImagingAs02Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 成像目标点名称
+		 */
+		imagingTargetName?: string;
+
+		/**
+		 * 成像时间
+		 */
+		imagingTime?: Date;
+
+		/**
+		 * 云量
+		 */
+		cloudCoverage?: number;
+
+		/**
+		 * 侧摆角
+		 */
+		sideSwingAngle?: number;
+
+		/**
+		 * 目标点经度
+		 */
+		targetLongitude?: number;
+
+		/**
+		 * 目标点纬度
+		 */
+		targetLatitude?: number;
+
+		/**
+		 * 指令链id
+		 */
+		commandChainId?: string;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
+	interface TaskLogImagingAs03Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 成像目标点名称
+		 */
+		imagingTargetName?: string;
+
+		/**
+		 * 成像时间
+		 */
+		imagingTime?: Date;
+
+		/**
+		 * 云量
+		 */
+		cloudCoverage?: number;
+
+		/**
+		 * 侧摆角
+		 */
+		sideSwingAngle?: number;
+
+		/**
+		 * 目标点经度
+		 */
+		targetLongitude?: number;
+
+		/**
+		 * 目标点纬度
+		 */
+		targetLatitude?: number;
+
+		/**
+		 * 指令链id
+		 */
+		commandChainId?: string;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
+	interface TaskLogTransmitAs02Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 数传站名称
+		 */
+		transmitStationName?: string;
+
+		/**
+		 * 数传时间
+		 */
+		transmitTime?: Date;
+
+		/**
+		 * 数传站经度
+		 */
+		transmitStationLongitude?: number;
+
+		/**
+		 * 数传站纬度
+		 */
+		transmitStationLatitude?: number;
+
+		/**
+		 * 数传站高度
+		 */
+		transmitStationHeight?: number;
+
+		/**
+		 * 数传文件号范围/列表
+		 */
+		transmitFileNumber?: string;
+
+		/**
+		 * 数传执行时间
+		 */
+		transmitExecutionTime?: Date;
+
+		/**
+		 * 指令链id
+		 */
+		commandChainId?: string;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
+	interface TaskLogTransmitAs03Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 数传站名称
+		 */
+		transmitStationName?: string;
+
+		/**
+		 * 数传时间
+		 */
+		transmitTime?: Date;
+
+		/**
+		 * 数传站经度
+		 */
+		transmitStationLongitude?: number;
+
+		/**
+		 * 数传站纬度
+		 */
+		transmitStationLatitude?: number;
+
+		/**
+		 * 数传站高度
+		 */
+		transmitStationHeight?: number;
+
+		/**
+		 * 数传文件号范围/列表
+		 */
+		transmitFileNumber?: string;
+
+		/**
+		 * 数传执行时间
+		 */
+		transmitExecutionTime?: Date;
+
+		/**
+		 * 指令链id
+		 */
+		commandChainId?: string;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
 	interface UserAddressEntity {
 		/**
 		 * ID
@@ -3180,6 +3552,378 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface Task_logDelete_as02 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogDeleteAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogDeleteAs02Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogDeleteAs02Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logDelete_as03 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogDeleteAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogDeleteAs03Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogDeleteAs03Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logImaging_as02 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogImagingAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogImagingAs02Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogImagingAs02Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logImaging_as03 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogImagingAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogImagingAs03Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogImagingAs03Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logTransmit_as02 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogTransmitAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogTransmitAs02Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogTransmitAs02Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logTransmit_as03 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogTransmitAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogTransmitAs03Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogTransmitAs03Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
 	type Service = {
 		/**
 		 * 基础请求
@@ -3223,6 +3967,14 @@ declare namespace Eps {
 		star: { fixed_storage_table: StarFixed_storage_table; history_excel: StarHistory_excel };
 		task: { command: TaskCommand; as02: TaskAs02; as03: TaskAs03 };
 		user: { address: UserAddress; info: UserInfo };
+		task_log: {
+			delete_as02: Task_logDelete_as02;
+			delete_as03: Task_logDelete_as03;
+			imaging_as02: Task_logImaging_as02;
+			imaging_as03: Task_logImaging_as03;
+			transmit_as02: Task_logTransmit_as02;
+			transmit_as03: Task_logTransmit_as03;
+		};
 	};
 
 	type DictKey = "brand" | "occupation";
