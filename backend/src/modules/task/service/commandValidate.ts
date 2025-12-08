@@ -1,7 +1,14 @@
-import { Provide } from '@midwayjs/core';
+import { Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Repository } from 'typeorm';
 import { as02payloadtableEntity } from '../../star/entity/as02_payload_table/as02_payload_table';
+import { TaskLogImagingAs02Entity } from '../../task_log/entity/imaging_as02';
+import { TaskLogImagingAs03Entity } from '../../task_log/entity/imaging_as03';
+import { TaskLogTransmitAs02Entity } from '../../task_log/entity/transmit_as02';
+import { TaskLogTransmitAs03Entity } from '../../task_log/entity/transmit_as03';
+import { TaskLogDeleteAs02Entity } from '../../task_log/entity/delete_as02';
+import { TaskLogDeleteAs03Entity } from '../../task_log/entity/delete_as03';
+import { TaskConflictService } from './taskConflict';
 
 type ValidationResult = { ok: true } | { ok: false; errors: Array<{ field: string; message: string }> };
 
@@ -12,6 +19,27 @@ type Sat = 'AS02' | 'AS03';
 export class CommandValidateService {
   @InjectEntityModel(as02payloadtableEntity)
   as02PayloadRepo: Repository<as02payloadtableEntity>;
+
+  @Inject()
+  taskConflictService: TaskConflictService;
+
+  @InjectEntityModel(TaskLogImagingAs02Entity)
+  imagingLogAs02Repo: Repository<TaskLogImagingAs02Entity>;
+
+  @InjectEntityModel(TaskLogImagingAs03Entity)
+  imagingLogAs03Repo: Repository<TaskLogImagingAs03Entity>;
+
+  @InjectEntityModel(TaskLogTransmitAs02Entity)
+  transferLogAs02Repo: Repository<TaskLogTransmitAs02Entity>;
+
+  @InjectEntityModel(TaskLogTransmitAs03Entity)
+  transferLogAs03Repo: Repository<TaskLogTransmitAs03Entity>;
+
+  @InjectEntityModel(TaskLogDeleteAs02Entity)
+  deleteLogAs02Repo: Repository<TaskLogDeleteAs02Entity>;
+
+  @InjectEntityModel(TaskLogDeleteAs03Entity)
+  deleteLogAs03Repo: Repository<TaskLogDeleteAs03Entity>;
 
   async validate(body: any): Promise<ValidationResult> {
     const errors: Array<{ field: string; message: string }> = [];
@@ -39,7 +67,39 @@ export class CommandValidateService {
         break;
     }
 
-    return errors.length ? { ok: false, errors } : { ok: true };
+    if (errors.length) return { ok: false, errors };
+
+    // 时间解析失败则认为参数缺失
+    const taskTime = this.extractCommandTime(type, params);
+    if (!taskTime) {
+      errors.push({ field: 'time', message: '缺少任务时间，无法进行冲突校验' });
+      return { ok: false, errors };
+    }
+
+    // 冲突校验
+    const conflict = await this.taskConflictService.check({
+      satellite,
+      type,
+      time: taskTime,
+    });
+    if (conflict) {
+      errors.push({
+        field: 'conflict',
+        message: conflict.message,
+      });
+      return { ok: false, errors };
+    }
+
+    // 通过后写入对应任务记录表（不阻断请求）
+    try {
+      await this.saveTaskLog(satellite, type, params, taskTime, body?.commandChainId);
+    } catch (err) {
+      // 写库失败不阻断指令校验，但记录提示
+      errors.push({ field: 'log', message: '任务记录写入失败' });
+      return { ok: false, errors };
+    }
+
+    return { ok: true };
   }
 
   private async validateImage(sat: Sat, p: any, errors: Array<{ field: string; message: string }>) {
@@ -333,5 +393,162 @@ export class CommandValidateService {
     if (!Number.isFinite(num)) {
       errors.push({ field, message: `${field} 必须为数值` });
     }
+  }
+  /** 提取命令的主要时间字段，用于冲突校验与记录 */
+  private extractCommandTime(type: CommandType, params: any): Date | null {
+    const keys = ['startAt', 't0', 'start_time', 'startTime', 'transmitTime', 'taskExecutionTime', 'imagingTime'];
+    for (const k of keys) {
+      if (params?.[k]) {
+        const d = new Date(params[k]);
+        if (!Number.isNaN(d.getTime())) return d;
+      }
+    }
+    if (type === 'image' && params?.tf) {
+      const d = new Date(params.tf);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    return null;
+  }
+
+  /** 成功校验后写入任务记录表（不同类型/星分流） */
+  private async saveTaskLog(sat: Sat, type: CommandType, params: any, time: Date, commandChainId?: any) {
+    switch (type) {
+      case 'image':
+        if (sat === 'AS02') {
+          const entity = new TaskLogImagingAs02Entity();
+          entity.satelliteCode = sat;
+          entity.imagingTargetName = this.stripTimeSuffix(
+            this.pickString(params, ['imagingTargetName', 'targetName', 'name'], '') || ''
+          );
+          entity.imagingTime = time;
+          entity.cloudCoverage = this.pickNumber(params, ['cloudCoverage', 'cloud']);
+          entity.sideSwingAngle = this.pickNumber(params, ['rollAng', 'side_swipe_angle', 'sideSwipeAngle']);
+          entity.targetLongitude = this.pickNumber(params, ['longitude', 'long', 'lng']);
+          entity.targetLatitude = this.pickNumber(params, ['latitude', 'lat']);
+          entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
+          entity.status = 0;
+          await this.imagingLogAs02Repo.save(entity);
+        } else {
+          const entity = new TaskLogImagingAs03Entity();
+          entity.satelliteCode = sat;
+          entity.imagingTargetName = this.stripTimeSuffix(
+            this.pickString(params, ['imagingTargetName', 'targetName', 'name'], '') || ''
+          );
+          entity.imagingTime = time;
+          entity.cloudCoverage = this.pickNumber(params, ['cloudCoverage', 'cloud']);
+          entity.sideSwingAngle = this.pickNumber(params, ['side_swipe_angle', 'sideSwipeAngle', 'rollAng']);
+          entity.targetLongitude = this.pickNumber(params, ['longitude', 'long', 'lng']);
+          entity.targetLatitude = this.pickNumber(params, ['latitude', 'lat']);
+          entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
+          entity.status = 0;
+          await this.imagingLogAs03Repo.save(entity);
+        }
+        break;
+      case 'transfer':
+        if (sat === 'AS02') {
+          const entity = new TaskLogTransmitAs02Entity();
+          entity.satelliteCode = sat;
+          entity.transmitStationName = this.stripTimeSuffix(
+            this.pickString(params, ['station', 'stationName', 'transferName', 'name'], '') || ''
+          );
+          entity.transmitTime = time;
+          entity.transmitStationLongitude = this.pickNumber(params, ['long', 'longitude', 'transmitStationLongitude']);
+          entity.transmitStationLatitude = this.pickNumber(params, ['lat', 'latitude', 'transmitStationLatitude']);
+          entity.transmitStationHeight = this.pickNumber(params, ['alt', 'height', 'transmitStationHeight']);
+          entity.transmitFileNumber = this.buildFileNumber(params);
+          entity.transmitExecutionTime = params?.duration ? new Date(time.getTime() + Number(params.duration) * 1000) : null;
+          entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
+          entity.status = 0;
+          await this.transferLogAs02Repo.save(entity);
+        } else {
+          const entity = new TaskLogTransmitAs03Entity();
+          entity.satelliteCode = sat;
+          entity.transmitStationName = this.stripTimeSuffix(
+            this.pickString(params, ['station', 'stationName', 'transferName', 'name'], '') || ''
+          );
+          entity.transmitTime = time;
+          entity.transmitStationLongitude = this.pickNumber(params, ['long', 'longitude', 'transmitStationLongitude']);
+          entity.transmitStationLatitude = this.pickNumber(params, ['lat', 'latitude', 'transmitStationLatitude']);
+          entity.transmitStationHeight = this.pickNumber(params, ['alt', 'height', 'transmitStationHeight']);
+          entity.transmitFileNumber = this.buildFileNumber(params);
+          entity.transmitExecutionTime = params?.duration ? new Date(time.getTime() + Number(params.duration) * 1000) : null;
+          entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
+          entity.status = 0;
+          await this.transferLogAs03Repo.save(entity);
+        }
+        break;
+      case 'delete':
+        if (sat === 'AS02') {
+          const entity = new TaskLogDeleteAs02Entity();
+          entity.satelliteCode = sat;
+          entity.taskExecutionTime = time;
+          entity.deleteFileNumber = this.buildDeleteRange(params);
+          entity.deleteCommandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId', 'deleteCommandChainId']);
+          entity.status = 0;
+          await this.deleteLogAs02Repo.save(entity);
+        } else {
+          const entity = new TaskLogDeleteAs03Entity();
+          entity.satelliteCode = sat;
+          entity.taskExecutionTime = time;
+          entity.deleteFileNumber = this.buildDeleteRange(params);
+          entity.deleteCommandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId', 'deleteCommandChainId']);
+          entity.status = 0;
+          await this.deleteLogAs03Repo.save(entity);
+        }
+        break;
+    }
+  }
+
+  private pickString(obj: any, keys: string[], fallback?: string): string | undefined {
+    for (const k of keys) {
+      if (obj && obj[k] != null && obj[k] !== '') return String(obj[k]);
+    }
+    return fallback;
+  }
+
+  private pickNumber(obj: any, keys: string[]): number | undefined {
+    for (const k of keys) {
+      const v = obj?.[k];
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+    return undefined;
+  }
+
+  private buildFileNumber(p: any): string {
+    const parts: string[] = [];
+    if (p?.start_file != null && p?.end_file != null) {
+      parts.push(`${p.start_file}-${p.end_file}`);
+    }
+    if (p?.startFileNo != null && p?.endFileNo != null) {
+      parts.push(`${p.startFileNo}-${p.endFileNo}`);
+    }
+    if (Array.isArray(p?.files)) {
+      parts.push(...p.files.map((x: any) => String(x)));
+    }
+    if (p?.fileStart != null) {
+      parts.push(String(p.fileStart));
+    }
+    if (p?.transmitFileNumber) {
+      parts.push(String(p.transmitFileNumber));
+    }
+    return parts.length ? Array.from(new Set(parts)).join(',') : '';
+  }
+
+  private buildDeleteRange(p: any): string {
+    if (p?.start_file != null && p?.end_file != null) {
+      return `${p.start_file}-${p.end_file}`;
+    }
+    if (p?.startFile != null && p?.endFile != null) {
+      return `${p.startFile}-${p.endFile}`;
+    }
+    if (p?.deleteFileNumber) return String(p.deleteFileNumber);
+    return '';
+  }
+
+  /** 去除名称中追加的时间后缀（如 “xxx-2025-12-01 …”） */
+  private stripTimeSuffix(name: string): string {
+    if (!name) return '';
+    return name.replace(/\s*-?\s*\d{4}-\d{2}-\d{2}.*$/, '').trim();
   }
 }
