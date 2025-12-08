@@ -137,7 +137,12 @@
 		<template #header>
 			<div class="card-header">
 				<span>任务执行时间轴</span>
-				<el-tag v-if="timeline.length" type="success" effect="plain">共 {{ timeline.length }} 个</el-tag>
+				<span class="card-actions" v-if="timeline.length">
+					<el-tag type="success" effect="plain">共 {{ timeline.length }} 个</el-tag>
+					<el-space>
+						<el-button size="small" type="primary" plain @click="openEditDialog">调整任务</el-button>
+					</el-space>
+				</span>
 				</div>
 			</template>
 
@@ -171,6 +176,67 @@
 		</el-timeline>
 		<template #footer>
 			<el-button type="primary" @click="sequenceDialogVisible = false">关闭</el-button>
+		</template>
+	</el-dialog>
+
+	<el-dialog v-model="editDialogVisible" title="调整任务" width="820px" :append-to-body="true">
+		<el-table :data="editableTasks" border height="420px" style="width: 100%;">
+			<el-table-column prop="name" label="名称" min-width="120">
+				<template #default="{ row }">
+					<el-input v-model="row.name" />
+				</template>
+			</el-table-column>
+			<el-table-column prop="startTsValue" label="开始时间" min-width="180">
+				<template #default="{ row }">
+					<el-date-picker
+						v-model="row.startTsValue"
+						type="datetime"
+						value-format="x"
+						style="width: 180px"
+					/>
+				</template>
+			</el-table-column>
+			<el-table-column prop="metaFields" label="描述" min-width="260">
+				<template #default="{ row }">
+					<div class="meta-fields">
+						<div v-if="row.type === 'data'" class="meta-item file-inline">
+							<span class="meta-sep" style="white-space: nowrap;">文件号：</span>
+							<el-input v-model="row.fileInput" placeholder="例如 65,73,81,89" />
+						</div>
+						<div v-else-if="row.type === 'info'" class="meta-item">
+							<span class="meta-sep" style="white-space: nowrap;">记录文件号：</span>
+							<el-input v-model="row.storageSlot" placeholder="如 225" />
+						</div>
+						<div v-else-if="row.type === 'delete'" class="meta-item file-inline">
+							<span class="meta-sep" style="white-space: nowrap;">删除文件：</span>
+							<el-input v-model="row.deleteRange" placeholder="如 41-72" />
+						</div>
+					</div>
+				</template>
+			</el-table-column>
+			<el-table-column prop="type" label="类型" width="90">
+				<template #default="{ row }">
+					<el-tag size="small">{{ row.type }}</el-tag>
+				</template>
+			</el-table-column>
+			<el-table-column prop="_deleted" label="操作" width="100">
+				<template #default="{ row }">
+					<el-button
+						size="small"
+						:type="row._deleted ? 'info' : 'danger'"
+						text
+						@click="toggleDelete(row)"
+					>
+						{{ row._deleted ? "撤销" : "删除" }}
+					</el-button>
+				</template>
+			</el-table-column>
+		</el-table>
+		<template #footer>
+			<el-space>
+				<el-button @click="editDialogVisible = false">取消</el-button>
+				<el-button type="primary" @click="applyTaskEdits">保存</el-button>
+			</el-space>
 		</template>
 	</el-dialog>
 </div>
@@ -307,6 +373,8 @@ const sequenceItems = computed(() =>
 			type: it.type === "data" ? "primary" : it.type === "delete" ? "danger" : "success",
 		}))
 );
+const editDialogVisible = ref(false);
+const editableTasks = ref<any[]>([]);
 const ONE_CLICK_PLAN_CACHE_KEY = "one_click_plan_cache_v1";
 const ONE_CLICK_PLAN_RELOAD_FLAG = "__one_click_plan_reload_handled";
 const UID_EPOCH = new Date("2025-01-01T00:00:00Z").getTime();
@@ -431,6 +499,7 @@ function persistOneClickCache() {
 		rollLimitAbs: rollLimitAbs.value,
 		rangeStart: form.value.rangeStart,
 		rangeEnd: form.value.rangeEnd,
+		planPreviewText: planPreviewText.value,
 	};
 	try {
 		window.localStorage.setItem(ONE_CLICK_PLAN_CACHE_KEY, JSON.stringify(payload));
@@ -552,6 +621,147 @@ function formatMonthDay(value: number | Date | string): string {
 	return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+function openEditDialog() {
+	editableTasks.value = timeline.value.map((t) => ({
+		...t,
+		startTsValue: t.startTs,
+		metaText: t.meta,
+		metaFields: parseMetaFields(t.meta),
+		fileInput: t.type === "data" ? (Array.isArray(t.files) ? t.files.join(",") : "") : "",
+		deleteRange:
+			t.type === "delete"
+				? `${t.raw?.startFile ?? t.raw?.start_file ?? ""}-${t.raw?.endFile ?? t.raw?.end_file ?? ""}`
+				: "",
+		_deleted: false,
+	}));
+	editDialogVisible.value = true;
+}
+
+function parseMetaFields(meta: string | undefined): Array<{ label: string; value: string }> {
+	if (!meta) return [];
+	return meta.split("|").map((part) => {
+		const p = part.trim();
+		const [label, ...rest] = p.split("：");
+		if (rest.length === 0) {
+			const [labelEn, ...restEn] = p.split(":");
+			return { label: (labelEn || "").trim(), value: restEn.join(":").trim() };
+		}
+		return { label: label.trim(), value: rest.join("：").trim() };
+	});
+}
+
+function metaFieldsToMap(fields: Array<{ label: string; value: string }>): Record<string, string> {
+	const map: Record<string, string> = {};
+	for (const f of fields) {
+		if (f.label) map[f.label.trim()] = f.value || "";
+	}
+	return map;
+}
+
+function buildGroupsFromFiles(files: number[]): TransferGroup[] {
+	const sorted = [...files].sort((a, b) => a - b);
+	const groups: TransferGroup[] = [];
+	let current: TransferGroup | null = null;
+	for (const n of sorted) {
+		if (!current) {
+			current = { start: n, end: n + 7, count: 1, duration: 90 };
+			continue;
+		}
+		const expected = current.start + current.count * 8;
+		if (n === expected) {
+			current.count += 1;
+			current.end = n + 7;
+			current.duration = current.count * 90;
+		} else {
+			groups.push({ ...current });
+			current = { start: n, end: n + 7, count: 1, duration: 90 };
+		}
+	}
+	if (current) groups.push({ ...current });
+	return groups;
+}
+
+function applyTaskEdits() {
+	const edits = editableTasks.value;
+	const deletedIds = new Set(
+		edits.filter((e: any) => e._deleted).map((e: any) => e.id)
+	);
+	const updated = timeline.value.map((t) => {
+		const e = edits.find((x: any) => x.id === t.id);
+		if (!e) return t;
+		const startTs = Number(e.startTsValue);
+		const meta = e.metaText ?? t.meta;
+		const metaFromFields = t.type === "data" ? meta : meta;
+		const metaMap = Array.isArray(e.metaFields) ? metaFieldsToMap(e.metaFields) : {};
+		const timeTs = Number.isFinite(startTs) ? startTs : t.startTs;
+		const delta = Number.isFinite(timeTs) && Number.isFinite(t.startTs) ? timeTs - t.startTs : 0;
+		const endTs = Number.isFinite(t.endTs) ? t.endTs + delta : t.endTs;
+		const timeText = Number.isFinite(timeTs) ? formatDisplay(new Date(timeTs)) : t.time;
+		const raw: any = {
+			...t.raw,
+			name: e.name || t.raw?.name,
+			startTs: timeTs,
+			startAt: timeTs,
+			startAtBeijing: timeTs,
+			endTs,
+		};
+		if (t.type === "data") {
+			let files: number[] = [];
+			if (e.fileInput) {
+				files = String(e.fileInput)
+					.split(/[，,]/)
+					.map((s) => Number(s.trim()))
+					.filter((n) => Number.isFinite(n));
+			}
+			raw.groups = files.length ? buildGroupsFromFiles(files) : (raw.groups as TransferGroup[]) || [];
+			raw.files = files.length ? files : raw.files || [];
+			t.files = raw.files.map((f: any) => String(f));
+			t.meta = metaFromFields;
+			t.raw = raw;
+		} else if (t.type === "info") {
+			if (e.storageSlot) {
+				raw.storageSlot = String(e.storageSlot);
+				t.storageSlot = String(e.storageSlot);
+			}
+			t.meta = metaFromFields;
+			t.raw = raw;
+		} else if (t.type === "delete") {
+			if (e.deleteRange) {
+				const m = String(e.deleteRange).match(/(\d+)\s*[-~－]\s*(\d+)/);
+				if (m) {
+					const s = Number(m[1]);
+					const eEnd = Number(m[2]);
+					if (Number.isFinite(s) && Number.isFinite(eEnd) && eEnd > s) {
+						raw.startFile = s;
+						raw.endFile = eEnd;
+						t.meta = `删除文件: ${s}-${eEnd}`;
+					}
+				}
+			}
+			t.raw = raw;
+		}
+		return {
+			...t,
+			name: e.name || t.name,
+			startTs: timeTs,
+			endTs,
+			time: timeText,
+			raw,
+		};
+	});
+	timeline.value = updated
+		.filter((t) => !deletedIds.has(t.id))
+		.map((it) => ({ ...it, meta: buildMeta(it) }));
+	editDialogVisible.value = false;
+	updateChart();
+	// 重新构建摘要，确保提交弹窗使用最新参数
+	submissionSummary.value = buildSubmissionSummaryText();
+}
+
+function toggleDelete(row: any) {
+	row._deleted = !row._deleted;
+}
+
 async function runOneClickPlan() {
 	const { start: imagingStart, end: imagingEnd } = imagingRange.value;
 	const { start: opsStart, end: opsEnd } = planRange.value;
@@ -614,8 +824,26 @@ async function runOneClickPlan() {
 			return Math.abs(rollNum) <= rollLimitVal;
 		});
 		const defaultLimit = form.value.satellite === "AS03" ? 2 : 4;
-		const imagingLimit = Math.max(1, Number(imagingTaskCount.value) || defaultLimit);
+		const imagingExpect = Math.max(1, Number(imagingTaskCount.value) || defaultLimit);
+		let imagingLimit = imagingExpect;
 		const notes: string[] = [];
+
+		// 固存可用槽位限制成像数量
+		if (taskSwitches.imaging) {
+			const slotName = form.value.satellite === "AS02" ? 0 : 2;
+			try {
+				const slots = await fetchEmptySlots(slotName, imagingLimit);
+				if (slots.length < imagingLimit) {
+					notes.push(`固存可用槽位 ${slots.length} 个，少于期望成像 ${imagingLimit} 个，已自动缩减。`);
+					imagingLimit = slots.length;
+				}
+			} catch (err) {
+				console.warn("[one-click-plan] fetchEmptySlots for limit failed", err);
+			}
+		}
+		if (imagingLimit <= 0) {
+			notes.push("固存可用槽位为 0，未生成成像任务。");
+		}
 
 		// 先确定数传/删除任务，预留时间，再选成像任务
 		const excludeStarts = new Set<number>();
@@ -684,7 +912,9 @@ async function runOneClickPlan() {
 			}
 		}
 		if (taskSwitches.imaging && picked.length < imagingLimit) {
-			notes.push(`成像任务期望 ${imagingLimit} 个，实际生成 ${picked.length} 个，可能因云量/间隔/预留时间限制。`);
+			notes.push(
+				`成像任务期望 ${imagingExpect} 个（受固存限制后 ${imagingLimit} 个），实际生成 ${picked.length} 个，可能因云量/间隔/预留时间限制。`
+			);
 		}
 
 		const imagingDuration = form.value.satellite === "AS03" ? 30 : 40; // seconds
@@ -1377,6 +1607,7 @@ async function buildDeleteTasks(start: Date, end: Date): Promise<TimelineItem[]>
 		const tasks: TimelineItem[] = [];
 		for (let i = 0; i < groups.length; i++) {
 			const g = groups[i];
+			if (g.length < 4) continue; // 仅规划连续 4 个及以上
 			const deleteStart = g[0].start;
 			const deleteEnd = g[g.length - 1].start + 7;
 			const ts = chosen + i * 60 * 60 * 1000; // 间隔 1h
@@ -1831,6 +2062,8 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		success += 1;
 		try {
 			await updateFixedStorageSlot(2, slot, item);
+			// 同步写入平台固存表
+			await updateFixedStorageSlot(3, slot, item);
 		} catch (err) {
 			console.warn("[one-click-plan] 回填 AS03 固存失败", err);
 		}
@@ -2346,6 +2579,33 @@ function padBase36(value: number, length: number): string {
 .field-label {
 	color: #606266;
 	font-size: 16px;
+}
+.card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+.card-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.meta-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.meta-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+.meta-sep {
+	color: #606266;
+}
+.file-inline {
+	flex-direction: row;
+	align-items: center;
 }
 </style>
 

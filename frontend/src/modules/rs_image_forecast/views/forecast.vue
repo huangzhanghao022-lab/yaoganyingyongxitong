@@ -2013,6 +2013,7 @@ async function createWithTemplateAS03() {
         if (slot && slot.id) {
           try {
             await updateAs03FixedStorage(slot.id, row);
+            await syncAs03PlatformStorage(slot.startFileNo ?? slot.start_file_no, row);
           } catch (e) {
             console.warn('[AS03] 固存表回填失败: ', e);
           }
@@ -2103,6 +2104,41 @@ async function updateAs03FixedStorage(id: number, srcRow: any) {
   const status = 1; // 待写入
   const imagingUid = String(srcRow?.__imagingUid || '');
   const payload: Record<string, any> = { id, targetName, imagingTime, status };
+  if (imagingUid) payload.imagingUid = imagingUid;
+  await api.update({ name, data: payload });
+}
+
+// 按 startFileNo 同步平台固存表（name=3），若找到对应记录则回填
+async function syncAs03PlatformStorage(startFileNo: number | string | undefined, srcRow: any) {
+  if (startFileNo == null) return;
+  const api: any = (service as any)?.star?.fixed_storage_table;
+  if (!api?.page || !api?.update) return;
+  const name = 3; // 平台表
+  const res = await api.page({
+    page: 1,
+    size: 5,
+    name,
+    startFileNo: startFileNo,
+    sort: 'startFileNo',
+    order: 'ASC',
+  });
+  const list = res?.list || res?.data?.list || [];
+  const row = Array.isArray(list) ? list[0] : null;
+  if (!row?.id) return;
+  const targetName = String(srcRow?.name || '');
+  const imagingRaw =
+    srcRow?.startAtBeijing ??
+    srcRow?.start_at_beijing ??
+    srcRow?.t0_beijing ??
+    srcRow?.startAt ??
+    srcRow?.start_at ??
+    srcRow?.t0 ??
+    '';
+  const imagingIso = imagingRaw ? toIsoString(imagingRaw) : '';
+  const imagingTime = imagingIso || String(imagingRaw || '');
+  const status = 1;
+  const imagingUid = String(srcRow?.__imagingUid || '');
+  const payload: Record<string, any> = { id: row.id, targetName, imagingTime, status };
   if (imagingUid) payload.imagingUid = imagingUid;
   await api.update({ name, data: payload });
 }
