@@ -1,6 +1,6 @@
 import { Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Between } from 'typeorm';
 import { as02payloadtableEntity } from '../../star/entity/as02_payload_table/as02_payload_table';
 import { TaskLogImagingAs02Entity } from '../../task_log/entity/imaging_as02';
 import { TaskLogImagingAs03Entity } from '../../task_log/entity/imaging_as03';
@@ -74,6 +74,14 @@ export class CommandValidateService {
     if (!taskTime) {
       errors.push({ field: 'time', message: '缺少任务时间，无法进行冲突校验' });
       return { ok: false, errors };
+    }
+
+    // AS03 成像多条指令：若同一卫星+时间已写入记录，视为同批次，跳过冲突判断与写库（避免后两条挡住）
+    if (type === 'image' && satellite === 'AS03') {
+      const exist = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', satellite, taskTime);
+      if (exist) {
+        return { ok: true };
+      }
     }
 
     // 冲突校验
@@ -415,6 +423,8 @@ export class CommandValidateService {
     switch (type) {
       case 'image':
         if (sat === 'AS02') {
+          const exist = await this.findExistingLog(this.imagingLogAs02Repo, 'imagingTime', sat, time);
+          if (exist) return;
           const entity = new TaskLogImagingAs02Entity();
           entity.satelliteCode = sat;
           entity.imagingTargetName = this.stripTimeSuffix(
@@ -429,6 +439,8 @@ export class CommandValidateService {
           entity.status = 0;
           await this.imagingLogAs02Repo.save(entity);
         } else {
+          const exist = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', sat, time);
+          if (exist) return;
           const entity = new TaskLogImagingAs03Entity();
           entity.satelliteCode = sat;
           entity.imagingTargetName = this.stripTimeSuffix(
@@ -446,6 +458,8 @@ export class CommandValidateService {
         break;
       case 'transfer':
         if (sat === 'AS02') {
+          const exist = await this.findExistingLog(this.transferLogAs02Repo, 'transmitTime', sat, time);
+          if (exist) return;
           const entity = new TaskLogTransmitAs02Entity();
           entity.satelliteCode = sat;
           entity.transmitStationName = this.stripTimeSuffix(
@@ -461,6 +475,8 @@ export class CommandValidateService {
           entity.status = 0;
           await this.transferLogAs02Repo.save(entity);
         } else {
+          const exist = await this.findExistingLog(this.transferLogAs03Repo, 'transmitTime', sat, time);
+          if (exist) return;
           const entity = new TaskLogTransmitAs03Entity();
           entity.satelliteCode = sat;
           entity.transmitStationName = this.stripTimeSuffix(
@@ -479,6 +495,8 @@ export class CommandValidateService {
         break;
       case 'delete':
         if (sat === 'AS02') {
+          const exist = await this.findExistingLog(this.deleteLogAs02Repo, 'taskExecutionTime', sat, time);
+          if (exist) return;
           const entity = new TaskLogDeleteAs02Entity();
           entity.satelliteCode = sat;
           entity.taskExecutionTime = time;
@@ -487,6 +505,8 @@ export class CommandValidateService {
           entity.status = 0;
           await this.deleteLogAs02Repo.save(entity);
         } else {
+          const exist = await this.findExistingLog(this.deleteLogAs03Repo, 'taskExecutionTime', sat, time);
+          if (exist) return;
           const entity = new TaskLogDeleteAs03Entity();
           entity.satelliteCode = sat;
           entity.taskExecutionTime = time;
@@ -550,5 +570,27 @@ export class CommandValidateService {
   private stripTimeSuffix(name: string): string {
     if (!name) return '';
     return name.replace(/\s*-?\s*\d{4}-\d{2}-\d{2}.*$/, '').trim();
+  }
+
+  /** 查找同一卫星+时间的已存在记录，允许 1s 容忍，避免同批次多链重复冲突/写入 */
+  private async findExistingLog<T>(
+    repo: Repository<T>,
+    timeField: keyof T & string,
+    sat: Sat,
+    time: Date,
+  ): Promise<T | null> {
+    const t = time.getTime();
+    const from = new Date(t - 1000);
+    const to = new Date(t + 1000);
+    const where: any = {
+      satelliteCode: sat,
+      [timeField]: Between(from, to),
+    };
+    try {
+      // @ts-ignore
+      return await repo.findOne({ where });
+    } catch {
+      return null;
+    }
   }
 }

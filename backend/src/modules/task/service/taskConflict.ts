@@ -76,6 +76,8 @@ export class TaskConflictService {
       const gapMin = interval[c.type];
       if (!gapMin) continue;
       const diff = Math.abs(tMs - c.time.getTime());
+      // 同时刻（<1s）视为同一批次（如 AS03 成像多指令），不算冲突
+      if (diff < 1000) continue;
       if (diff < gapMin * 60 * 1000) {
         const withLabel = this.typeLabel[c.type] || c.type;
         return {
