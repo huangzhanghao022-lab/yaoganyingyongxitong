@@ -76,10 +76,12 @@ export class CommandValidateService {
       return { ok: false, errors };
     }
 
-    // AS03 成像多条指令：若同一卫星+时间已写入记录，视为同批次，跳过冲突判断与写库（避免后两条挡住）
+    // AS03 成像多条指令：如果当前指令没有 reset_seq，且已存在同一时间的记录，视为同一批次后续链，跳过冲突
+    let as03Existing: any = null;
+    const hasResetFlag = params?.reset_seq !== undefined;
     if (type === 'image' && satellite === 'AS03') {
-      const exist = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', satellite, taskTime);
-      if (exist) {
+      as03Existing = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', satellite, taskTime);
+      if (!hasResetFlag && as03Existing) {
         return { ok: true };
       }
     }
@@ -440,7 +442,11 @@ export class CommandValidateService {
           await this.imagingLogAs02Repo.save(entity);
         } else {
           const exist = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', sat, time);
-          if (exist) return;
+          const hasReset = params?.reset_seq !== undefined;
+          // 如果没有 reset_seq 且已有记录，视为同批次后续指令，不再写库
+          if (!hasReset && exist) return;
+          // 没有记录或带 reset_seq，则写入
+          if (exist && hasReset) return; // 已有记录且是首链重复，跳过
           const entity = new TaskLogImagingAs03Entity();
           entity.satelliteCode = sat;
           entity.imagingTargetName = this.stripTimeSuffix(
