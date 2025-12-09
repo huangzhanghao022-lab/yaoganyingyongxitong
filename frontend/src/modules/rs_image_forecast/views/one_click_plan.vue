@@ -904,12 +904,25 @@ async function runOneClickPlan() {
 
 		// 再次强制全局间隔校验，确保 AS03 3h（或 AS02 1.5h）下没有漏网
 		if (taskSwitches.imaging) {
+			if (process.env.NODE_ENV !== "production") {
+				console.log("[one-click-plan] imaging picked before enforce", {
+					gapHours: gapMs / 3600000,
+					count: picked.length,
+					times: picked.map((p) => formatDisplay(new Date(p.startTs))),
+				});
+			}
 			const enforced = enforceGap(picked, gapMs, reservedTimes);
 			picked = enforced.kept;
 			if (enforced.dropped.length) {
 				notes.push(
 					`已有 ${enforced.dropped.length} 条成像因间隔不足 ${Math.round(gapMs / 3600000 * 10) / 10} 小时被移除。`
 				);
+				if (process.env.NODE_ENV !== "production") {
+					console.log("[one-click-plan] imaging dropped for gap", {
+						gapHours: gapMs / 3600000,
+						dropped: enforced.dropped.map((p) => formatDisplay(new Date(p.startTs))),
+					});
+				}
 			}
 		}
 		if (taskSwitches.imaging && picked.length < imagingLimit) {
