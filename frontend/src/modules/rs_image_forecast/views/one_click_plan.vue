@@ -890,16 +890,6 @@ async function runOneClickPlan() {
 		if (picked.length < imagingLimit && taskSwitches.imaging) {
 			const need = imagingLimit - picked.length;
 			const pickedSet = new Set(picked.map((x) => x.startTs));
-			const okGap = (ts: number, chosen: any[]) => {
-				for (const c of chosen) {
-					const v = Number(c.startTs ?? 0);
-					if (Number.isFinite(v) && Math.abs(ts - v) < gapMs) return false;
-				}
-				for (const r of reservedTimes) {
-					if (Math.abs(ts - r) < gapMs) return false;
-				}
-				return true;
-			};
 			const remaining = cloudFiltered
 				.filter((x) => !pickedSet.has(x.startTs))
 				.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
@@ -907,8 +897,19 @@ async function runOneClickPlan() {
 				if (picked.length >= imagingLimit) break;
 				const ts = Number(cand.startTs ?? 0);
 				if (!Number.isFinite(ts)) continue;
-				if (!okGap(ts, picked)) continue;
+				if (!okGap(ts, picked, reservedTimes, gapMs)) continue;
 				picked.push(cand);
+			}
+		}
+
+		// 再次强制全局间隔校验，确保 AS03 3h（或 AS02 1.5h）下没有漏网
+		if (taskSwitches.imaging) {
+			const enforced = enforceGap(picked, gapMs, reservedTimes);
+			picked = enforced.kept;
+			if (enforced.dropped.length) {
+				notes.push(
+					`已有 ${enforced.dropped.length} 条成像因间隔不足 ${Math.round(gapMs / 3600000 * 10) / 10} 小时被移除。`
+				);
 			}
 		}
 		if (taskSwitches.imaging && picked.length < imagingLimit) {
@@ -1264,6 +1265,40 @@ function pickWithPreference(list: any[], limit: number, gapMs: number, reserved:
 		reserved.concat(first.map((x) => Number(x.startTs))),
 	);
 	return [...first, ...second].slice(0, limit);
+}
+
+function okGap(ts: number, chosen: any[], reserved: number[], gapMs: number): boolean {
+	for (const c of chosen) {
+		const v = Number(c.startTs ?? 0);
+		if (Number.isFinite(v) && Math.abs(ts - v) < gapMs) return false;
+	}
+	for (const r of reserved) {
+		if (Math.abs(ts - r) < gapMs) return false;
+	}
+	return true;
+}
+
+function enforceGap(
+	list: any[],
+	gapMs: number,
+	reserved: number[] = [],
+): { kept: any[]; dropped: any[] } {
+	const sorted = [...list].sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+	const kept: any[] = [];
+	const dropped: any[] = [];
+	for (const item of sorted) {
+		const ts = Number(item.startTs ?? 0);
+		if (!Number.isFinite(ts)) {
+			dropped.push(item);
+			continue;
+		}
+		if (okGap(ts, kept, reserved, gapMs)) {
+			kept.push(item);
+		} else {
+			dropped.push(item);
+		}
+	}
+	return { kept, dropped };
 }
 
 async function getToken(): Promise<string> {
