@@ -875,7 +875,7 @@ async function runOneClickPlan() {
 		const reservedTimes = [...dataTasks.map((d) => d.startTs), ...(deleteTasks.map((d) => d.startTs))].filter(
 			Boolean
 		) as number[];
-		const gapMs = form.value.satellite === "AS03" ? 2.5 * 60 * 60 * 1000 : 1.5 * 60 * 60 * 1000;
+		const gapMs = form.value.satellite === "AS03" ? 3 * 60 * 60 * 1000 : 1.5 * 60 * 60 * 1000;
 		const noonTs = new Date(planRange.value.start);
 		noonTs.setHours(12, 0, 0, 0);
 
