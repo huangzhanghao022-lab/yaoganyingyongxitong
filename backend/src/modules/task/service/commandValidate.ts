@@ -76,14 +76,21 @@ export class CommandValidateService {
       return { ok: false, errors };
     }
 
-    // AS03 成像多条指令：如果当前指令没有 reset_seq，且已存在同一时间的记录，视为同一批次后续链，跳过冲突
-    let as03Existing: any = null;
+    // AS03 成像多条指令：
+    // - 首条（带 reset_seq）参与冲突校验+写库
+    // - 后两条（无 reset_seq）：仅当首条已写入（同批次已有记录）才放行；否则视为首条未通过，直接阻断
     const hasResetFlag = params?.reset_seq !== undefined;
-    if (type === 'image' && satellite === 'AS03') {
-      as03Existing = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', satellite, taskTime);
-      if (!hasResetFlag && as03Existing) {
-        return { ok: true };
+    if (type === 'image' && satellite === 'AS03' && !hasResetFlag) {
+      // AS03 三条链存在 30s 左右的时间差，放宽首条判定窗口至 5 分钟
+      const exist = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', satellite, taskTime, 5 * 60 * 1000);
+      if (!exist) {
+        return {
+          ok: false,
+          errors: [{ field: 'conflict', message: '首条成像指令未通过，后续链已取消' }],
+        };
       }
+      console.log('[command-validate] AS03 image non-reset, first exists, skip conflict/log', taskTime.toISOString());
+      return { ok: true };
     }
 
     // 冲突校验
@@ -93,6 +100,12 @@ export class CommandValidateService {
       time: taskTime,
     });
     if (conflict) {
+      if (process.env.NODE_ENV !== 'production' && satellite === 'AS03' && type === 'image' && hasResetFlag) {
+        console.log('[command-validate] AS03 image first-chain conflict', {
+          taskTime: taskTime.toISOString(),
+          message: conflict.message,
+        });
+      }
       errors.push({
         field: 'conflict',
         message: conflict.message,
@@ -441,12 +454,10 @@ export class CommandValidateService {
           entity.status = 0;
           await this.imagingLogAs02Repo.save(entity);
         } else {
-          const exist = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', sat, time);
           const hasReset = params?.reset_seq !== undefined;
-          // 如果没有 reset_seq 且已有记录，视为同批次后续指令，不再写库
-          if (!hasReset && exist) return;
-          // 没有记录或带 reset_seq，则写入
-          if (exist && hasReset) return; // 已有记录且是首链重复，跳过
+          if (!hasReset) return; // 非首链不写记录
+          const exist = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', sat, time);
+          if (exist) return; // 已写过首链
           const entity = new TaskLogImagingAs03Entity();
           entity.satelliteCode = sat;
           entity.imagingTargetName = this.stripTimeSuffix(
@@ -584,10 +595,11 @@ export class CommandValidateService {
     timeField: keyof T & string,
     sat: Sat,
     time: Date,
+    toleranceMs = 1000,
   ): Promise<T | null> {
     const t = time.getTime();
-    const from = new Date(t - 1000);
-    const to = new Date(t + 1000);
+    const from = new Date(t - toleranceMs);
+    const to = new Date(t + toleranceMs);
     const where: any = {
       satelliteCode: sat,
       [timeField]: Between(from, to),

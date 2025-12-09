@@ -70,16 +70,40 @@ export class TaskConflictService {
     if (!interval) return null;
 
     const candidates = await this.fetchTasks(satellite);
+    if (satellite === 'AS03' && type === 'image') {
+      console.log('[task-conflict] AS03 image candidates', {
+        gapMatrix: interval,
+        count: candidates.length,
+        items: candidates.map((c) => ({ type: c.type, time: c.time.toISOString() })),
+      });
+    }
+    if (!candidates.length) return null;
     const tMs = time.getTime();
 
     for (const c of candidates) {
       const gapMin = interval[c.type];
       if (!gapMin) continue;
       const diff = Math.abs(tMs - c.time.getTime());
-      // 同时刻（<1s）视为同一批次（如 AS03 成像多指令），不算冲突
-      if (diff < 1000) continue;
+      // 默认：同一批次 <1s 视为同一任务；但 AS03 成像首条需要严格冲突检查，不跳过
+      if (!(satellite === 'AS03' && type === 'image')) {
+        if (diff < 1000) {
+          continue;
+        }
+      }
       if (diff < gapMin * 60 * 1000) {
         const withLabel = this.typeLabel[c.type] || c.type;
+        // 调试日志，便于定位冲突来源
+        if (satellite === 'AS03' && type === 'image') {
+          console.log('[task-conflict] hit', {
+            sat: satellite,
+            type,
+            time: time.toISOString(),
+            withType: c.type,
+            withTime: c.time.toISOString(),
+            gapMin,
+            diffSec: Math.round(diff / 1000),
+          });
+        }
         return {
           message: `${withLabel}(${c.time.toISOString()}) 冲突，需间隔 ≥ ${gapMin} 分钟`,
           withType: c.type,
