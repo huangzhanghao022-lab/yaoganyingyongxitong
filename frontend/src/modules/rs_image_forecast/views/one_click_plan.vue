@@ -1018,13 +1018,17 @@ async function runOneClickPlan() {
 		}
 
 			const cloudFiltered = withTs.filter((r) => r.cloud == null || r.cloud <= cloudLimitVal);
-			const rollFiltered = cloudFiltered.filter((r) => {
-				const rollNum = Number(pickRollAngle(r));
-				if (!Number.isFinite(rollNum)) return true;
-				return Math.abs(rollNum) <= rollLimitVal;
-			});
+		const rollFiltered = cloudFiltered.filter((r) => {
+			const rollNum = Number(pickRollAngle(r));
+			if (!Number.isFinite(rollNum)) return true;
+			return Math.abs(rollNum) <= rollLimitVal;
+		});
 		const highMidFiltered = rollFiltered.filter((r) => (r.priority ?? 99) <= 2);
 		const lowFiltered = rollFiltered.filter((r) => (r.priority ?? 99) > 2);
+		console.log(
+			"[one-click-plan] filtered pool",
+			{ total: rollFiltered.length, high: highMidFiltered.length, low: lowFiltered.length, gapMs }
+		);
 		let imagingLimit = imagingExpect;
 		const notes: string[] = [];
 
@@ -1104,6 +1108,12 @@ async function runOneClickPlan() {
 				"[one-click-plan] after low selected",
 				picked.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
 			);
+			if (remain > 0 && picked.length <= highFirst.length) {
+				console.log(
+					"[one-click-plan] low selection empty",
+					{ lowFiltered: lowFiltered.length, reserved: reservedSlots.length, gapMs }
+				);
+			}
 			if (!picked.length) {
 				console.log("[one-click-plan] no tasks selected after applying gap/cloud/roll filters; pool size", rollFiltered.length);
 			}
