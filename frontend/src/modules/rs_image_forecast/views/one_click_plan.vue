@@ -897,6 +897,7 @@ async function runOneClickPlan() {
 		let priorityMap = new Map<string, number>();
 		const defaultLimit = form.value.satellite === "AS03" ? 2 : 4;
 		const imagingExpect = Math.max(1, Number(imagingTaskCount.value) || defaultLimit);
+		const gapMs = form.value.satellite === "AS03" ? 3 * 60 * 60 * 1000 : 95 * 60 * 1000;
 
 		if (taskSwitches.imaging) {
 			planningProgress.percent = 20;
@@ -955,7 +956,7 @@ async function runOneClickPlan() {
 			const highMidRes = await forecast(highMid);
 			withTs.push(...highMidRes);
 			highMidWithTs.push(...highMidRes);
-			let approxPicked = estimatePickedCount(withTs, form.value.satellite);
+			let approxPicked = selectWithGap(highMidWithTs, imagingExpect, gapMs).length;
 			planningProgress.percent = 70;
 			planningProgress.text = "高/中优先级预报完成";
 			updateSelectionPreview(withTs);
@@ -973,7 +974,7 @@ async function runOneClickPlan() {
 					const batchRes = await forecast(batch);
 					withTs.push(...batchRes);
 					lowWithTs.push(...batchRes);
-					approxPicked = estimatePickedCount(withTs, form.value.satellite);
+					approxPicked = selectWithGap([...highMidWithTs, ...lowWithTs], imagingExpect, gapMs).length;
 					const batchNames = batch.map((b) => b.name).join(",");
 					console.log(
 						"[one-click-plan] low batch",
@@ -1067,7 +1068,7 @@ async function runOneClickPlan() {
 			if (d.startTs) reservedSlots.push({ ts: d.startTs, buffer: deleteBuf });
 		});
 
-		const gapMs = form.value.satellite === "AS03" ? 3 * 60 * 60 * 1000 : 95 * 60 * 1000;
+		// gapMs 已在前面定义
 		const noonTs = new Date(planRange.value.start);
 		noonTs.setHours(12, 0, 0, 0);
 
