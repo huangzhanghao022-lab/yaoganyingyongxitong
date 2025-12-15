@@ -1095,11 +1095,12 @@ async function runOneClickPlan() {
 		let picked: any[] = [];
 
 		if (taskSwitches.imaging) {
-			// 高/中优先级先选，低优先级在已有选中基础上补足，避免后续任务冲掉已选
+			// 统一使用 reserved/gap 规则选取，保证选中即满足全部条件
 			const highFirst = selectWithGap(highMidFiltered, imagingLimit, gapMs, reservedSlots);
 			const remain = Math.max(0, imagingLimit - highFirst.length);
-			const lowNext = remain > 0 ? selectWithGap(lowFiltered, remain, gapMs, reservedSlots, highFirst) : highFirst;
-			picked = lowNext;
+			const lowNext =
+				remain > 0 ? selectWithGap(lowFiltered, remain, gapMs, reservedSlots, highFirst) : [];
+			picked = [...highFirst, ...lowNext].slice(0, imagingLimit);
 			console.log(
 				"[one-click-plan] high/mid selected",
 				highFirst.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
@@ -1108,84 +1109,19 @@ async function runOneClickPlan() {
 				"[one-click-plan] after low selected",
 				picked.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
 			);
-			if (remain > 0 && picked.length <= highFirst.length) {
+			if (remain > 0 && lowNext.length === 0) {
 				console.log(
 					"[one-click-plan] low selection empty",
-					{ lowFiltered: lowFiltered.length, reserved: reservedSlots.length, gapMs }
+					{
+						lowFiltered: lowFiltered.length,
+						lowTimes: lowFiltered.map((x) => formatDisplay(new Date(x.startTs))),
+						reserved: reservedSlots.length,
+						gapMs,
+					}
 				);
 			}
 			if (!picked.length) {
 				console.log("[one-click-plan] no tasks selected after applying gap/cloud/roll filters; pool size", rollFiltered.length);
-			}
-
-			// 若仍不足且之前未跑低优先级预报，则立即补充低优先级预报并重选
-			if (picked.length < imagingLimit && !lowForecasted.ran && lowTargets.length) {
-				planningProgress.text = "补充低优先级预报";
-				const forecastLowBatch = async (targets: any[]) => {
-					const body: any = {
-						satelliteCode: form.value.satellite,
-						forecastStartAt: imagingStart.getTime(),
-						forecastEndAt: imagingEnd.getTime(),
-						targetList: targets,
-					};
-					if (orbitElements.value) body.ephemeris = orbitElements.value;
-					const resp = await fetch(ONE_CLICK_PLAN_URL, {
-						method: "POST",
-						headers: { "Content-Type": "application/json" },
-						body: JSON.stringify(body),
-					});
-					if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-					const data = await resp.json();
-					const rawList: any[] = data?.result || data?.tasks || data?.data || [];
-					return rawList
-						.map((r) => {
-							const ts = parseStartTime(r);
-							const cloud = parseCloudPercent(
-								r?.cloud ?? r?.cloudCoverage ?? r?.cloud_percent ?? r?.cloudPercent
-							);
-							const priority =
-								resolvePriorityFromCache(r?.name || r?.targetName, priorityMap) ||
-								parsePriority(r?.priority ?? r?.priorityLevel ?? r?.level);
-							return ts
-								? {
-										...r,
-										startTs: ts,
-										name: r?.name || r?.targetName || "Task",
-										cloud,
-										priority,
-								  }
-								: null;
-						})
-						.filter((x): x is any => Boolean(x));
-				};
-
-				for (let i = 0; i < lowTargets.length && picked.length < imagingLimit; i += 10) {
-					const batchNo = Math.floor(i / 10) + 1;
-					const batch = lowTargets.slice(i, i + 10);
-					const batchRes = await forecastLowBatch(batch);
-					withTs.push(...batchRes);
-					lowWithTs.push(...batchRes);
-					const cloudFiltered2 = withTs.filter((r) => r.cloud == null || r.cloud <= cloudLimitVal);
-					const rollFiltered2 = cloudFiltered2.filter((r) => {
-						const rollNum = Number(pickRollAngle(r));
-						if (!Number.isFinite(rollNum)) return true;
-						return Math.abs(rollNum) <= rollLimitVal;
-					});
-					const highMidFiltered2 = rollFiltered2.filter((r) => (r.priority ?? 99) <= 2);
-					const lowFiltered2 = rollFiltered2.filter((r) => (r.priority ?? 99) > 2);
-					const highFirst2 = selectWithGap(highMidFiltered2, imagingLimit, gapMs, reservedSlots);
-					const remain2 = Math.max(0, imagingLimit - highFirst2.length);
-					const lowNext2 =
-						remain2 > 0 ? selectWithGap(lowFiltered2, remain2, gapMs, reservedSlots, highFirst2) : highFirst2;
-					picked = lowNext2;
-					console.log(
-						`[one-click-plan] after low batch ${batchNo} selected`,
-						picked.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
-					);
-					planningProgress.text = `补充低优先级批次 ${batchNo} 完成`;
-					if (picked.length >= imagingLimit) break;
-				}
-				lowForecasted.ran = true;
 			}
 		}
 
@@ -1194,7 +1130,7 @@ async function runOneClickPlan() {
 			picked.length,
 			"items:",
 			picked.map((p) => `${p.name || "Task"} @${formatDisplay(new Date(p.startTs))}`)
-		);
+			);
 			if (taskSwitches.imaging && picked.length < imagingLimit) {
 				const feasible = selectWithGap(rollFiltered, imagingLimit, gapMs, reservedSlots).length;
 				console.log(
@@ -1208,17 +1144,6 @@ async function runOneClickPlan() {
 				notes.push(
 					`满足间隔/预留时间的候选不足（可选 ${feasible} 个，期望 ${imagingLimit} 个），可能需放宽间隔或时间窗口。`
 				);
-				// 若全池可行数大于当前选中，则放弃优先级限制，按可行组合重新选
-				if (feasible > picked.length) {
-					const fallback = selectWithGap(rollFiltered, imagingLimit, gapMs, reservedSlots);
-					console.log(
-						"[one-click-plan] fallback without priority, picked",
-						fallback.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
-					);
-					if (fallback.length > picked.length) {
-						picked = fallback;
-					}
-				}
 			}
 
 			// 按成像时间先后重新分配固存号（时间早的分配更小的固存号）
