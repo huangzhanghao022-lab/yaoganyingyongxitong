@@ -378,6 +378,16 @@ const editableTasks = ref<any[]>([]);
 const ONE_CLICK_PLAN_CACHE_KEY = "one_click_plan_cache_v1";
 const ONE_CLICK_PLAN_RELOAD_FLAG = "__one_click_plan_reload_handled";
 const UID_EPOCH = new Date("2025-01-01T00:00:00Z").getTime();
+
+// 根据卫星切换设置成像任务数量默认值
+watch(
+	() => form.value.satellite,
+	(sat) => {
+		const def = sat === "AS03" ? 2 : 4;
+		imagingTaskCount.value = def;
+	},
+	{ immediate: true }
+);
 const UID_TIMESTAMP_BITS = 41;
 const UID_MACHINE_BITS = 10;
 const UID_PID_BITS = 6;
@@ -872,18 +882,27 @@ async function runOneClickPlan() {
 			taskSwitches.delete && form.value.satellite === "AS02"
 				? await buildDeleteTasks(opsStart, opsEnd)
 				: [];
-		const reservedTimes = [...dataTasks.map((d) => d.startTs), ...(deleteTasks.map((d) => d.startTs))].filter(
-			Boolean
-		) as number[];
-		const gapMs = form.value.satellite === "AS03" ? 3 * 60 * 60 * 1000 : 1.5 * 60 * 60 * 1000;
+		// 预留时间窗口，按任务类型套用与后端一致的间隔：AS02 成像-成像 95min，成像-数传 80min，成像-删除 30min
+		// AS03 成像-成像 180min，成像-删除 30min（数传不在一键规划）
+		const reservedSlots: Array<{ ts: number; buffer: number }> = [];
+		const transferBuf = form.value.satellite === "AS02" ? 80 * 60 * 1000 : 180 * 60 * 1000;
+		const deleteBuf = 30 * 60 * 1000;
+		dataTasks.forEach((d) => {
+			if (d.startTs) reservedSlots.push({ ts: d.startTs, buffer: transferBuf });
+		});
+		deleteTasks.forEach((d) => {
+			if (d.startTs) reservedSlots.push({ ts: d.startTs, buffer: deleteBuf });
+		});
+
+		const gapMs = form.value.satellite === "AS03" ? 3 * 60 * 60 * 1000 : 95 * 60 * 1000;
 		const noonTs = new Date(planRange.value.start);
 		noonTs.setHours(12, 0, 0, 0);
 
 		let picked =
 			taskSwitches.imaging && form.value.satellite === "AS03"
-				? pickWithPreference(rollFiltered, imagingLimit, gapMs, reservedTimes, noonTs.getTime())
+				? pickWithPreference(rollFiltered, imagingLimit, gapMs, reservedSlots, noonTs.getTime())
 				: taskSwitches.imaging
-				? pickTopTasks(rollFiltered, imagingLimit, gapMs, reservedTimes)
+				? pickTopTasks(rollFiltered, imagingLimit, gapMs, reservedSlots)
 				: [];
 
 		// 若未达到指定成像数量，保持间隔规则从剩余候选补齐
@@ -897,7 +916,7 @@ async function runOneClickPlan() {
 				if (picked.length >= imagingLimit) break;
 				const ts = Number(cand.startTs ?? 0);
 				if (!Number.isFinite(ts)) continue;
-				if (!okGap(ts, picked, reservedTimes, gapMs)) continue;
+				if (!okGap(ts, picked, reservedSlots, gapMs)) continue;
 				picked.push(cand);
 			}
 		}
@@ -911,7 +930,7 @@ async function runOneClickPlan() {
 					times: picked.map((p) => formatDisplay(new Date(p.startTs))),
 				});
 			}
-			const enforced = enforceGap(picked, gapMs, reservedTimes);
+			const enforced = enforceGap(picked, gapMs, reservedSlots);
 			picked = enforced.kept;
 			if (enforced.dropped.length) {
 				notes.push(
@@ -971,15 +990,31 @@ async function runOneClickPlan() {
 		const imagingItems = items.filter((it) => it.type !== "data" && it.type !== "delete").sort((a, b) => a.startTs - b.startTs);
 		if (imagingItems.length) {
 			try {
-				const slots = await fetchEmptySlots(form.value.satellite === "AS02" ? 0 : 2, imagingItems.length);
-				for (let i = 0; i < imagingItems.length; i++) {
-					const slot = slots[i];
-					if (slot && slot.startFileNo != null) {
-						imagingItems[i].storageSlot = String(slot.startFileNo);
+				if (form.value.satellite === "AS02") {
+					// AS02 规划阶段仍可自动分配空闲固存号，方便排期，但不强制校验；提交时再按任务上的 storageSlot 写入
+					const slots = await fetchEmptySlots(0, imagingItems.length);
+					for (let i = 0; i < imagingItems.length; i++) {
+						const raw = imagingItems[i].raw || {};
+						const preset = raw.startFileNo ?? raw.start_file_no ?? raw.fileStart ?? raw.file_start ?? raw.storageSlot ?? imagingItems[i].storageSlot;
+						const slot = Number.isFinite(Number(preset)) ? { startFileNo: Number(preset) } : slots[i];
+						if (slot && slot.startFileNo != null) {
+							imagingItems[i].storageSlot = String(slot.startFileNo);
+							imagingItems[i].raw.storageSlot = String(slot.startFileNo);
+						}
+					}
+				} else {
+					// AS03 仍按空闲槽顺序预览
+					const slots = await fetchEmptySlots(2, imagingItems.length);
+					for (let i = 0; i < imagingItems.length; i++) {
+						const slot = slots[i];
+						if (slot && slot.startFileNo != null) {
+							imagingItems[i].storageSlot = String(slot.startFileNo);
+						}
 					}
 				}
 			} catch (err) {
 				console.warn("[one-click-plan] 预览固存槽失败", err);
+				throw err;
 			}
 		}
 		items = items.map((it) => ({ ...it, meta: buildMeta(it) }));
@@ -1219,7 +1254,7 @@ function resolvePriorityFromCache(name: string | undefined, priorityMap: Map<str
 	return hit != null ? hit : null;
 }
 
-function pickTopTasks(list: any[], limit: number, gapMs: number, reserved: number[] = []) {
+function pickTopTasks(list: any[], limit: number, gapMs: number, reserved: Array<{ ts: number; buffer: number }> = []) {
 	const sorted = [...list].sort((a, b) => {
 		const ta = a.startTs ?? 0;
 		const tb = b.startTs ?? 0;
@@ -1239,7 +1274,8 @@ function pickTopTasks(list: any[], limit: number, gapMs: number, reserved: numbe
 			if (Number.isFinite(v) && Math.abs(ts - v) < gapMs) return false;
 		}
 		for (const r of reserved) {
-			if (Math.abs(ts - r) < gapMs) return false;
+			const buf = Number.isFinite(r.buffer) ? r.buffer : gapMs;
+			if (Math.abs(ts - r.ts) < buf) return false;
 		}
 		return true;
 	}
@@ -1265,7 +1301,13 @@ function pickTopTasks(list: any[], limit: number, gapMs: number, reserved: numbe
 	return best.slice(0, limit);
 }
 
-function pickWithPreference(list: any[], limit: number, gapMs: number, reserved: number[], preferAfter: number) {
+function pickWithPreference(
+	list: any[],
+	limit: number,
+	gapMs: number,
+	reserved: Array<{ ts: number; buffer: number }>,
+	preferAfter: number,
+) {
 	const after = list.filter((x) => Number(x.startTs ?? 0) >= preferAfter);
 	const first = pickTopTasks(after, limit, gapMs, reserved);
 	if (first.length >= limit) return first;
@@ -1285,8 +1327,10 @@ function okGap(ts: number, chosen: any[], reserved: number[], gapMs: number): bo
 		const v = Number(c.startTs ?? 0);
 		if (Number.isFinite(v) && Math.abs(ts - v) < gapMs) return false;
 	}
-	for (const r of reserved) {
-		if (Math.abs(ts - r) < gapMs) return false;
+	for (const r of reserved as any) {
+		const buf = Number.isFinite(r?.buffer) ? r.buffer : gapMs;
+		const ts2 = Number(r?.ts ?? r);
+		if (Number.isFinite(ts2) && Math.abs(ts - ts2) < buf) return false;
 	}
 	return true;
 }
@@ -1294,7 +1338,7 @@ function okGap(ts: number, chosen: any[], reserved: number[], gapMs: number): bo
 function enforceGap(
 	list: any[],
 	gapMs: number,
-	reserved: number[] = [],
+	reserved: Array<{ ts: number; buffer: number }> = [],
 ): { kept: any[]; dropped: any[] } {
 	const sorted = [...list].sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
 	const kept: any[] = [];
@@ -1816,7 +1860,12 @@ async function fetchEmptySlots(name: number, expect: number): Promise<any[]> {
 		.slice(0, expect);
 }
 
-async function updateFixedStorageSlot(name: number, slot: any, item: TimelineItem) {
+async function updateFixedStorageSlot(
+	name: number,
+	slot: any,
+	item: TimelineItem,
+	extra?: { fileName?: string; executingTime?: string }
+) {
 	const api: any = (service as any)?.star?.fixed_storage_table;
 	if (!api?.update || !slot?.id) return;
 	const payload: Record<string, any> = {
@@ -1824,7 +1873,13 @@ async function updateFixedStorageSlot(name: number, slot: any, item: TimelineIte
 		status: 1,
 	};
 	if (item?.name) payload.targetName = String(item.name);
+	if (extra?.fileName) payload.fileName = extra.fileName;
 	const imagingTime = toIsoString(item?.startTs ?? item?.raw?.startAt ?? item?.raw?.startAtBeijing ?? "");
+	if (extra?.executingTime) {
+		payload.executingTime = extra.executingTime;
+	} else if (imagingTime) {
+		payload.executingTime = imagingTime;
+	}
 	if (imagingTime) payload.imagingTime = imagingTime;
 	const imagingUid = ensureImagingUid(item);
 	if (imagingUid) payload.imagingUid = imagingUid;
@@ -2022,14 +2077,40 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 	imaging.forEach((item) => ensureImagingUid(item));
 
 	if (satellite === "AS02") {
-		const slots = await fetchEmptySlots(0, imaging.length);
+		let slots = await fetchEmptySlots(0, imaging.length);
 		if (slots.length < imaging.length) {
 			throw new Error(`AS02 固存空槽不足，需 ${imaging.length} 个，现有 ${slots.length} 个`);
 		}
+		const usedSlot = new Set<number>();
 		let success = 0;
 		for (let i = 0; i < imaging.length; i++) {
 			const item = imaging[i];
-			const slot = slots[i];
+			const desired = Number(
+				item.storageSlot ??
+					item.raw?.storageSlot ??
+					item.raw?.startFileNo ??
+					item.raw?.start_file_no ??
+					item.raw?.fileStart ??
+					item.raw?.file_start
+			);
+			let slot = slots[i];
+			if (Number.isFinite(desired)) {
+				let hit = slots.find((s: any) => Number(s?.startFileNo ?? s?.start_file_no) === desired);
+				// 若当前缓存列表未找到，实时再查一次
+				if (!hit || usedSlot.has(desired)) {
+					slots = await fetchEmptySlots(0, Math.max(imaging.length, 100));
+					hit = slots.find((s: any) => Number(s?.startFileNo ?? s?.start_file_no) === desired);
+				}
+				if (!hit || usedSlot.has(desired)) {
+					throw new Error(`记录文件号 ${desired} 未空闲或已被使用，无法提交`);
+				}
+				slot = hit;
+			}
+			const slotNo = Number(slot?.startFileNo ?? slot?.start_file_no);
+			if (!Number.isFinite(slotNo)) {
+				throw new Error(`未找到可用固存号供任务 ${item.name} 使用`);
+			}
+			usedSlot.add(slotNo);
 			const startIso = toIsoString(item.startTs);
 			const endIso = toIsoString(item.endTs ?? (Number(item.startTs) + 40 * 1000));
 			const imagingUid = ensureImagingUid(item);
@@ -2043,7 +2124,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 				solarAng: mapSolarAngleCode(pickSolarAngle(item.raw ?? item)),
 				startAt: startIso,
 				endAt: endIso,
-				fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
+				fileStart: String(slotNo),
 				imagingUid,
 			};
 			await postTemplate(body, token);
@@ -2060,13 +2141,18 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 
 	// AS03
 	const slots = await fetchEmptySlots(2, imaging.length);
+	const platformSlots = await fetchEmptySlots(3, imaging.length);
 	if (slots.length < imaging.length) {
-		throw new Error(`AS03 固存空槽不足，需 ${imaging.length} 个，现有 ${slots.length} 个`);
+		throw new Error(`AS03 载荷固存空槽不足，需 ${imaging.length} 个，现有 ${slots.length} 个`);
+	}
+	if (platformSlots.length < imaging.length) {
+		throw new Error(`AS03 平台固存空槽不足，需 ${imaging.length} 个，现有 ${platformSlots.length} 个`);
 	}
 	let success = 0;
 	for (let i = 0; i < imaging.length; i++) {
 		const item = imaging[i];
 		const slot = slots[i];
+		const platformSlot = platformSlots[i];
 		const startIso = toIsoString(item.startTs);
 		const endIso = toIsoString(item.endTs ?? (Number(item.startTs) + 30 * 1000));
 		const imagingUid = ensureImagingUid(item);
@@ -2110,8 +2196,11 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		success += 1;
 		try {
 			await updateFixedStorageSlot(2, slot, item);
-			// 同步写入平台固存表
-			await updateFixedStorageSlot(3, slot, item);
+			// 同步写入平台固存表，按平台槽顺序，名称/时间沿用载荷成像任务
+			await updateFixedStorageSlot(3, platformSlot, item, {
+				fileName: `${item.name || "成像任务"}`,
+				executingTime: toIsoString(item.startTs),
+			});
 		} catch (err) {
 			console.warn("[one-click-plan] 回填 AS03 固存失败", err);
 		}
