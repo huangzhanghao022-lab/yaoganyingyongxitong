@@ -84,12 +84,7 @@ export class TaskConflictService {
       const gapMin = interval[c.type];
       if (!gapMin) continue;
       const diff = Math.abs(tMs - c.time.getTime());
-      // 默认：同一批次 <1s 视为同一任务；但 AS03 成像首条需要严格冲突检查，不跳过
-      if (!(satellite === 'AS03' && type === 'image')) {
-        if (diff < 1000) {
-          continue;
-        }
-      }
+      // 不再跳过 <1s 的同时间记录，避免重复提交未被检测
       if (diff < gapMin * 60 * 1000) {
         const withLabel = this.typeLabel[c.type] || c.type;
         // 调试日志，便于定位冲突来源
