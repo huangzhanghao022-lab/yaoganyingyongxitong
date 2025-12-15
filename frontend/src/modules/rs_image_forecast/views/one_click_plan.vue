@@ -892,6 +892,8 @@ async function runOneClickPlan() {
 	try {
 		const token = await getToken();
 		let withTs: any[] = [];
+		const highMidWithTs: any[] = [];
+		const lowWithTs: any[] = [];
 		let priorityMap = new Map<string, number>();
 		const defaultLimit = form.value.satellite === "AS03" ? 2 : 4;
 		const imagingExpect = Math.max(1, Number(imagingTaskCount.value) || defaultLimit);
@@ -950,7 +952,9 @@ async function runOneClickPlan() {
 
 
 			// 先预报高+中优先级
-			withTs.push(...(await forecast(highMid)));
+			const highMidRes = await forecast(highMid);
+			withTs.push(...highMidRes);
+			highMidWithTs.push(...highMidRes);
 			let approxPicked = estimatePickedCount(withTs, form.value.satellite);
 			planningProgress.percent = 70;
 			planningProgress.text = "高/中优先级预报完成";
@@ -966,7 +970,9 @@ async function runOneClickPlan() {
 				for (let i = 0; i < low.length && approxPicked < imagingExpect; i += 10) {
 					const batchNo = Math.floor(i / 10) + 1;
 					const batch = low.slice(i, i + 10);
-					withTs.push(...(await forecast(batch)));
+					const batchRes = await forecast(batch);
+					withTs.push(...batchRes);
+					lowWithTs.push(...batchRes);
 					approxPicked = estimatePickedCount(withTs, form.value.satellite);
 					const batchNames = batch.map((b) => b.name).join(",");
 					console.log(
@@ -1000,6 +1006,8 @@ async function runOneClickPlan() {
 			if (!Number.isFinite(rollNum)) return true;
 			return Math.abs(rollNum) <= rollLimitVal;
 		});
+		const highMidFiltered = rollFiltered.filter((r) => (r.priority ?? 99) <= 2);
+		const lowFiltered = rollFiltered.filter((r) => (r.priority ?? 99) > 2);
 		let imagingLimit = imagingExpect;
 		const notes: string[] = [];
 
@@ -1063,27 +1071,14 @@ async function runOneClickPlan() {
 		const noonTs = new Date(planRange.value.start);
 		noonTs.setHours(12, 0, 0, 0);
 
-		let picked =
-			taskSwitches.imaging && form.value.satellite === "AS03"
-				? pickWithPreference(rollFiltered, imagingLimit, gapMs, reservedSlots, noonTs.getTime())
-				: taskSwitches.imaging
-				? pickTopTasks(rollFiltered, imagingLimit, gapMs, reservedSlots)
-				: [];
+		let picked: any[] = [];
 
-		// 若未达到指定成像数量，保持间隔规则从剩余候选补齐
-		if (picked.length < imagingLimit && taskSwitches.imaging) {
-			const need = imagingLimit - picked.length;
-			const pickedSet = new Set(picked.map((x) => x.startTs));
-			const remaining = cloudFiltered
-				.filter((x) => !pickedSet.has(x.startTs))
-				.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
-			for (const cand of remaining) {
-				if (picked.length >= imagingLimit) break;
-				const ts = Number(cand.startTs ?? 0);
-				if (!Number.isFinite(ts)) continue;
-				if (!okGap(ts, picked, reservedSlots, gapMs)) continue;
-				picked.push(cand);
-			}
+		if (taskSwitches.imaging) {
+			// 高/中优先级先选，低优先级在已有选中基础上补足，避免后续任务冲掉已选
+			const highFirst = selectWithGap(highMidFiltered, imagingLimit, gapMs, reservedSlots);
+			const remain = Math.max(0, imagingLimit - highFirst.length);
+			const lowNext = remain > 0 ? selectWithGap(lowFiltered, remain, gapMs, reservedSlots, highFirst) : highFirst;
+			picked = lowNext;
 		}
 
 		console.log(
@@ -1092,11 +1087,6 @@ async function runOneClickPlan() {
 			"items:",
 			picked.map((p) => `${p.name || "Task"} @${formatDisplay(new Date(p.startTs))}`)
 		);
-
-		// 最终按间隔直接构建任务列表（时间优先），避免事后剔除导致数量减少
-		if (taskSwitches.imaging) {
-			picked = selectWithGap(rollFiltered, imagingLimit, gapMs, reservedSlots);
-		}
 
 		// 按成像时间先后重新分配固存号（时间早的分配更小的固存号）
 		reorderStorageSlots(picked);
@@ -1537,20 +1527,40 @@ function selectWithGap(
 	limit: number,
 	gapMs: number,
 	reserved: Array<{ ts: number; buffer: number }> = [],
+	preChosen: any[] = [],
 ) {
-	const sorted = [...list].sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+	const normalizeTs = (item: any) => {
+		const tsRaw = item?.startTs ?? item?.start_ts ?? item?.time;
+		const n = Number(tsRaw);
+		if (Number.isFinite(n)) return n;
+		const t = Date.parse(String(tsRaw));
+		return Number.isFinite(t) ? t : NaN;
+	};
+
 	const chosen: any[] = [];
+	const seen = new Set<number>();
+
+	for (const item of preChosen) {
+		const ts = normalizeTs(item);
+		if (!Number.isFinite(ts)) continue;
+		chosen.push({ ...item, startTs: ts });
+		seen.add(ts);
+		if (chosen.length >= limit) break;
+	}
+
+	if (chosen.length >= limit) {
+		return chosen.slice(0, limit);
+	}
+
+	const sorted = [...list].sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
 	for (const item of sorted) {
 		if (chosen.length >= limit) break;
-		const ts = (() => {
-			const n = Number(item.startTs ?? item.start_ts);
-			if (Number.isFinite(n)) return n;
-			const t = new Date(String(item.startTs || item.start_ts || item.time)).getTime();
-			return Number.isNaN(t) ? NaN : t;
-		})();
+		const ts = normalizeTs(item);
 		if (!Number.isFinite(ts)) continue;
+		if (seen.has(ts)) continue;
 		if (!okGap(ts, chosen, reserved, gapMs)) continue;
 		chosen.push({ ...item, startTs: ts });
+		seen.add(ts);
 	}
 	return chosen;
 }
