@@ -36,6 +36,21 @@
 				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.transfer">规划数传</el-checkbox>
 				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.delete">规划固存删除</el-checkbox>
 			</el-space>
+			<el-space v-if="planningProgress.visible" :size="12" style="margin-top: 8px; flex-wrap: wrap;">
+				<el-progress :percentage="planningProgress.percent" :status="planningProgress.status" style="min-width: 260px" />
+				<span style="color: var(--el-text-color-regular);">{{ planningProgress.text }}</span>
+			</el-space>
+			<el-space
+				v-if="planningProgress.visible && planningSelection.length"
+				direction="vertical"
+				style="margin-top: 4px; padding: 6px 10px; background: #f5f7fa; border-radius: 6px; width: 100%;"
+				:size="4"
+			>
+				<div style="font-size: 13px; color: #606266;">当前批次可选目标（最多展示10个）</div>
+				<div v-for="(msg, idx) in planningSelection" :key="idx" style="font-size: 13px; color: #606266;">
+					{{ msg }}
+				</div>
+			</el-space>
 			<br />
 			<el-space :size="12" style="margin-top: 8px; flex-wrap: wrap;">
 				<el-space align="center">
@@ -357,6 +372,15 @@ const transferTaskCount = ref(1);
 const imagingTaskCount = ref(4);
 const cloudLimit = ref(10);
 const rollLimitAbs = ref(10);
+const planningProgress = reactive<{ visible: boolean; percent: number; text: string; status?: 'success' | 'exception' | 'warning' }>(
+	{
+		visible: false,
+		percent: 0,
+		text: '',
+		status: undefined,
+	}
+);
+const planningSelection = ref<string[]>([]);
 const planPreviewVisible = ref(false);
 const planPreviewText = ref("");
 const planningNotes = ref<string[]>([]);
@@ -417,6 +441,87 @@ function ensureImagingUid(item: TimelineItem): string {
 	return uid;
 }
 
+function estimatePickedCount(pool: any[], sat: string) {
+	const cloudLimitVal = Number(cloudLimit.value) || 10;
+	const rollLimitVal = Number(rollLimitAbs.value) || 10;
+	const cloudFiltered = pool.filter((r) => r.cloud == null || r.cloud <= cloudLimitVal);
+	const rollFiltered = cloudFiltered.filter((r) => {
+		const rollNum = Number(pickRollAngle(r));
+		if (!Number.isFinite(rollNum)) return true;
+		return Math.abs(rollNum) <= rollLimitVal;
+	});
+	const gapMs = sat === "AS03" ? 3 * 60 * 60 * 1000 : 95 * 60 * 1000;
+	const defaultLimit = sat === "AS03" ? 2 : 4;
+	const imagingExpect = Math.max(1, Number(imagingTaskCount.value) || defaultLimit);
+	const picked =
+		sat === "AS03"
+			? pickWithPreference(rollFiltered, imagingExpect, gapMs, [], 0)
+			: pickTopTasks(rollFiltered, imagingExpect, gapMs, []);
+	return picked.length;
+}
+
+function summarizePicked(list: any[], extraFilter: (t: any) => boolean, poolForGap?: any[]): string {
+	const cloudLimitVal = Number(cloudLimit.value) || 10;
+	const rollLimitVal = Number(rollLimitAbs.value) || 10;
+	const filtered = list.filter((r) => {
+		const okPriority = extraFilter(r);
+		const okCloud = r.cloud == null || r.cloud <= cloudLimitVal;
+		const rollNum = Number(pickRollAngle(r));
+		const okRoll = !Number.isFinite(rollNum) || Math.abs(rollNum) <= rollLimitVal;
+		return okPriority && okCloud && okRoll;
+	});
+	if (!filtered.length) return "";
+	const names = filtered.map((r) => r.name || r.targetName || "Task");
+	const unique = Array.from(new Set(names));
+	const shown = unique.slice(0, 10).join("，");
+	const more = unique.length > 10 ? ` 等 ${unique.length} 个` : "";
+	return shown + more;
+}
+
+function updateSelectionPreview(source: any[], isFinal = false) {
+	if (!source || !source.length || !taskSwitches.imaging) {
+		planningSelection.value = [];
+		return;
+	}
+	const sat = form.value.satellite;
+	const gapMs = sat === "AS03" ? 3 * 60 * 60 * 1000 : 95 * 60 * 1000;
+	const defaultLimit = sat === "AS03" ? 2 : 4;
+	const imagingExpect = Math.max(1, Number(imagingTaskCount.value) || defaultLimit);
+	const cloudLimitVal = Number(cloudLimit.value) || 10;
+	const rollLimitVal = Number(rollLimitAbs.value) || 10;
+
+	const cloudFiltered = source.filter((r) => r.cloud == null || r.cloud <= cloudLimitVal);
+	const rollFiltered = cloudFiltered.filter((r) => {
+		const rollNum = Number(pickRollAngle(r));
+		if (!Number.isFinite(rollNum)) return true;
+		return Math.abs(rollNum) <= rollLimitVal;
+	});
+	const preview =
+		sat === "AS03"
+			? pickWithPreference(rollFiltered, imagingExpect, gapMs, [], 0)
+			: pickTopTasks(rollFiltered, imagingExpect, gapMs, []);
+	const names = Array.from(new Set(preview.map((p) => p.name || p.targetName || "Task")));
+	const shown = names.slice(0, 10).join("，");
+	const more = names.length > 10 ? ` 等 ${names.length} 个` : "";
+	const label = isFinal ? "已规划目标" : "当前可选目标";
+	planningSelection.value = names.length ? [`${label}：${shown}${more}`] : [];
+}
+
+function reorderStorageSlots(tasks: any[]) {
+	if (!tasks?.length) return;
+	const slots = tasks
+		.map((t) => Number(t.storageSlot ?? t.raw?.storageSlot ?? t.raw?.startFileNo ?? t.raw?.start_file_no))
+		.filter((n) => Number.isFinite(n))
+		.sort((a, b) => a - b);
+	if (!slots.length) return;
+	const sortedTasks = [...tasks].sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+	const use = slots.slice(0, sortedTasks.length);
+	sortedTasks.forEach((t, idx) => {
+		const slot = use[idx];
+		t.storageSlot = String(slot);
+		if (t.raw) t.raw.storageSlot = String(slot);
+	});
+}
 const chartRef = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
 
@@ -632,18 +737,21 @@ function formatMonthDay(value: number | Date | string): string {
 }
 
 function openEditDialog() {
-	editableTasks.value = timeline.value.map((t) => ({
-		...t,
-		startTsValue: t.startTs,
-		metaText: t.meta,
-		metaFields: parseMetaFields(t.meta),
-		fileInput: t.type === "data" ? (Array.isArray(t.files) ? t.files.join(",") : "") : "",
-		deleteRange:
-			t.type === "delete"
-				? `${t.raw?.startFile ?? t.raw?.start_file ?? ""}-${t.raw?.endFile ?? t.raw?.end_file ?? ""}`
-				: "",
-		_deleted: false,
-	}));
+	editableTasks.value = timeline.value
+		.slice()
+		.sort((a, b) => (Number(a.startTs ?? 0) - Number(b.startTs ?? 0)))
+		.map((t) => ({
+			...t,
+			startTsValue: t.startTs,
+			metaText: t.meta,
+			metaFields: parseMetaFields(t.meta),
+			fileInput: t.type === "data" ? (Array.isArray(t.files) ? t.files.join(",") : "") : "",
+			deleteRange:
+				t.type === "delete"
+					? `${t.raw?.startFile ?? t.raw?.start_file ?? ""}-${t.raw?.endFile ?? t.raw?.end_file ?? ""}`
+					: "",
+			_deleted: false,
+		}));
 	editDialogVisible.value = true;
 }
 
@@ -776,51 +884,110 @@ async function runOneClickPlan() {
 	const { start: imagingStart, end: imagingEnd } = imagingRange.value;
 	const { start: opsStart, end: opsEnd } = planRange.value;
 	loading.value = true;
+	planningProgress.visible = true;
+	planningProgress.status = undefined;
+	planningProgress.percent = 5;
+	planningProgress.text = "准备资源";
+	planningSelection.value = [];
 	try {
 		const token = await getToken();
 		let withTs: any[] = [];
 		let priorityMap = new Map<string, number>();
+		const defaultLimit = form.value.satellite === "AS03" ? 2 : 4;
+		const imagingExpect = Math.max(1, Number(imagingTaskCount.value) || defaultLimit);
+
 		if (taskSwitches.imaging) {
+			planningProgress.percent = 20;
+			planningProgress.text = "加载目标与星历";
+
 			const targetRes = await fetchAllTargets(form.value.satellite);
 			if (!targetRes.targets.length) throw new Error("未获取到目标库数据");
 			priorityMap = targetRes.priorityMap;
 			const ephemeris = await fetchOrbitElementsForSatellite(form.value.satellite, token);
 			orbitElements.value = ephemeris;
 
-			const body: any = {
-				satelliteCode: form.value.satellite,
-				forecastStartAt: imagingStart.getTime(),
-				forecastEndAt: imagingEnd.getTime(),
-				targetList: targetRes.targets,
-			};
-			if (ephemeris) body.ephemeris = ephemeris;
+			planningProgress.percent = 40;
+			planningProgress.text = "预报高/中优先级";
 
-			const resp = await fetch(ONE_CLICK_PLAN_URL, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(body),
-			});
-			if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-			const data = await resp.json();
-			const rawList: any[] = data?.result || data?.tasks || data?.data || [];
-			withTs = rawList
-				.map((r) => {
-					const ts = parseStartTime(r);
-					const cloud = parseCloudPercent(r?.cloud ?? r?.cloudCoverage ?? r?.cloud_percent ?? r?.cloudPercent);
-					const priority =
-						resolvePriorityFromCache(r?.name || r?.targetName, priorityMap) ||
-						parsePriority(r?.priority ?? r?.priorityLevel ?? r?.level);
-					return ts
-						? {
-								...r,
-								startTs: ts,
-								name: r?.name || r?.targetName || "Task",
-								cloud,
-								priority,
-						  }
-						: null;
-				})
-				.filter((x): x is any => Boolean(x));
+			const highMid = targetRes.targets.filter((t) => (t.priority ?? 99) <= 2);
+			const low = targetRes.targets.filter((t) => (t.priority ?? 99) > 2);
+			const forecast = async (targets: any[]) => {
+				if (!targets.length) return [];
+				const body: any = {
+					satelliteCode: form.value.satellite,
+					forecastStartAt: imagingStart.getTime(),
+					forecastEndAt: imagingEnd.getTime(),
+					targetList: targets,
+				};
+				if (ephemeris) body.ephemeris = ephemeris;
+				const resp = await fetch(ONE_CLICK_PLAN_URL, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(body),
+				});
+				if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+				const data = await resp.json();
+				const rawList: any[] = data?.result || data?.tasks || data?.data || [];
+				return rawList
+					.map((r) => {
+						const ts = parseStartTime(r);
+						const cloud = parseCloudPercent(r?.cloud ?? r?.cloudCoverage ?? r?.cloud_percent ?? r?.cloudPercent);
+						const priority =
+							resolvePriorityFromCache(r?.name || r?.targetName, priorityMap) ||
+							parsePriority(r?.priority ?? r?.priorityLevel ?? r?.level);
+						return ts
+							? {
+									...r,
+									startTs: ts,
+									name: r?.name || r?.targetName || "Task",
+									cloud,
+									priority,
+							  }
+							: null;
+					})
+					.filter((x): x is any => Boolean(x));
+			};
+
+
+			// 先预报高+中优先级
+			withTs.push(...(await forecast(highMid)));
+			let approxPicked = estimatePickedCount(withTs, form.value.satellite);
+			planningProgress.percent = 70;
+			planningProgress.text = "高/中优先级预报完成";
+			updateSelectionPreview(withTs);
+			console.log("[one-click-plan] forecast high/mid picked ~", approxPicked, "tasks:", withTs.length);
+			if (approxPicked >= imagingExpect) {
+				console.log("[one-click-plan] high/mid already enough, skip low priority");
+			}
+
+			// 若不足，则低优先级 10 条一批，逐批预报直到够或耗尽
+			if (approxPicked < imagingExpect && low.length) {
+				planningProgress.text = "低优先级预报进行中";
+				for (let i = 0; i < low.length && approxPicked < imagingExpect; i += 10) {
+					const batchNo = Math.floor(i / 10) + 1;
+					const batch = low.slice(i, i + 10);
+					withTs.push(...(await forecast(batch)));
+					approxPicked = estimatePickedCount(withTs, form.value.satellite);
+					const batchNames = batch.map((b) => b.name).join(",");
+					console.log(
+						"[one-click-plan] low batch",
+						batchNo,
+						"picked ~",
+						approxPicked,
+						"pool:",
+						withTs.length,
+						"batch:",
+						batchNames
+					);
+					// 低优先级进度随批次推进
+					const prog = 70 + Math.floor((i + batch.length) / Math.max(low.length, 1) * 20);
+					planningProgress.percent = Math.min(90, prog);
+					planningProgress.text = `预报低优先级批次 ${batchNo} 完成`;
+					updateSelectionPreview(withTs);
+				}
+				console.log("[one-click-plan] low priority loop end, picked ~", approxPicked);
+				planningProgress.text = "低优先级预报完成";
+			}
 		} else {
 			orbitElements.value = null;
 		}
@@ -833,8 +1000,6 @@ async function runOneClickPlan() {
 			if (!Number.isFinite(rollNum)) return true;
 			return Math.abs(rollNum) <= rollLimitVal;
 		});
-		const defaultLimit = form.value.satellite === "AS03" ? 2 : 4;
-		const imagingExpect = Math.max(1, Number(imagingTaskCount.value) || defaultLimit);
 		let imagingLimit = imagingExpect;
 		const notes: string[] = [];
 
@@ -921,29 +1086,26 @@ async function runOneClickPlan() {
 			}
 		}
 
-		// 再次强制全局间隔校验，确保 AS03 3h（或 AS02 1.5h）下没有漏网
+		console.log(
+			"[one-click-plan] picked total",
+			picked.length,
+			"items:",
+			picked.map((p) => `${p.name || "Task"} @${formatDisplay(new Date(p.startTs))}`)
+		);
+
+		// 最终按间隔重新挑选，避免事后剔除导致数量减少
 		if (taskSwitches.imaging) {
-			if (process.env.NODE_ENV !== "production") {
-				console.log("[one-click-plan] imaging picked before enforce", {
-					gapHours: gapMs / 3600000,
-					count: picked.length,
-					times: picked.map((p) => formatDisplay(new Date(p.startTs))),
-				});
-			}
-			const enforced = enforceGap(picked, gapMs, reservedSlots);
-			picked = enforced.kept;
-			if (enforced.dropped.length) {
-				notes.push(
-					`已有 ${enforced.dropped.length} 条成像因间隔不足 ${Math.round(gapMs / 3600000 * 10) / 10} 小时被移除。`
-				);
-				if (process.env.NODE_ENV !== "production") {
-					console.log("[one-click-plan] imaging dropped for gap", {
-						gapHours: gapMs / 3600000,
-						dropped: enforced.dropped.map((p) => formatDisplay(new Date(p.startTs))),
-					});
-				}
-			}
+			picked =
+				form.value.satellite === "AS03"
+					? pickWithPreference(rollFiltered, imagingLimit, gapMs, reservedSlots, noonTs.getTime())
+					: pickTopTasks(rollFiltered, imagingLimit, gapMs, reservedSlots);
 		}
+
+		// 按成像时间先后重新分配固存号（时间早的分配更小的固存号）
+		reorderStorageSlots(picked);
+
+		// 展示最终选中的目标点
+		updateSelectionPreview(picked, true);
 		if (taskSwitches.imaging && picked.length < imagingLimit) {
 			notes.push(
 				`成像任务期望 ${imagingExpect} 个（受固存限制后 ${imagingLimit} 个），实际生成 ${picked.length} 个，可能因云量/间隔/预留时间限制。`
@@ -1029,10 +1191,19 @@ async function runOneClickPlan() {
 		planningNotes.value = notes;
 		ElMessage.success("Plan finished");
 		planPreviewText.value = buildSubmissionSummaryText();
+		planningProgress.percent = 100;
+		planningProgress.status = "success";
+		planningProgress.text = "规划完成";
 	} catch (err: any) {
 		ElMessage.error(err?.message || "Plan failed");
+		planningProgress.status = "exception";
+		planningProgress.text = err?.message || "规划失败";
 	} finally {
 		loading.value = false;
+		setTimeout(() => {
+			planningProgress.visible = false;
+			planningSelection.value = [];
+		}, 800);
 	}
 }
 
