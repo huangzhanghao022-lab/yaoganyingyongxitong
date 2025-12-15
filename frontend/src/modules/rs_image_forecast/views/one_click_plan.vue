@@ -1195,23 +1195,34 @@ async function runOneClickPlan() {
 			"items:",
 			picked.map((p) => `${p.name || "Task"} @${formatDisplay(new Date(p.startTs))}`)
 		);
-		if (taskSwitches.imaging && picked.length < imagingLimit) {
-			const feasible = selectWithGap(rollFiltered, imagingLimit, gapMs, reservedSlots).length;
-			console.log(
-				"[one-click-plan] feasible with gap",
-				feasible,
-				"candidate pool",
-				rollFiltered.length,
-				"gapMs",
-				gapMs
-			);
-			notes.push(
-				`满足间隔/预留时间的候选不足（可选 ${feasible} 个，期望 ${imagingLimit} 个），可能需放宽间隔或时间窗口。`
-			);
-		}
+			if (taskSwitches.imaging && picked.length < imagingLimit) {
+				const feasible = selectWithGap(rollFiltered, imagingLimit, gapMs, reservedSlots).length;
+				console.log(
+					"[one-click-plan] feasible with gap",
+					feasible,
+					"candidate pool",
+					rollFiltered.length,
+					"gapMs",
+					gapMs
+				);
+				notes.push(
+					`满足间隔/预留时间的候选不足（可选 ${feasible} 个，期望 ${imagingLimit} 个），可能需放宽间隔或时间窗口。`
+				);
+				// 若全池可行数大于当前选中，则放弃优先级限制，按可行组合重新选
+				if (feasible > picked.length) {
+					const fallback = selectWithGap(rollFiltered, imagingLimit, gapMs, reservedSlots);
+					console.log(
+						"[one-click-plan] fallback without priority, picked",
+						fallback.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
+					);
+					if (fallback.length > picked.length) {
+						picked = fallback;
+					}
+				}
+			}
 
-		// 按成像时间先后重新分配固存号（时间早的分配更小的固存号）
-		reorderStorageSlots(picked);
+			// 按成像时间先后重新分配固存号（时间早的分配更小的固存号）
+			reorderStorageSlots(picked);
 
 		// 展示最终选中的目标点
 		updateSelectionPreview(picked, true);
