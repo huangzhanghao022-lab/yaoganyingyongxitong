@@ -898,6 +898,18 @@ async function runOneClickPlan() {
 		const defaultLimit = form.value.satellite === "AS03" ? 2 : 4;
 		const imagingExpect = Math.max(1, Number(imagingTaskCount.value) || defaultLimit);
 		const gapMs = form.value.satellite === "AS03" ? 3 * 60 * 60 * 1000 : 95 * 60 * 1000;
+		let lowTargets: any[] = [];
+		const lowForecasted = { ran: false };
+		const cloudLimitVal = Number(cloudLimit.value) || 10;
+		const rollLimitVal = Number(rollLimitAbs.value) || 10;
+		const filterByCloudRoll = (arr: any[]) =>
+			arr.filter((r) => {
+				const cloudOk = r.cloud == null || r.cloud <= cloudLimitVal;
+				if (!cloudOk) return false;
+				const rollNum = Number(pickRollAngle(r));
+				if (!Number.isFinite(rollNum)) return true;
+				return Math.abs(rollNum) <= rollLimitVal;
+			});
 
 		if (taskSwitches.imaging) {
 			planningProgress.percent = 20;
@@ -914,6 +926,7 @@ async function runOneClickPlan() {
 
 			const highMid = targetRes.targets.filter((t) => (t.priority ?? 99) <= 2);
 			const low = targetRes.targets.filter((t) => (t.priority ?? 99) > 2);
+			lowTargets = low;
 			const forecast = async (targets: any[]) => {
 				if (!targets.length) return [];
 				const body: any = {
@@ -956,15 +969,11 @@ async function runOneClickPlan() {
 			const highMidRes = await forecast(highMid);
 			withTs.push(...highMidRes);
 			highMidWithTs.push(...highMidRes);
-			let approxPicked = selectWithGap(highMidWithTs, imagingExpect, gapMs).length;
+			let approxPicked = selectWithGap(filterByCloudRoll(highMidWithTs), imagingExpect, gapMs).length;
 			planningProgress.percent = 70;
 			planningProgress.text = "高/中优先级预报完成";
 			updateSelectionPreview(withTs);
 			console.log("[one-click-plan] forecast high/mid picked ~", approxPicked, "tasks:", withTs.length);
-			if (approxPicked >= imagingExpect) {
-				console.log("[one-click-plan] high/mid already enough, skip low priority");
-			}
-
 			// 若不足，则低优先级 10 条一批，逐批预报直到够或耗尽
 			if (approxPicked < imagingExpect && low.length) {
 				planningProgress.text = "低优先级预报进行中";
@@ -974,7 +983,7 @@ async function runOneClickPlan() {
 					const batchRes = await forecast(batch);
 					withTs.push(...batchRes);
 					lowWithTs.push(...batchRes);
-					approxPicked = selectWithGap([...highMidWithTs, ...lowWithTs], imagingExpect, gapMs).length;
+					approxPicked = selectWithGap(filterByCloudRoll([...highMidWithTs, ...lowWithTs]), imagingExpect, gapMs).length;
 					const batchNames = batch.map((b) => b.name).join(",");
 					console.log(
 						"[one-click-plan] low batch",
@@ -992,6 +1001,7 @@ async function runOneClickPlan() {
 					planningProgress.text = `预报低优先级批次 ${batchNo} 完成`;
 					updateSelectionPreview(withTs);
 				}
+				lowForecasted.ran = true;
 				console.log("[one-click-plan] low priority loop end, picked ~", approxPicked);
 				planningProgress.text = "低优先级预报完成";
 			}
@@ -1080,6 +1090,34 @@ async function runOneClickPlan() {
 			const remain = Math.max(0, imagingLimit - highFirst.length);
 			const lowNext = remain > 0 ? selectWithGap(lowFiltered, remain, gapMs, reservedSlots, highFirst) : highFirst;
 			picked = lowNext;
+
+			// 若仍不足且之前未跑低优先级预报，则立即补充低优先级预报并重选
+			if (picked.length < imagingLimit && !lowForecasted.ran && lowTargets.length) {
+				planningProgress.text = "补充低优先级预报";
+				for (let i = 0; i < lowTargets.length && picked.length < imagingLimit; i += 10) {
+					const batchNo = Math.floor(i / 10) + 1;
+					const batch = lowTargets.slice(i, i + 10);
+					const batchRes = await forecast(batch);
+					withTs.push(...batchRes);
+					lowWithTs.push(...batchRes);
+					const cloudFiltered2 = withTs.filter((r) => r.cloud == null || r.cloud <= cloudLimitVal);
+					const rollFiltered2 = cloudFiltered2.filter((r) => {
+						const rollNum = Number(pickRollAngle(r));
+						if (!Number.isFinite(rollNum)) return true;
+						return Math.abs(rollNum) <= rollLimitVal;
+					});
+					const highMidFiltered2 = rollFiltered2.filter((r) => (r.priority ?? 99) <= 2);
+					const lowFiltered2 = rollFiltered2.filter((r) => (r.priority ?? 99) > 2);
+					const highFirst2 = selectWithGap(highMidFiltered2, imagingLimit, gapMs, reservedSlots);
+					const remain2 = Math.max(0, imagingLimit - highFirst2.length);
+					const lowNext2 =
+						remain2 > 0 ? selectWithGap(lowFiltered2, remain2, gapMs, reservedSlots, highFirst2) : highFirst2;
+					picked = lowNext2;
+					planningProgress.text = `补充低优先级批次 ${batchNo} 完成`;
+					if (picked.length >= imagingLimit) break;
+				}
+				lowForecasted.ran = true;
+			}
 		}
 
 		console.log(
