@@ -1490,14 +1490,20 @@ function pickWithPreference(
 	return [...first, ...second].slice(0, limit);
 }
 
-function okGap(ts: number, chosen: any[], reserved: number[], gapMs: number): boolean {
+function okGap(ts: number, chosen: any[], reserved: number[] | Array<{ ts: number; buffer: number }>, gapMs: number): boolean {
+	const toTs = (v: any): number => {
+		const n = Number(v);
+		if (Number.isFinite(n)) return n;
+		const t = new Date(String(v)).getTime();
+		return Number.isNaN(t) ? NaN : t;
+	};
 	for (const c of chosen) {
-		const v = Number(c.startTs ?? 0);
+		const v = toTs(c.startTs ?? c.start_ts ?? c.time);
 		if (Number.isFinite(v) && Math.abs(ts - v) < gapMs) return false;
 	}
 	for (const r of reserved as any) {
 		const buf = Number.isFinite(r?.buffer) ? r.buffer : gapMs;
-		const ts2 = Number(r?.ts ?? r);
+		const ts2 = toTs(r?.ts ?? r);
 		if (Number.isFinite(ts2) && Math.abs(ts - ts2) < buf) return false;
 	}
 	return true;
@@ -1536,10 +1542,15 @@ function selectWithGap(
 	const chosen: any[] = [];
 	for (const item of sorted) {
 		if (chosen.length >= limit) break;
-		const ts = Number(item.startTs ?? 0);
+		const ts = (() => {
+			const n = Number(item.startTs ?? item.start_ts);
+			if (Number.isFinite(n)) return n;
+			const t = new Date(String(item.startTs || item.start_ts || item.time)).getTime();
+			return Number.isNaN(t) ? NaN : t;
+		})();
 		if (!Number.isFinite(ts)) continue;
 		if (!okGap(ts, chosen, reserved, gapMs)) continue;
-		chosen.push(item);
+		chosen.push({ ...item, startTs: ts });
 	}
 	return chosen;
 }
