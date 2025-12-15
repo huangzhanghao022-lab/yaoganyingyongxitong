@@ -1093,12 +1093,9 @@ async function runOneClickPlan() {
 			picked.map((p) => `${p.name || "Task"} @${formatDisplay(new Date(p.startTs))}`)
 		);
 
-		// 最终按间隔重新挑选，避免事后剔除导致数量减少
+		// 最终按间隔直接构建任务列表（时间优先），避免事后剔除导致数量减少
 		if (taskSwitches.imaging) {
-			picked =
-				form.value.satellite === "AS03"
-					? pickWithPreference(rollFiltered, imagingLimit, gapMs, reservedSlots, noonTs.getTime())
-					: pickTopTasks(rollFiltered, imagingLimit, gapMs, reservedSlots);
+			picked = selectWithGap(rollFiltered, imagingLimit, gapMs, reservedSlots);
 		}
 
 		// 按成像时间先后重新分配固存号（时间早的分配更小的固存号）
@@ -1527,6 +1524,24 @@ function enforceGap(
 		}
 	}
 	return { kept, dropped };
+}
+
+function selectWithGap(
+	list: any[],
+	limit: number,
+	gapMs: number,
+	reserved: Array<{ ts: number; buffer: number }> = [],
+) {
+	const sorted = [...list].sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+	const chosen: any[] = [];
+	for (const item of sorted) {
+		if (chosen.length >= limit) break;
+		const ts = Number(item.startTs ?? 0);
+		if (!Number.isFinite(ts)) continue;
+		if (!okGap(ts, chosen, reserved, gapMs)) continue;
+		chosen.push(item);
+	}
+	return chosen;
 }
 
 async function getToken(): Promise<string> {
