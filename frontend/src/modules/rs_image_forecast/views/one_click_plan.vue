@@ -385,8 +385,15 @@ const planPreviewVisible = ref(false);
 const planPreviewText = ref("");
 const planningNotes = ref<string[]>([]);
 const sequenceDialogVisible = ref(false);
-const sequenceItems = computed(() =>
-	timeline.value
+const sequenceItems = computed(() => {
+	const mapType = (t: string | undefined): "success" | "warning" | "info" | "danger" | "primary" => {
+		if (t === "data") return "primary";
+		if (t === "delete") return "danger";
+		if (t === "warning") return "warning";
+		if (t === "info") return "info";
+		return "success";
+	};
+	return timeline.value
 		.slice()
 		.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0))
 		.map((it) => ({
@@ -394,9 +401,9 @@ const sequenceItems = computed(() =>
 			name: it.name,
 			time: formatDisplay(new Date(it.startTs)),
 			meta: buildMeta(it),
-			type: it.type === "data" ? "primary" : it.type === "delete" ? "danger" : "success",
-		}))
-);
+			type: mapType(it.type as any),
+		}));
+});
 const editDialogVisible = ref(false);
 const editableTasks = ref<any[]>([]);
 const ONE_CLICK_PLAN_CACHE_KEY = "one_click_plan_cache_v1";
@@ -804,25 +811,26 @@ function applyTaskEdits() {
 	const deletedIds = new Set(
 		edits.filter((e: any) => e._deleted).map((e: any) => e.id)
 	);
-	const updated = timeline.value.map((t) => {
-		const e = edits.find((x: any) => x.id === t.id);
-		if (!e) return t;
-		const startTs = Number(e.startTsValue);
-		const meta = e.metaText ?? t.meta;
-		const metaFromFields = t.type === "data" ? meta : meta;
-		const metaMap = Array.isArray(e.metaFields) ? metaFieldsToMap(e.metaFields) : {};
-		const timeTs = Number.isFinite(startTs) ? startTs : t.startTs;
-		const delta = Number.isFinite(timeTs) && Number.isFinite(t.startTs) ? timeTs - t.startTs : 0;
-		const endTs = Number.isFinite(t.endTs) ? t.endTs + delta : t.endTs;
-		const timeText = Number.isFinite(timeTs) ? formatDisplay(new Date(timeTs)) : t.time;
-		const raw: any = {
-			...t.raw,
-			name: e.name || t.raw?.name,
-			startTs: timeTs,
+		const updated = timeline.value.map((t) => {
+			const e = edits.find((x: any) => x.id === t.id);
+			if (!e) return t;
+			const startTs = Number(e.startTsValue);
+			const meta = e.metaText ?? t.meta;
+			const metaFromFields = t.type === "data" ? meta : meta;
+			const metaMap = Array.isArray(e.metaFields) ? metaFieldsToMap(e.metaFields) : {};
+			const timeTs = Number.isFinite(startTs) ? startTs : t.startTs;
+			const delta = Number.isFinite(timeTs) && Number.isFinite(t.startTs) ? timeTs - t.startTs : 0;
+			const oldEnd = Number(t.endTs);
+			const endTs = Number.isFinite(oldEnd) ? oldEnd + delta : undefined;
+			const timeText = Number.isFinite(timeTs) ? formatDisplay(new Date(timeTs)) : t.time;
+			const raw: any = {
+				...t.raw,
+				name: e.name || t.raw?.name,
+				startTs: timeTs,
 			startAt: timeTs,
-			startAtBeijing: timeTs,
-			endTs,
-		};
+				startAtBeijing: timeTs,
+				endTs,
+			};
 		if (t.type === "data") {
 			let files: number[] = [];
 			if (e.fileInput) {
@@ -891,7 +899,7 @@ async function runOneClickPlan() {
 	planningSelection.value = [];
 	try {
 		const token = await getToken();
-		let withTs: any[] = [];
+		const withTs: any[] = [];
 		const highMidWithTs: any[] = [];
 		const lowWithTs: any[] = [];
 		let priorityMap = new Map<string, number>();
@@ -1009,14 +1017,12 @@ async function runOneClickPlan() {
 			orbitElements.value = null;
 		}
 
-		const cloudLimitVal = Number(cloudLimit.value) || 10;
-		const rollLimitVal = Number(rollLimitAbs.value) || 10;
-		const cloudFiltered = withTs.filter((r) => r.cloud == null || r.cloud <= cloudLimitVal);
-		const rollFiltered = cloudFiltered.filter((r) => {
-			const rollNum = Number(pickRollAngle(r));
-			if (!Number.isFinite(rollNum)) return true;
-			return Math.abs(rollNum) <= rollLimitVal;
-		});
+			const cloudFiltered = withTs.filter((r) => r.cloud == null || r.cloud <= cloudLimitVal);
+			const rollFiltered = cloudFiltered.filter((r) => {
+				const rollNum = Number(pickRollAngle(r));
+				if (!Number.isFinite(rollNum)) return true;
+				return Math.abs(rollNum) <= rollLimitVal;
+			});
 		const highMidFiltered = rollFiltered.filter((r) => (r.priority ?? 99) <= 2);
 		const lowFiltered = rollFiltered.filter((r) => (r.priority ?? 99) > 2);
 		let imagingLimit = imagingExpect;
@@ -1094,10 +1100,48 @@ async function runOneClickPlan() {
 			// 若仍不足且之前未跑低优先级预报，则立即补充低优先级预报并重选
 			if (picked.length < imagingLimit && !lowForecasted.ran && lowTargets.length) {
 				planningProgress.text = "补充低优先级预报";
+				const forecastLowBatch = async (targets: any[]) => {
+					const body: any = {
+						satelliteCode: form.value.satellite,
+						forecastStartAt: imagingStart.getTime(),
+						forecastEndAt: imagingEnd.getTime(),
+						targetList: targets,
+					};
+					if (orbitElements.value) body.ephemeris = orbitElements.value;
+					const resp = await fetch(ONE_CLICK_PLAN_URL, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(body),
+					});
+					if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+					const data = await resp.json();
+					const rawList: any[] = data?.result || data?.tasks || data?.data || [];
+					return rawList
+						.map((r) => {
+							const ts = parseStartTime(r);
+							const cloud = parseCloudPercent(
+								r?.cloud ?? r?.cloudCoverage ?? r?.cloud_percent ?? r?.cloudPercent
+							);
+							const priority =
+								resolvePriorityFromCache(r?.name || r?.targetName, priorityMap) ||
+								parsePriority(r?.priority ?? r?.priorityLevel ?? r?.level);
+							return ts
+								? {
+										...r,
+										startTs: ts,
+										name: r?.name || r?.targetName || "Task",
+										cloud,
+										priority,
+								  }
+								: null;
+						})
+						.filter((x): x is any => Boolean(x));
+				};
+
 				for (let i = 0; i < lowTargets.length && picked.length < imagingLimit; i += 10) {
 					const batchNo = Math.floor(i / 10) + 1;
 					const batch = lowTargets.slice(i, i + 10);
-					const batchRes = await forecast(batch);
+					const batchRes = await forecastLowBatch(batch);
 					withTs.push(...batchRes);
 					lowWithTs.push(...batchRes);
 					const cloudFiltered2 = withTs.filter((r) => r.cloud == null || r.cloud <= cloudLimitVal);
@@ -1510,12 +1554,14 @@ function pickWithPreference(
 	if (first.length >= limit) return first;
 	const pickedTs = new Set(first.map((x) => x.startTs));
 	const remain = list.filter((x) => !pickedTs.has(x.startTs));
-	const second = pickTopTasks(
-		remain,
-		limit - first.length,
-		gapMs,
-		reserved.concat(first.map((x) => Number(x.startTs))),
-	);
+	const reservedCombined = [
+		...reserved,
+		...first
+			.map((x) => Number(x.startTs))
+			.filter((n) => Number.isFinite(n))
+			.map((n) => ({ ts: n, buffer: gapMs })),
+	];
+	const second = pickTopTasks(remain, limit - first.length, gapMs, reservedCombined);
 	return [...first, ...second].slice(0, limit);
 }
 
