@@ -1096,6 +1096,14 @@ async function runOneClickPlan() {
 			const remain = Math.max(0, imagingLimit - highFirst.length);
 			const lowNext = remain > 0 ? selectWithGap(lowFiltered, remain, gapMs, reservedSlots, highFirst) : highFirst;
 			picked = lowNext;
+			console.log(
+				"[one-click-plan] high/mid selected",
+				highFirst.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
+			);
+			console.log(
+				"[one-click-plan] after low selected",
+				picked.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
+			);
 
 			// 若仍不足且之前未跑低优先级预报，则立即补充低优先级预报并重选
 			if (picked.length < imagingLimit && !lowForecasted.ran && lowTargets.length) {
@@ -1157,6 +1165,10 @@ async function runOneClickPlan() {
 					const lowNext2 =
 						remain2 > 0 ? selectWithGap(lowFiltered2, remain2, gapMs, reservedSlots, highFirst2) : highFirst2;
 					picked = lowNext2;
+					console.log(
+						`[one-click-plan] after low batch ${batchNo} selected`,
+						picked.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
+					);
 					planningProgress.text = `补充低优先级批次 ${batchNo} 完成`;
 					if (picked.length >= imagingLimit) break;
 				}
