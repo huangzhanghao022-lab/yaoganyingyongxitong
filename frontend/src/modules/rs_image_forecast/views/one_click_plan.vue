@@ -1098,19 +1098,30 @@ async function runOneClickPlan() {
 			// 统一使用 reserved/gap 规则选取，保证选中即满足全部条件
 			const highFirst = selectWithGap(highMidFiltered, imagingLimit, gapMs, reservedSlots);
 			const remain = Math.max(0, imagingLimit - highFirst.length);
-			const lowNext =
-				remain > 0 ? selectWithGap(lowFiltered, remain, gapMs, reservedSlots, highFirst) : [];
+			// 低优先级只用于补齐，先剔除与高/中同时间的候选，再逐个检查间隔
+			const highTsSet = new Set(highFirst.map((x) => x.startTs));
+			const lowPool = lowFiltered.filter((x) => !highTsSet.has(x.startTs)).sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+			const pickedLow: any[] = [];
 			if (remain > 0) {
 				console.log(
 					"[one-click-plan] low candidates considered",
-					lowFiltered.map((x) => `${x.name} @${formatDisplay(new Date(x.startTs))}`)
+					lowPool.map((x) => `${x.name} @${formatDisplay(new Date(x.startTs))}`)
 				);
+				for (const cand of lowPool) {
+					if (pickedLow.length >= remain) break;
+					const ts = Number(cand.startTs);
+					if (!Number.isFinite(ts)) continue;
+					if (!okGap(ts, highFirst, reservedSlots, gapMs)) continue; // 与高/中不冲突
+					if (!okGap(ts, pickedLow, reservedSlots, gapMs)) continue; // 与已选低不冲突
+					pickedLow.push(cand);
+					console.log("[one-click-plan] low pick", `${cand.name} @${formatDisplay(new Date(ts))}`);
+				}
 				console.log(
 					"[one-click-plan] low picked",
-					lowNext.map((x) => `${x.name} @${formatDisplay(new Date(x.startTs))}`)
+					pickedLow.map((x) => `${x.name} @${formatDisplay(new Date(x.startTs))}`)
 				);
 			}
-			picked = [...highFirst, ...lowNext].slice(0, imagingLimit);
+			picked = [...highFirst, ...pickedLow].slice(0, imagingLimit);
 			console.log(
 				"[one-click-plan] high/mid selected",
 				highFirst.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
@@ -1119,7 +1130,7 @@ async function runOneClickPlan() {
 				"[one-click-plan] after low selected",
 				picked.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
 			);
-			if (remain > 0 && lowNext.length === 0) {
+			if (remain > 0 && pickedLow.length === 0) {
 				console.log(
 					"[one-click-plan] low selection empty",
 					{
