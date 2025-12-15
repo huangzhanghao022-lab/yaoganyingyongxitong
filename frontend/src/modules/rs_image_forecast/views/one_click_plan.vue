@@ -1123,6 +1123,18 @@ async function runOneClickPlan() {
 			if (!picked.length) {
 				console.log("[one-click-plan] no tasks selected after applying gap/cloud/roll filters; pool size", rollFiltered.length);
 			}
+
+			// 如果仍不足，输出低优先级候选的间隔详情，便于确认为何未补足
+			if (picked.length < imagingLimit && lowFiltered.length) {
+				const detail = lowFiltered.map((c) => {
+					const ts = Number(c.startTs);
+					const gaps = picked.map((p) => Math.abs(ts - Number(p.startTs)) / 60000);
+					return `${c.name} @${formatDisplay(new Date(ts))} gapToPicked(min): ${
+						gaps.length ? Math.min(...gaps).toFixed(1) : "-"
+					} min`;
+				});
+				console.log("[one-click-plan] low candidates gap detail", detail);
+			}
 		}
 
 		console.log(
