@@ -1100,6 +1100,16 @@ async function runOneClickPlan() {
 			const remain = Math.max(0, imagingLimit - highFirst.length);
 			const lowNext =
 				remain > 0 ? selectWithGap(lowFiltered, remain, gapMs, reservedSlots, highFirst) : [];
+			if (remain > 0) {
+				console.log(
+					"[one-click-plan] low candidates considered",
+					lowFiltered.map((x) => `${x.name} @${formatDisplay(new Date(x.startTs))}`)
+				);
+				console.log(
+					"[one-click-plan] low picked",
+					lowNext.map((x) => `${x.name} @${formatDisplay(new Date(x.startTs))}`)
+				);
+			}
 			picked = [...highFirst, ...lowNext].slice(0, imagingLimit);
 			console.log(
 				"[one-click-plan] high/mid selected",
