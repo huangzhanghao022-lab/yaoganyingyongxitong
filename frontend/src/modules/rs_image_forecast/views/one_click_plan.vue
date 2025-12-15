@@ -1104,6 +1104,9 @@ async function runOneClickPlan() {
 				"[one-click-plan] after low selected",
 				picked.map((p) => `${p.name} @${formatDisplay(new Date(p.startTs))}`)
 			);
+			if (!picked.length) {
+				console.log("[one-click-plan] no tasks selected after applying gap/cloud/roll filters; pool size", rollFiltered.length);
+			}
 
 			// 若仍不足且之前未跑低优先级预报，则立即补充低优先级预报并重选
 			if (picked.length < imagingLimit && !lowForecasted.ran && lowTargets.length) {
@@ -1182,6 +1185,20 @@ async function runOneClickPlan() {
 			"items:",
 			picked.map((p) => `${p.name || "Task"} @${formatDisplay(new Date(p.startTs))}`)
 		);
+		if (taskSwitches.imaging && picked.length < imagingLimit) {
+			const feasible = selectWithGap(rollFiltered, imagingLimit, gapMs, reservedSlots).length;
+			console.log(
+				"[one-click-plan] feasible with gap",
+				feasible,
+				"candidate pool",
+				rollFiltered.length,
+				"gapMs",
+				gapMs
+			);
+			notes.push(
+				`满足间隔/预留时间的候选不足（可选 ${feasible} 个，期望 ${imagingLimit} 个），可能需放宽间隔或时间窗口。`
+			);
+		}
 
 		// 按成像时间先后重新分配固存号（时间早的分配更小的固存号）
 		reorderStorageSlots(picked);
