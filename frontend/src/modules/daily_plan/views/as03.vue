@@ -309,6 +309,7 @@ const Table = useTable({
 				"delete",
 				{
 					text: t("详情") || "详情",
+					label: t("详情") || "详情",
 					type: "primary",
 					onClick({ scope }: { scope: { row: TelecontrolRecord } }) {
 						openTelemetryDetail(scope.row);
