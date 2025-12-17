@@ -1,6 +1,6 @@
 import { Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, In } from 'typeorm';
 import { as02payloadtableEntity } from '../../star/entity/as02_payload_table/as02_payload_table';
 import { TaskLogImagingAs02Entity } from '../../task_log/entity/imaging_as02';
 import { TaskLogImagingAs03Entity } from '../../task_log/entity/imaging_as03';
@@ -451,6 +451,15 @@ export class CommandValidateService {
           entity.targetLongitude = this.pickNumber(params, ['longitude', 'long', 'lng']);
           entity.targetLatitude = this.pickNumber(params, ['latitude', 'lat']);
           entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
+          entity.startFileNo = this.pickNumber(params, ['fileStart', 'startFileNo', 'start_file', 'recordFileNo', 'recordFileNumber', 'fileNo']);
+          entity.endFileNo = this.pickNumber(params, ['endFileNo', 'end_file']);
+          // AS02 指令未传 endFile 时，按“start + 7”补全，确保任务管理保留完整文件段（8 个文件）
+          if (entity.startFileNo != null && entity.endFileNo == null) {
+            const start = Number(entity.startFileNo);
+            if (Number.isFinite(start)) {
+              entity.endFileNo = start + 7;
+            }
+          }
           entity.status = 0;
           await this.imagingLogAs02Repo.save(entity);
         } else {
@@ -469,6 +478,18 @@ export class CommandValidateService {
           entity.targetLongitude = this.pickNumber(params, ['longitude', 'long', 'lng']);
           entity.targetLatitude = this.pickNumber(params, ['latitude', 'lat']);
           entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
+          entity.startFileNo = this.pickNumber(params, ['fileStart', 'startFileNo', 'start_file', 'recordFileNo', 'recordFileNumber', 'fileNo']);
+          if (entity.startFileNo != null && (entity as any).endFileNo == null) {
+            (entity as any).endFileNo = entity.startFileNo;
+          }
+          if (process.env.NODE_ENV !== 'production') {
+            console.info('[command-validate] AS03 image log fileNo', {
+              startFileNo: entity.startFileNo,
+              endFileNo: (entity as any).endFileNo,
+              target: entity.imagingTargetName,
+              time: time.toISOString(),
+            });
+          }
           entity.status = 0;
           await this.imagingLogAs03Repo.save(entity);
         }
@@ -486,7 +507,7 @@ export class CommandValidateService {
           entity.transmitStationLongitude = this.pickNumber(params, ['long', 'longitude', 'transmitStationLongitude']);
           entity.transmitStationLatitude = this.pickNumber(params, ['lat', 'latitude', 'transmitStationLatitude']);
           entity.transmitStationHeight = this.pickNumber(params, ['alt', 'height', 'transmitStationHeight']);
-          entity.transmitFileNumber = this.buildFileNumber(params);
+          entity.transmitFileNumber = this.buildTransferFileNumberWithType(sat, params);
           entity.transmitExecutionTime = params?.duration ? new Date(time.getTime() + Number(params.duration) * 1000) : null;
           entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
           entity.status = 0;
@@ -503,7 +524,7 @@ export class CommandValidateService {
           entity.transmitStationLongitude = this.pickNumber(params, ['long', 'longitude', 'transmitStationLongitude']);
           entity.transmitStationLatitude = this.pickNumber(params, ['lat', 'latitude', 'transmitStationLatitude']);
           entity.transmitStationHeight = this.pickNumber(params, ['alt', 'height', 'transmitStationHeight']);
-          entity.transmitFileNumber = this.buildFileNumber(params);
+          entity.transmitFileNumber = this.buildTransferFileNumberWithType(sat, params);
           entity.transmitExecutionTime = params?.duration ? new Date(time.getTime() + Number(params.duration) * 1000) : null;
           entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
           entity.status = 0;
@@ -517,7 +538,7 @@ export class CommandValidateService {
           const entity = new TaskLogDeleteAs02Entity();
           entity.satelliteCode = sat;
           entity.taskExecutionTime = time;
-          entity.deleteFileNumber = this.buildDeleteRange(params);
+          entity.deleteFileNumber = this.buildDeleteWithType(sat, params);
           entity.deleteCommandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId', 'deleteCommandChainId']);
           entity.status = 0;
           await this.deleteLogAs02Repo.save(entity);
@@ -527,7 +548,7 @@ export class CommandValidateService {
           const entity = new TaskLogDeleteAs03Entity();
           entity.satelliteCode = sat;
           entity.taskExecutionTime = time;
-          entity.deleteFileNumber = this.buildDeleteRange(params);
+          entity.deleteFileNumber = this.buildDeleteWithType(sat, params);
           entity.deleteCommandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId', 'deleteCommandChainId']);
           entity.status = 0;
           await this.deleteLogAs03Repo.save(entity);
@@ -572,6 +593,56 @@ export class CommandValidateService {
     return parts.length ? Array.from(new Set(parts)).join(',') : '';
   }
 
+  private buildTransferFileNumberWithType(sat: Sat, p: any): string {
+    // if already包含载荷/平台前缀则直接返回
+    const preset = this.pickString(p, ['transmitFileNumber']);
+    if (preset && /载荷|平台/.test(preset)) return preset;
+
+    const payload: string[] = [];
+    const platform: string[] = [];
+
+    // AS03 按 module1..6，start_file1..6
+    for (let i = 1; i <= 6; i++) {
+      const start = p?.[`start_file${i}`];
+      const end = p?.[`end_file${i}`];
+      const moduleVal = p?.[`module${i}`];
+      if (start != null && end != null && moduleVal != null) {
+        const range = `${start}-${end}`;
+        if (String(moduleVal) === '1') payload.push(range);
+        else if (String(moduleVal) === '0') platform.push(range);
+      }
+    }
+
+    // AS02 trans_type0..8 + start_file/start_file1..8
+    const primaryType = p?.trans_type;
+    if (p?.start_file != null && p?.end_file != null && primaryType != null) {
+      const range = `${p.start_file}-${p.end_file}`;
+      if (String(primaryType) === '1') payload.push(range);
+      else if (String(primaryType) === '0') platform.push(range);
+    }
+    for (let i = 1; i <= 8; i++) {
+      const st = p?.[`start_file${i}`];
+      const ed = p?.[`end_file${i}`];
+      const tp = p?.[`trans_type${i}`];
+      if (st != null && ed != null && tp != null) {
+        const range = `${st}-${ed}`;
+        if (String(tp) === '1') payload.push(range);
+        else if (String(tp) === '0') platform.push(range);
+      }
+    }
+
+    // fallback: 已经有 files/ fileStart 等，默认为载荷
+    if (!payload.length && !platform.length) {
+      const generic = this.buildFileNumber(p);
+      return generic ? `载荷:${generic}` : '';
+    }
+
+    const segments: string[] = [];
+    if (payload.length) segments.push(`载荷:${Array.from(new Set(payload)).join(',')}`);
+    if (platform.length) segments.push(`平台:${Array.from(new Set(platform)).join(',')}`);
+    return segments.join(',');
+  }
+
   private buildDeleteRange(p: any): string {
     if (p?.start_file != null && p?.end_file != null) {
       return `${p.start_file}-${p.end_file}`;
@@ -581,6 +652,20 @@ export class CommandValidateService {
     }
     if (p?.deleteFileNumber) return String(p.deleteFileNumber);
     return '';
+  }
+
+  private buildDeleteWithType(sat: Sat, p: any): string {
+    const preset = this.pickString(p, ['deleteFileNumber']);
+    if (preset && /载荷|平台/.test(preset)) return preset;
+    const range = this.buildDeleteRange(p);
+    // AS03 delete 有 module 字段，AS02 默认载荷
+    const moduleVal = p?.module;
+    if (moduleVal !== undefined && moduleVal !== null) {
+      const prefix = String(moduleVal) === '0' ? '平台' : '载荷';
+      return range ? `${prefix}:${range}` : '';
+    }
+    // fallback 默认载荷
+    return range ? `载荷:${range}` : '';
   }
 
   /** 去除名称中追加的时间后缀（如 “xxx-2025-12-01 …”） */

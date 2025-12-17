@@ -15,6 +15,12 @@ export class TaskLogImagingAs02Entity extends BaseEntity {
   @Column({ comment: '成像时间' })
   imagingTime: Date;
 
+  @Column({ comment: '起始文件号', type: 'int', nullable: true })
+  startFileNo?: number;
+
+  @Column({ comment: '结束文件号', type: 'int', nullable: true })
+  endFileNo?: number;
+
   @Column({ comment: '云量', type: 'decimal', precision: 5, scale: 2, nullable: true })
   cloudCoverage?: number;
 
