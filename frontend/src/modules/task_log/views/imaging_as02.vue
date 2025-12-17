@@ -23,7 +23,7 @@
 
 <script lang="ts" setup>
 defineOptions({
-	name: 'task_log-imaging_as02',
+	name: 'task-log-imaging-as02',
 });
 
 import { useCrud, useTable, useUpsert, useSearch } from '@cool-vue/crud';
@@ -84,6 +84,22 @@ const Upsert = useUpsert({
 			required: false,
 		},
 		{
+			label: t('起始文件号'),
+			prop: 'startFileNo',
+			hook: 'number',
+			component: { name: 'el-input-number', props: { min: 0, max: 9999, step: 1 } },
+			span: 12,
+			required: false,
+		},
+		{
+			label: t('结束文件号'),
+			prop: 'endFileNo',
+			hook: 'number',
+			component: { name: 'el-input-number', props: { min: 0, max: 9999, step: 1 } },
+			span: 12,
+			required: false,
+		},
+		{
 			label: t('目标点经度'),
 			prop: 'targetLongitude',
 			hook: 'number',
@@ -125,6 +141,8 @@ const Table = useTable({
 		{ label: t('成像时间'), prop: 'imagingTime', minWidth: 170, sortable: 'custom', component: { name: 'cl-date-text' } },
 		{ label: t('云量'), prop: 'cloudCoverage', minWidth: 120, sortable: 'custom' },
 		{ label: t('侧摆角'), prop: 'sideSwingAngle', minWidth: 120, sortable: 'custom' },
+		{ label: t('起始文件号'), prop: 'startFileNo', minWidth: 120, sortable: 'custom' },
+		{ label: t('结束文件号'), prop: 'endFileNo', minWidth: 120, sortable: 'custom' },
 		{ label: t('目标点经度'), prop: 'targetLongitude', minWidth: 140, sortable: 'custom' },
 		{ label: t('目标点纬度'), prop: 'targetLatitude', minWidth: 140, sortable: 'custom' },
 		{ label: t('指令链id'), prop: 'commandChainId', minWidth: 160 },

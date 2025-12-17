@@ -2469,6 +2469,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 				reset_seq: resetSeq,
 				start_seq: String(baseSeq),
 				tf: endIso,
+				fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
 			},
 			{
 				spacecraftCode: "AS03",
@@ -2477,6 +2478,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 				name: `2.${item.name || "成像任务"}-制冷机启停-${formatBeijingTime(item.startTs)}`,
 				t0: startIso,
 				start_seq: String(baseSeq + 14),
+				fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
 			},
 			{
 				spacecraftCode: "AS03",
@@ -2487,6 +2489,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 				t0: startIso,
 				tf: endIso,
 				side_swipe_angle: pickRollAngle(item.raw ?? item),
+				fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
 				imagingUid,
 			},
 		];

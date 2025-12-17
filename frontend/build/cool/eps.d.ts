@@ -1487,6 +1487,16 @@ declare namespace Eps {
 		imagingTime?: Date;
 
 		/**
+		 * 起始文件号
+		 */
+		startFileNo?: number;
+
+		/**
+		 * 结束文件号
+		 */
+		endFileNo?: number;
+
+		/**
 		 * 云量
 		 */
 		cloudCoverage?: number;
@@ -1552,6 +1562,16 @@ declare namespace Eps {
 		 * 成像时间
 		 */
 		imagingTime?: Date;
+
+		/**
+		 * 起始文件号
+		 */
+		startFileNo?: number;
+
+		/**
+		 * 结束文件号
+		 */
+		endFileNo?: number;
 
 		/**
 		 * 云量
