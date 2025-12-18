@@ -1929,7 +1929,8 @@ async function createWithTemplateAS03() {
       creating.value = false;
       return;
     }
-
+    // 获取首个空闲平台固存号（AS03 平台 name=3，status=0），用于平台回填
+    const platformSlot = await fetchFirstAs03PlatformEmptySlot();
   for (const i of idxs) {
     const row: any = list[i] || {};
     const sat = String(row.satellite || form.satellite || '');
@@ -2025,7 +2026,9 @@ async function createWithTemplateAS03() {
         if (slot && slot.id) {
           try {
             await updateAs03FixedStorage(slot.id, row);
-            await syncAs03PlatformStorage(slot.startFileNo ?? slot.start_file_no, row);
+            const platformStart =
+              platformSlot?.startFileNo ?? platformSlot?.start_file_no ?? slot.startFileNo;
+            await syncAs03PlatformStorage(platformStart, row);
           } catch (e) {
             console.warn('[AS03] 固存表回填失败: ', e);
           }
@@ -2077,6 +2080,22 @@ async function fetchFirstAs03EmptySlot(): Promise<any | null> {
     page: 1,
     size: 1,
     name: 2, // AS03 payload
+    status: 0,
+    sort: 'startFileNo',
+    order: 'ASC',
+  });
+  const list = res?.list || res?.data?.list || [];
+  return Array.isArray(list) && list.length ? list[0] : null;
+}
+
+// 拉取 AS03 平台固存表的首个空槽（status=0，startFileNo 升序取首条）
+async function fetchFirstAs03PlatformEmptySlot(): Promise<any | null> {
+  const api: any = (service as any)?.star?.fixed_storage_table;
+  if (!api?.page) return null;
+  const res = await api.page({
+    page: 1,
+    size: 1,
+    name: 3, // AS03 平台
     status: 0,
     sort: 'startFileNo',
     order: 'ASC',
