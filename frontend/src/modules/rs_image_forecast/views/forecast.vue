@@ -1674,6 +1674,10 @@ async function createWithTemplate() {
       ElMessage.warning('请先勾选需要提交的记录');
       return;
     }
+    if (idxs.length > 1) {
+      ElMessage.warning('手动提交 AS03 暂仅支持单条记录');
+      return;
+    }
     // 校验起始号
   const missing = idxs.filter((i) => !startFileNoMap[i]);
   if (missing.length) {
@@ -1918,9 +1922,14 @@ async function createWithTemplateAS03() {
     const tasksToRecord: ForecastTaskPayload[] = [];
     const noticeEntries: SubmissionNoticeEntry[] = [];
 
-    // 为固存同步准备足量的空槽（AS03 载荷 name=2，status=0），按 startFileNo 升序
-    const emptySlots = await fetchAs03EmptySlots(idxs.length);
-    let slotPtr = 0;
+    // 获取首个空闲固存号（AS03 载荷 name=2，status=0）
+    const slot = await fetchFirstAs03EmptySlot();
+    if (!slot || slot.startFileNo == null) {
+      ElMessage.error('未找到可用的 AS03 固存号');
+      creating.value = false;
+      return;
+    }
+
   for (const i of idxs) {
     const row: any = list[i] || {};
     const sat = String(row.satellite || form.satellite || '');
@@ -1944,7 +1953,8 @@ async function createWithTemplateAS03() {
       row.tf;
     const t0 = toIsoString(t0Raw);
     const tf = toIsoString(tfRaw);
-    const baseSeq = Number(startFileNoMap[i] ?? '') || 0;
+    const baseSeq = Number(startFileNoMap[i] ?? '') || 0; // 用户输入的绝对延时起始号
+    const fileStartValue = slot?.startFileNo ?? ''; // 固存起始号，来自空闲槽
     const resetSeqRaw = (reloadMap as any)?.[i];
     const resetSeq =
       resetSeqRaw === true ||
@@ -1960,6 +1970,7 @@ async function createWithTemplateAS03() {
         reset_seq: resetSeq,
         start_seq: String(baseSeq),
         tf,
+        fileStart: String(fileStartValue),
       },
         {
           spacecraftCode: sat,
@@ -1968,6 +1979,7 @@ async function createWithTemplateAS03() {
           name:name+"制冷机启停-"+t0Raw,
           t0,
           start_seq: String(baseSeq + 14),
+          fileStart: String(fileStartValue),
         },
         {
           spacecraftCode: sat,
@@ -1985,6 +1997,7 @@ async function createWithTemplateAS03() {
               ''
           ),
           tf,
+          fileStart: String(fileStartValue),
         },
       ];
 
@@ -2009,7 +2022,6 @@ async function createWithTemplateAS03() {
       }
 
       if (rowSuccess) {
-        const slot = emptySlots[slotPtr++];
         if (slot && slot.id) {
           try {
             await updateAs03FixedStorage(slot.id, row);
@@ -2022,7 +2034,7 @@ async function createWithTemplateAS03() {
         }
         const taskPayload = buildTaskRecord(row, 'AS03', generatedUid);
         tasksToRecord.push(taskPayload);
-        const startFileRef = slot?.startFileNo ?? baseSeq;
+        const startFileRef = slot?.startFileNo ?? '';
         const endFileRef = slot?.endFileNo ?? undefined;
         noticeEntries.push(
           buildSubmissionNoticeEntry(
@@ -2057,31 +2069,20 @@ async function createWithTemplateAS03() {
   }
 }
 
-// 拉取 AS03 载荷固存表的若干空槽（返回按 startFileNo 升序的记录，包含 id/startFileNo）
-async function fetchAs03EmptySlots(expect = 1): Promise<any[]> {
+// 拉取 AS03 载荷固存表的首个空槽（status=0，startFileNo 升序取首条）
+async function fetchFirstAs03EmptySlot(): Promise<any | null> {
   const api: any = (service as any)?.star?.fixed_storage_table;
-  if (!api?.page) return [];
-  const name = 2; // AS03 payload
-  const status = 0; // 空
-  const size = 200;
-  let page = 1;
-  let acc: any[] = [];
-  while (acc.length < expect) {
-    const res = await api.page({ page, size, name, status, sort: 'startFileNo', order: 'ASC' });
-    const list = res?.list || res?.data?.list || [];
-    if (!list.length) break;
-    acc.push(...list);
-    page += 1;
-  }
-  // 去重并按 startFileNo 升序
-  const seen = new Set<number>();
-  acc = acc.filter((r) => {
-    const n = Number(r?.startFileNo);
-    if (!Number.isFinite(n) || seen.has(n)) return false;
-    seen.add(n);
-    return true;
-  }).sort((a, b) => Number(a.startFileNo) - Number(b.startFileNo));
-  return acc.slice(0, expect);
+  if (!api?.page) return null;
+  const res = await api.page({
+    page: 1,
+    size: 1,
+    name: 2, // AS03 payload
+    status: 0,
+    sort: 'startFileNo',
+    order: 'ASC',
+  });
+  const list = res?.list || res?.data?.list || [];
+  return Array.isArray(list) && list.length ? list[0] : null;
 }
 
 // 根据 id 更新 AS03 载荷固存表：回填目标名、成像时间，状态置为待写入(1)
@@ -2135,10 +2136,15 @@ async function syncAs03PlatformStorage(startFileNo: number | string | undefined,
     srcRow?.t0 ??
     '';
   const imagingIso = imagingRaw ? toIsoString(imagingRaw) : '';
-  const imagingTime = imagingIso || String(imagingRaw || '');
+  const executingTime = imagingIso || String(imagingRaw || '');
   const status = 1;
   const imagingUid = String(srcRow?.__imagingUid || '');
-  const payload: Record<string, any> = { id: row.id, targetName, imagingTime, status };
+  const payload: Record<string, any> = {
+    id: row.id,
+    status,
+    fileName: targetName,
+    executingTime,
+  };
   if (imagingUid) payload.imagingUid = imagingUid;
   await api.update({ name, data: payload });
 }
