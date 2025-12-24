@@ -469,9 +469,9 @@ export class CommandValidateService {
           if (exist) return; // 已写过首链
           const entity = new TaskLogImagingAs03Entity();
           entity.satelliteCode = sat;
-          entity.imagingTargetName = this.stripTimeSuffix(
-            this.pickString(params, ['imagingTargetName', 'targetName', 'name'], '') || ''
-          );
+          const rawName =
+            this.pickString(params, ['imagingTargetName', 'targetName', 'name'], '') || '';
+          entity.imagingTargetName = this.sanitizeAs03TargetName(rawName);
           entity.imagingTime = time;
           entity.cloudCoverage = this.pickNumber(params, ['cloudCoverage', 'cloud']);
           entity.sideSwingAngle = this.pickNumber(params, ['side_swipe_angle', 'sideSwipeAngle', 'rollAng']);
@@ -672,6 +672,19 @@ export class CommandValidateService {
   private stripTimeSuffix(name: string): string {
     if (!name) return '';
     return name.replace(/\s*-?\s*\d{4}-\d{2}-\d{2}.*$/, '').trim();
+  }
+
+  // AS03 目标名清洗：去掉序号前缀/模板尾缀
+  private sanitizeAs03TargetName(name: string): string {
+    let cleaned = this.stripTimeSuffix(name);
+    // 去掉前缀序号 “1.”、“2.”
+    cleaned = cleaned.replace(/^\s*\d+\.\s*/, '');
+    // 去掉模板动作后缀
+    cleaned = cleaned.replace(
+      /\s*-?\s*(焦面断电|制冷机启停|成像序列\+?转姿态\+?GNSS转存).*$/u,
+      ''
+    );
+    return cleaned.trim();
   }
 
   /** 查找同一卫星+时间的已存在记录，允许 1s 容忍，避免同批次多链重复冲突/写入 */
