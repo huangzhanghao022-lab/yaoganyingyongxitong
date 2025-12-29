@@ -176,7 +176,7 @@ export class TaskStorageUpdater implements IJob {
     for (const r of platform) {
       await this.updateRangeStatus(platformRepo, r.start, r.end, STATUS.TX_WAIT_FEEDBACK, {}, fromStatuses);
     }
-    task.status = 1; // 已处理
+    task.status = 3; // 数传任务执行完成
     task.transmitExecutionTime = task.transmitTime;
     await (sat === 'AS02' ? this.transmitAs02Repo : this.transmitAs03Repo).save(task);
   }
