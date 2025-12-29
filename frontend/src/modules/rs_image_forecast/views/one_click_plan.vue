@@ -2202,6 +2202,83 @@ async function postTemplate(body: Record<string, any>, token: string, type: "ima
 	}
 }
 
+type Range = { start: number; end: number };
+
+function parseTransferRangesFromText(text: string): { payload: Range[]; platform: Range[] } {
+	const payload: Range[] = [];
+	const platform: Range[] = [];
+	let current: "payload" | "platform" = "payload";
+	const tokens = String(text || "")
+		.split(",")
+		.map((s) => s.trim())
+		.filter(Boolean);
+	const pushRange = (kind: "payload" | "platform", seg: string) => {
+		const [s, e] = seg.split("-").map((n) => Number(n));
+		if (Number.isFinite(s)) {
+			const range: Range = { start: s, end: Number.isFinite(e) ? e : s };
+			(kind === "payload" ? payload : platform).push(range);
+		}
+	};
+	for (const token of tokens) {
+		if (token.startsWith("载荷:")) {
+			current = "payload";
+			pushRange("payload", token.slice(3));
+			continue;
+		}
+		if (token.startsWith("平台:")) {
+			current = "platform";
+			pushRange("platform", token.slice(3));
+			continue;
+		}
+		pushRange(current, token);
+	}
+	return { payload, platform };
+}
+
+async function updateStorageStatusAfterTransfer(
+	satellite: "AS02" | "AS03",
+	groups: Array<{ start: number; end: number; duration: number; count?: number }>,
+	fileText?: string
+) {
+	const api: any = (service as any)?.star?.fixed_storage_table;
+	if (!api?.page || !api?.batchUpdate) return;
+	const tableMap = satellite === "AS02" ? { payload: 0, platform: 1 } : { payload: 2, platform: 3 };
+
+	const ranges = { payload: [] as Range[], platform: [] as Range[] };
+	groups.forEach((g) => {
+		if (Number.isFinite(g.start) && Number.isFinite(g.end)) {
+			ranges.payload.push({ start: Number(g.start), end: Number(g.end) });
+		}
+	});
+	if (fileText) {
+		const parsed = parseTransferRangesFromText(fileText);
+		ranges.payload.push(...parsed.payload);
+		ranges.platform.push(...parsed.platform);
+	}
+
+	const updateByTable = async (name: number, list: Range[]) => {
+		if (!list.length) return;
+		const res = await api.page({ page: 1, size: 500, name, sort: "startFileNo", order: "ASC" });
+		const rows = res?.list || res?.data?.list || [];
+		const ids: number[] = [];
+		for (const row of rows) {
+			const start = Number(row?.startFileNo ?? row?.start_file_no);
+			if (!Number.isFinite(start)) continue;
+			const hit = list.some((r) => start >= r.start && start <= r.end);
+			if (hit && row?.status !== 7) {
+				const id = Number(row?.id);
+				if (Number.isFinite(id)) ids.push(id);
+			}
+		}
+		if (ids.length) {
+			await api.batchUpdate({ ids, name, data: { status: 7 } });
+		}
+	};
+
+	await updateByTable(tableMap.payload, ranges.payload);
+	await updateByTable(tableMap.platform, ranges.platform);
+}
+
 async function validateCommandRequest(type: "image" | "transfer" | "delete", satellite: string, params: any) {
 	const payload = { type, satellite, params };
 	const url = `${appConfig.baseUrl}/admin/task/command/validate`;
@@ -2547,6 +2624,17 @@ async function submitDataTransferTask(
 		await syncTransferToTasks("AS02", groups, transferName, t0Iso, transferUid, fileStarts);
 	} catch (err) {
 		console.warn("[one-click-plan] sync transfer info failed", err);
+	}
+
+	// 固存状态：提交成功即标记为“已安排数传”(7)
+	try {
+		const sat = (task.raw?.satellite || task.raw?.spacecraftCode || form.value?.satellite || "AS02") as
+			| "AS02"
+			| "AS03";
+		const fileText = task.raw?.fileText || task.raw?.filesText || task.raw?.meta || "";
+		await updateStorageStatusAfterTransfer(sat, groups, fileText);
+	} catch (err) {
+		console.warn("[one-click-plan] update storage status after transfer failed", err);
 	}
 
 	ElMessage.success("数传任务提交成功");

@@ -1351,7 +1351,8 @@ async function submitTransferTask() {
 			const errText = await resp.text();
 			throw new Error(errText || `HTTP ${resp.status}`);
 		}
-	const transferUid = await syncTransferAfterSubmit(satellite);
+		await updateStorageStatusAfterTransfer(satellite as 'AS02' | 'AS03', integratedGroups.value);
+		const transferUid = await syncTransferAfterSubmit(satellite);
 		const summary = buildTransferSummary([...integratedGroups.value], satellite);
 		if (transferUid) {
 			ElMessage.success(`数传任务提交成功，流程UID：${transferUid}`);
@@ -1387,6 +1388,100 @@ function addIntegratedGroup() {
 
 function removeIntegratedGroup(index: number) {
 	integratedGroups.value.splice(index, 1);
+}
+
+type Range = { start: number; end: number };
+
+function parseFileTextRanges(text: string): { payload: Range[]; platform: Range[] } {
+	const payload: Range[] = [];
+	const platform: Range[] = [];
+	let current: 'payload' | 'platform' = 'payload';
+	const parts = String(text || '')
+		.split(',')
+		.map((p) => p.trim())
+		.filter(Boolean);
+	const push = (type: 'payload' | 'platform', seg: string) => {
+		const [s, e] = seg.split('-').map((n) => Number(n));
+		if (Number.isFinite(s)) {
+			const range: Range = { start: s, end: Number.isFinite(e) ? e : s };
+			(type === 'payload' ? payload : platform).push(range);
+		}
+	};
+	for (const part of parts) {
+		if (part.startsWith('载荷:')) {
+			current = 'payload';
+			push('payload', part.slice(3));
+			continue;
+		}
+		if (part.startsWith('平台:')) {
+			current = 'platform';
+			push('platform', part.slice(3));
+			continue;
+		}
+		push(current, part);
+	}
+	return { payload, platform };
+}
+
+async function updateStorageStatusAfterTransfer(
+	satellite: string,
+	groups: IntegratedGroup[],
+	fileText?: string
+) {
+	const api: any = (service as any)?.star?.fixed_storage_table;
+	if (!api?.page || !api?.batchUpdate) return;
+	const tableMap =
+		satellite === 'AS02'
+			? { payload: 0, platform: 1 }
+			: { payload: 2, platform: 3 };
+	const fromGroups = groups.reduce(
+		(acc, g) => {
+			const start = Number(g.startNo);
+			const end = Number(g.endNo ?? g.startNo);
+			if (Number.isFinite(start)) {
+				const range: Range = {
+					start,
+					end: Number.isFinite(end) ? end : start,
+				};
+				if ((g as any).type === 'platform') {
+					acc.platform.push(range);
+				} else {
+					acc.payload.push(range);
+				}
+			}
+			return acc;
+		},
+		{ payload: [] as Range[], platform: [] as Range[] }
+	);
+	if (fileText) {
+		const parsed = parseFileTextRanges(fileText);
+		fromGroups.payload.push(...parsed.payload);
+		fromGroups.platform.push(...parsed.platform);
+	}
+
+	const updateByTable = async (name: number, ranges: Range[]) => {
+		if (!ranges.length) return;
+		const res = await api.page({ page: 1, size: 500, name });
+		const list = res?.list || res?.data?.list || [];
+		const ids: number[] = [];
+		for (const row of list) {
+			const start = Number(row?.startFileNo ?? row?.start_file_no);
+			if (!Number.isFinite(start)) continue;
+			if (
+				ranges.some((r) => start >= r.start && start <= r.end) &&
+				row?.status !== 7
+			) {
+				const id = Number(row.id);
+				if (Number.isFinite(id)) ids.push(id);
+			}
+		}
+		if (ids.length) {
+			await api.batchUpdate({ ids, name, data: { status: 7 } });
+		}
+	};
+
+	await updateByTable(tableMap.payload, fromGroups.payload);
+	await updateByTable(tableMap.platform, fromGroups.platform);
 }
 onMounted(() => {
 	fetchStationOptions();
