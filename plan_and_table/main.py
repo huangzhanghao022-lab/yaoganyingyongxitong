@@ -189,6 +189,16 @@ div[data-testid="stTextInput"] input {
   margin: 10px 0 18px;
 }
 
+.storage-current {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0f172a;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
 .storage-table-wrap {
   background: #fff;
   border-radius: 16px;
@@ -503,7 +513,6 @@ def render_daily_plan_view() -> None:
     if "plan_error" not in st.session_state:
         st.session_state.plan_error = ""
 
-    st.markdown("<div class='query-card'>", unsafe_allow_html=True)
     st.markdown("<div class='query-title'>查询条件</div>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1.2, 1, 1])
     with col1:
@@ -521,8 +530,6 @@ def render_daily_plan_view() -> None:
         except Exception as exc:
             st.session_state.plan_results = []
             st.session_state.plan_error = str(exc)
-
-    st.markdown("</div>", unsafe_allow_html=True)
 
     if st.session_state.plan_error:
         st.error(f"获取失败: {st.session_state.plan_error}")
@@ -542,6 +549,14 @@ def render_storage_view() -> None:
             if st.button(label, use_container_width=True):
                 st.session_state.storage_table = table_id
     st.markdown("</div>", unsafe_allow_html=True)
+
+    label_slot = st.empty()
+    current_label = dict(STORAGE_TABLES).get(st.session_state.storage_table, "")
+    if current_label:
+        label_slot.markdown(
+            f"<div class='storage-current'>当前：{html.escape(current_label)}</div>",
+            unsafe_allow_html=True,
+        )
 
     render_storage_table(int(st.session_state.storage_table))
 
