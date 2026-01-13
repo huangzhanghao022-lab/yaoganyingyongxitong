@@ -156,7 +156,7 @@ div[data-testid="stTextInput"] input {
 .kv-label {
   font-size: 16px;
   font-weight: 700;
-  color: var(--text-muted);
+  color: #2563eb;
   letter-spacing: 1px;
   margin-bottom: 6px;
 }
@@ -434,17 +434,25 @@ def render_storage_table(table_id: int) -> None:
         return
 
     is_platform = table_id in (1, 3)
+    is_as03_payload = table_id == 2
     rows: List[Dict[str, Any]] = []
     for row in items:
-        code = row.get("code") or row.get("id") or "-"
+        code = row.get("code")
+        if code is None:
+            code = row.get("id")
+        if code is None:
+            code = "-"
         status_label = resolve_status_label(row.get("status"))
         if is_platform:
+            file_no = row.get("startFileNo")
+            if file_no is None:
+                file_no = row.get("fileNo")
             rows.append(
                 {
                     "编号": code,
-                    "平台文件名称": safe_text(row.get("fileName") or row.get("name")),
+                    "平台文件名称": safe_text(row.get("fileName")),
                     "写入时间": format_datetime(row.get("executingTime") or row.get("imagingTime")),
-                    "文件号": safe_text(row.get("startFileNo") or row.get("fileNo") or "-"),
+                    "文件号": safe_text(file_no),
                     "状态": render_status_html(status_label),
                     "更新时间": format_datetime(row.get("updateTime")),
                 }
@@ -454,17 +462,29 @@ def render_storage_table(table_id: int) -> None:
             end_no = row.get("endFileNo")
             if end_no is None and start_no is not None:
                 end_no = start_no
-            rows.append(
-                {
-                    "编号": code,
-                    "目标名称": safe_text(row.get("targetName") or row.get("fileName") or row.get("name")),
-                    "成像时间": format_datetime(row.get("imagingTime") or row.get("executingTime")),
-                    "起始文件号": safe_text(start_no),
-                    "结束文件号": safe_text(end_no),
-                    "状态": render_status_html(status_label),
-                    "更新时间": format_datetime(row.get("updateTime")),
-                }
-            )
+            if is_as03_payload:
+                rows.append(
+                    {
+                        "编号": code,
+                        "目标名称": safe_text(row.get("targetName")),
+                        "成像时间": format_datetime(row.get("imagingTime") or row.get("executingTime")),
+                        "文件号": safe_text(start_no),
+                        "状态": render_status_html(status_label),
+                        "更新时间": format_datetime(row.get("updateTime")),
+                    }
+                )
+            else:
+                rows.append(
+                    {
+                        "编号": code,
+                        "目标名称": safe_text(row.get("targetName")),
+                        "成像时间": format_datetime(row.get("imagingTime") or row.get("executingTime")),
+                        "起始文件号": safe_text(start_no),
+                        "结束文件号": safe_text(end_no),
+                        "状态": render_status_html(status_label),
+                        "更新时间": format_datetime(row.get("updateTime")),
+                    }
+                )
 
     df = pd.DataFrame(rows)
     for col in df.columns:
