@@ -207,6 +207,46 @@ div[data-testid="stTextInput"] input {
   overflow-x: auto;
 }
 
+section[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+  border-right: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+section[data-testid="stSidebar"] .stMarkdown h2 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+
+section[data-testid="stSidebar"] .stMarkdown h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
+  padding: 16px 14px;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+  font-weight: 700;
+  color: #1f2937;
+  font-size: 16px;
+}
+
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label span {
+  padding: 8px 6px;
+}
+
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] input[type="radio"] {
+  width: 20px;
+  height: 20px;
+}
+
 table.storage-table {
   width: 100%;
   border-collapse: collapse;
@@ -567,9 +607,6 @@ def main() -> None:
 
     st.sidebar.markdown("## 菜单")
     active = st.sidebar.radio("功能", ["每日计划", "星上固存表"])
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 接口地址")
-    st.sidebar.text_input("", value=API_BASE if active == "每日计划" else STORAGE_API_BASE)
 
     header_title = "每日计划" if active == "每日计划" else "星上固存表"
     st.markdown(f"<div class='title-card'>{header_title}</div>", unsafe_allow_html=True)
