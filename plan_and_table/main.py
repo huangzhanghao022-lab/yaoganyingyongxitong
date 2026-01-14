@@ -66,8 +66,95 @@ html, body, [class*="css"] {
 
 .main .block-container {
   max-width: 1350px;
-  padding: 2.5rem 2rem 4rem;
+  padding: 2rem 2rem 3.5rem;
 }
+
+/* =================================================================
+   1. 侧边栏样式 (已修改为你喜欢的导航菜单风格)
+   ================================================================= */
+
+section[data-testid="stSidebar"] {
+  background-color: #f8fafc;
+  border-right: 1px solid #e2e8f0;
+}
+
+section[data-testid="stSidebar"] .stMarkdown h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #334155;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  padding-left: 5px;
+}
+
+section[data-testid="stSidebar"] .stMarkdown h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-left: 5px;
+  margin-bottom: 8px;
+}
+
+/* 侧边栏按钮容器修正 */
+section[data-testid="stSidebar"] .stButton {
+  width: 100%;
+  border: none;
+  padding: 0;
+  background: transparent;
+  margin-bottom: 4px;
+}
+
+/* 侧边栏按钮 - 通用重置 */
+section[data-testid="stSidebar"] .stButton button {
+  width: 100%;
+  display: flex !important;
+  justify-content: flex-start !important; /* 强制左对齐 */
+  align-items: center;
+  text-align: left !important;
+  padding: 0.75rem 1rem !important;
+  border-radius: 8px !important;
+  border: none !important;
+  font-weight: 500 !important;
+  font-size: 15px !important;
+  height: auto !important;
+  transition: all 0.2s ease;
+  box-shadow: none !important; /* 移除原来的阴影 */
+  margin: 0 !important;
+}
+
+/* 未选中的按钮 (Secondary) - 透明背景，灰色字 */
+section[data-testid="stSidebar"] .stButton button[data-testid="baseButton-secondary"] {
+  background: transparent !important; /* 强制透明，覆盖全局渐变 */
+  color: #64748b !important;
+}
+
+section[data-testid="stSidebar"] .stButton button[data-testid="baseButton-secondary"]:hover {
+  background-color: #e2e8f0 !important; /* 悬停微灰 */
+  color: #0f172a !important;
+  transform: translateX(2px);
+}
+
+/* 选中的按钮 (Primary) - 蓝色背景，白字 */
+section[data-testid="stSidebar"] .stButton button[data-testid="baseButton-primary"] {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  color: white !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25) !important;
+}
+
+/* 隐藏侧边栏里的 Radio 样式影响，防止错乱 */
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+}
+
+
+/* =================================================================
+   2. 主内容区样式 (保留你原本的代码)
+   ================================================================= */
 
 .title-card {
   background: linear-gradient(92deg, #2f6bff, #20d1ff);
@@ -93,7 +180,7 @@ html, body, [class*="css"] {
 .query-title {
   font-size: 20px;
   font-weight: 700;
-  margin-bottom: 14px;
+  margin: 0 0 10px;
   color: #0f172a;
 }
 
@@ -104,17 +191,22 @@ html, body, [class*="css"] {
   margin: 18px 0 12px;
 }
 
-.stButton button {
+/* 主界面的按钮样式 (保留渐变风格，但加上 .main 限定，避免影响侧边栏) */
+.main .stButton button {
   background: linear-gradient(90deg, #36b5ff, #8b7bff);
   border: none;
   color: #fff;
   font-weight: 700;
-  padding: 0.6rem 1.3rem;
+  height: 44px;
+  padding: 0 1.3rem;
   border-radius: 12px;
   box-shadow: 0 8px 18px rgba(59, 130, 246, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.stButton button:hover {
+.main .stButton button:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 24px rgba(59, 130, 246, 0.28);
 }
@@ -168,10 +260,51 @@ div[data-testid="stTextInput"] input {
 }
 
 .telemetry-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.telemetry-head {
   margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.telemetry-title {
   font-size: 16px;
   font-weight: 700;
   color: var(--text-muted);
+}
+
+.tele-toggle {
+  display: none;
+}
+
+.tele-btn {
+  background: #e0f2fe;
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 6px 14px rgba(59, 130, 246, 0.18);
+}
+
+.tele-btn .hide {
+  display: none;
+}
+
+.tele-toggle:checked + .telemetry-head .tele-btn .show {
+  display: none;
+}
+
+.tele-toggle:checked + .telemetry-head .tele-btn .hide {
+  display: inline;
 }
 
 .telemetry-box {
@@ -179,14 +312,69 @@ div[data-testid="stTextInput"] input {
   background: #f1f5f9;
   border-radius: 14px;
   padding: 14px;
-  color: #000;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 500;
   line-height: 1.7;
   white-space: pre-wrap;
   border: 1px solid rgba(148, 163, 184, 0.25);
+  display: none;
+}
+
+.tele-toggle:checked ~ .telemetry-box {
+  display: block;
 }
 
 .storage-action-row {
-  margin: 10px 0 18px;
+  margin: 6px 0 16px;
+}
+
+.storage-action-row div[role="radiogroup"] {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #eef5ff, #f8fbff);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.storage-action-row label {
+  margin: 0;
+}
+
+.storage-action-row [data-baseweb="radio"] {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 14px;
+  padding: 12px 28px;
+  box-shadow: 0 8px 18px rgba(59, 130, 246, 0.18);
+  color: #1f2937;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.storage-action-row [data-baseweb="radio"][aria-checked="true"] {
+  background: linear-gradient(90deg, #2f6bff, #22d3ee);
+  color: #fff;
+  border-color: rgba(34, 211, 238, 0.6);
+  box-shadow: 0 10px 24px rgba(34, 211, 238, 0.35);
+}
+
+.storage-action-row [data-baseweb="radio"] > div:first-child {
+  display: none;
+}
+
+.storage-action-row [data-baseweb="radio"] div,
+.storage-action-row [data-baseweb="radio"] span {
+  color: inherit;
+}
+
+.query-button-spacer {
+  height: 28px;
 }
 
 .storage-current {
@@ -205,46 +393,6 @@ div[data-testid="stTextInput"] input {
   padding: 6px 10px 14px;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
   overflow-x: auto;
-}
-
-section[data-testid="stSidebar"] {
-  background: linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
-  border-right: 1px solid rgba(148, 163, 184, 0.25);
-}
-
-section[data-testid="stSidebar"] .stMarkdown h2 {
-  font-size: 20px;
-  font-weight: 800;
-  color: #0f172a;
-  margin-bottom: 6px;
-}
-
-section[data-testid="stSidebar"] .stMarkdown h3 {
-  font-size: 14px;
-  font-weight: 700;
-  color: #64748b;
-}
-
-section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
-  padding: 16px 14px;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-}
-
-section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
-  font-weight: 700;
-  color: #1f2937;
-  font-size: 16px;
-}
-
-section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label span {
-  padding: 8px 6px;
-}
-
-section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] input[type="radio"] {
-  width: 20px;
-  height: 20px;
 }
 
 table.storage-table {
@@ -411,8 +559,6 @@ def render_plan_cards(items: List[Dict[str, Any]]) -> None:
         st.info("暂无计划数据")
         return
 
-    st.markdown("<div class='section-title'>计划列表</div>", unsafe_allow_html=True)
-
     for index, item in enumerate(items, start=1):
         satellite = safe_text(item.get("satellite") or item.get("satelliteCode") or "-")
         date = safe_text(item.get("date") or item.get("planDate") or "-")
@@ -428,6 +574,7 @@ def render_plan_cards(items: List[Dict[str, Any]]) -> None:
         telemetry = safe_text(item.get("telemetryInfo"), "暂无测控信息")
         telemetry_html = html.escape(telemetry).replace("\n", "<br>")
 
+        toggle_id = f"telemetry-{index}"
         card_html = f"""
 <div class="plan-card">
   <div class="plan-title">{index}. {html.escape(satellite)} | {html.escape(date)} | {html.escape(station)}</div>
@@ -449,7 +596,14 @@ def render_plan_cards(items: List[Dict[str, Any]]) -> None:
       <div class="kv-value">{html.escape(angle)}</div>
     </div>
   </div>
-  <div class="telemetry-title">测控信息</div>
+  <input class="tele-toggle" type="checkbox" id="{toggle_id}">
+  <div class="telemetry-head">
+    <div class="telemetry-title">测控信息</div>
+    <label class="tele-btn" for="{toggle_id}">
+      <span class="show">查看</span>
+      <span class="hide">隐藏</span>
+    </label>
+  </div>
   <div class="telemetry-box">{telemetry_html}</div>
 </div>
 """
@@ -554,22 +708,23 @@ def render_daily_plan_view() -> None:
         st.session_state.plan_error = ""
 
     st.markdown("<div class='query-title'>查询条件</div>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1.2, 1, 1])
+    col1, col2, col3, col4 = st.columns([1.2, 1, 1, 0.6])
     with col1:
         sats = st.multiselect("卫星", ["AS02", "AS03"], default=["AS02"])
     with col2:
         start_date = st.date_input("开始日期", value=today)
     with col3:
         end_date = st.date_input("结束日期", value=today)
-
-    if st.button("获取每日计划", use_container_width=True):
-        try:
-            data = fetch_daily_plan(sats or ["AS02"], start_date, end_date)
-            st.session_state.plan_results = sort_plan_items(data)
-            st.session_state.plan_error = ""
-        except Exception as exc:
-            st.session_state.plan_results = []
-            st.session_state.plan_error = str(exc)
+    with col4:
+        st.markdown("<div class='query-button-spacer'></div>", unsafe_allow_html=True)
+        if st.button("获取计划"):
+            try:
+                data = fetch_daily_plan(sats or ["AS02"], start_date, end_date)
+                st.session_state.plan_results = sort_plan_items(data)
+                st.session_state.plan_error = ""
+            except Exception as exc:
+                st.session_state.plan_results = []
+                st.session_state.plan_error = str(exc)
 
     if st.session_state.plan_error:
         st.error(f"获取失败: {st.session_state.plan_error}")
@@ -583,20 +738,17 @@ def render_storage_view() -> None:
         st.session_state.storage_table = 0
 
     st.markdown("<div class='storage-action-row'>", unsafe_allow_html=True)
-    cols = st.columns(4)
-    for idx, (table_id, label) in enumerate(STORAGE_TABLES):
-        with cols[idx]:
-            if st.button(label, use_container_width=True):
-                st.session_state.storage_table = table_id
+    table_ids = [table_id for table_id, _ in STORAGE_TABLES]
+    label_map = dict(STORAGE_TABLES)
+    st.radio(
+        "固存表",
+        table_ids,
+        format_func=lambda v: label_map.get(v, str(v)),
+        horizontal=True,
+        label_visibility="collapsed",
+        key="storage_table",
+    )
     st.markdown("</div>", unsafe_allow_html=True)
-
-    label_slot = st.empty()
-    current_label = dict(STORAGE_TABLES).get(st.session_state.storage_table, "")
-    if current_label:
-        label_slot.markdown(
-            f"<div class='storage-current'>当前：{html.escape(current_label)}</div>",
-            unsafe_allow_html=True,
-        )
 
     render_storage_table(int(st.session_state.storage_table))
 
@@ -606,12 +758,28 @@ def main() -> None:
     inject_css()
 
     st.sidebar.markdown("## 菜单")
-    active = st.sidebar.radio("功能", ["每日计划", "星上固存表"])
+    # 去掉了原有的 ### 功能
+    
+    if "active_page" not in st.session_state:
+        st.session_state.active_page = "每日计划"
+        
+    if st.sidebar.button(
+        "📅 每日计划",
+        use_container_width=True,
+        type="primary" if st.session_state.active_page == "每日计划" else "secondary",
+    ):
+        st.session_state.active_page = "每日计划"
+        st.rerun()
+        
+    if st.sidebar.button(
+        "🛰️ 星上固存表",
+        use_container_width=True,
+        type="primary" if st.session_state.active_page == "星上固存表" else "secondary",
+    ):
+        st.session_state.active_page = "星上固存表"
+        st.rerun()
 
-    header_title = "每日计划" if active == "每日计划" else "星上固存表"
-    st.markdown(f"<div class='title-card'>{header_title}</div>", unsafe_allow_html=True)
-
-    if active == "每日计划":
+    if st.session_state.active_page == "每日计划":
         render_daily_plan_view()
     else:
         render_storage_view()
