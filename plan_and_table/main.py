@@ -713,6 +713,19 @@ def render_daily_plan_view() -> None:
         st.session_state.plan_results = []
     if "plan_error" not in st.session_state:
         st.session_state.plan_error = ""
+    if "plan_loaded_once" not in st.session_state:
+        st.session_state.plan_loaded_once = False
+
+    # 初次进入页面默认拉取当天 AS02 计划
+    if not st.session_state.plan_loaded_once:
+        try:
+            data = fetch_daily_plan(["AS02"], today, today)
+            st.session_state.plan_results = sort_plan_items(data)
+            st.session_state.plan_error = ""
+        except Exception as exc:
+            st.session_state.plan_results = []
+            st.session_state.plan_error = str(exc)
+        st.session_state.plan_loaded_once = True
 
     st.markdown("<div class='query-title'>查询条件</div>", unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns([1.2, 1, 1, 0.6])
