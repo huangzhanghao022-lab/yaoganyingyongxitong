@@ -217,6 +217,8 @@ section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
   justify-content: center;
 }
 
+
+
 .main .stButton button:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 24px rgba(59, 130, 246, 0.28);
@@ -422,7 +424,7 @@ table.storage-table thead th {
 }
 
 table.storage-table tbody td {
-  padding: 10px 12px;
+  padding: 2px 12px;
   border-bottom: 1px solid #edf2f7;
   color: #0f172a;
 }
