@@ -64,6 +64,12 @@ html, body, [class*="css"] {
   color: var(--text-main);
 }
 
+[data-testid="stMainBlockContainer"] {
+    max-width: 1350px !important;
+    padding: 3rem 1rem 10rem !important; /* 顶部3rem, 左右1rem, 底部10rem */
+    margin-top: 0 !important;             /* 严禁使用负 margin，防止收缩时消失 */
+}
+
 .main .block-container {
   max-width: 1350px;
   padding: 2rem 2rem 3.5rem;
@@ -122,6 +128,11 @@ section[data-testid="stSidebar"] .stButton button {
   transition: all 0.2s ease;
   box-shadow: none !important; /* 移除原来的阴影 */
   margin: 0 !important;
+}
+
+section[data-testid="stSidebar"] .stButton button > div:first-child {
+    justify-content: flex-start !important; /* 对应你发现的 justifyContent: 'left' */
+    text-align: left !important;
 }
 
 /* 未选中的按钮 (Secondary) - 透明背景，灰色字 */
