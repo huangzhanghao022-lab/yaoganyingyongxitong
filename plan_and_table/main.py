@@ -286,12 +286,6 @@ div[data-testid="stTextInput"] input {
   gap: 10px;
 }
 
-.telemetry-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-muted);
-}
-
 .tele-toggle {
   display: none;
 }
