@@ -1451,23 +1451,14 @@ async function fetchAllTargets(sat: string): Promise<{ targets: TargetPayload[];
 }
 
 function parseStartTime(row: any): number | null {
-	const candidates = [
-		row?.startAtBeijing,
-		row?.start_at_beijing,
-		row?.t0_beijing,
-		row?.startAt,
-		row?.start_at,
-		row?.t0,
-		row?.time,
-		row?.taskTime,
-	];
-	for (const value of candidates) {
-		if (!value) continue;
+	const value = row?.startAtBeijing;
+	if (value) {
 		const text = String(value).trim();
-		if (!text) continue;
-		const normalized = text.includes("T") ? text : text.replace(" ", "T");
-		const ts = new Date(normalized).getTime();
-		if (!Number.isNaN(ts)) return ts;
+		if (text) {
+			const normalized = text.includes("T") ? text : text.replace(" ", "T");
+			const ts = new Date(normalized).getTime();
+			if (!Number.isNaN(ts)) return ts;
+		}
 	}
 	return null;
 }
@@ -2164,7 +2155,7 @@ async function updateFixedStorageSlot(
 	name: number,
 	slot: any,
 	item: TimelineItem,
-	extra?: { fileName?: string; executingTime?: string }
+	extra?: { fileName?: string; executingTime?: string; imagingTime?: string }
 ) {
 	const api: any = (service as any)?.star?.fixed_storage_table;
 	if (!api?.update || !slot?.id) return;
@@ -2174,7 +2165,7 @@ async function updateFixedStorageSlot(
 	};
 	if (item?.name) payload.targetName = String(item.name);
 	if (extra?.fileName) payload.fileName = extra.fileName;
-	const imagingTime = toIsoString(item?.startTs ?? item?.raw?.startAt ?? item?.raw?.startAtBeijing ?? "");
+	const imagingTime = extra?.imagingTime ?? toIsoString(item?.startTs ?? item?.raw?.startAt ?? item?.raw?.startAtBeijing ?? "");
 	if (extra?.executingTime) {
 		payload.executingTime = extra.executingTime;
 	} else if (imagingTime) {
@@ -2507,7 +2498,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 			await postTemplate(body, token);
 			success += 1;
 			try {
-				await updateFixedStorageSlot(0, slot, item);
+				await updateFixedStorageSlot(0, slot, item, { imagingTime: startIso, executingTime: startIso });
 			} catch (err) {
 				console.warn("[one-click-plan] 回填 AS02 固存失败", err);
 			}
@@ -2575,11 +2566,12 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		}
 		success += 1;
 		try {
-			await updateFixedStorageSlot(2, slot, item);
+			await updateFixedStorageSlot(2, slot, item, { imagingTime: startIso, executingTime: startIso });
 			// 同步写入平台固存表，按平台槽顺序，名称/时间沿用载荷成像任务
 			await updateFixedStorageSlot(3, platformSlot, item, {
 				fileName: `${item.name || "成像任务"}`,
-				executingTime: toIsoString(item.startTs),
+				executingTime: startIso,
+				imagingTime: startIso,
 			});
 		} catch (err) {
 			console.warn("[one-click-plan] 回填 AS03 固存失败", err);

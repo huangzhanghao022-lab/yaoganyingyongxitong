@@ -359,21 +359,14 @@ async function enrichPriorities(rows: any[]): Promise<any[]> {
 }
 
 function parseStartTime(row: any): number {
-  const candidates = [
-    row?.startAtBeijing,
-    row?.start_at_beijing,
-    row?.t0_beijing,
-    row?.startAt,
-    row?.start_at,
-    row?.t0,
-  ];
-  for (const value of candidates) {
-    if (!value) continue;
+  const value = row?.startAtBeijing;
+  if (value) {
     const text = String(value).trim();
-    if (!text) continue;
-    const normalized = text.includes('T') ? text : text.replace(' ', 'T');
-    const ts = new Date(normalized).getTime();
-    if (!Number.isNaN(ts)) return ts;
+    if (text) {
+      const normalized = text.includes('T') ? text : text.replace(' ', 'T');
+      const ts = new Date(normalized).getTime();
+      if (!Number.isNaN(ts)) return ts;
+    }
   }
   return Number.POSITIVE_INFINITY;
 }
@@ -1457,9 +1450,9 @@ function buildSubmissionSummary(
           const sat = entry.satellite; // 'AS02' | 'AS03' | 其它
           const startNum = Number(entry.startFileNo);
 
-          // AS03 不显示区间
+          // AS03 显示起始号
           if (sat === 'AS03') {
-            return '';
+            return Number.isFinite(startNum) ? `${startNum}` : String(entry.startFileNo);
           }
 
           // AS02 显示 start ~ start+8
@@ -1482,7 +1475,7 @@ function buildSubmissionSummary(
       const lines = [
         `${priority}级目标 ${entry.modeLabel}成像任务，双相机成像，目标点为`,
         `${entry.targetName}，经度${longitude}，纬度${latitude}，云量${cloud}，侧摆角${roll}，`,
-        `太阳高度角${solar}，成像时间${imagingTime}，记录文件号${fileRange}（${entry.modeLabel}）。`,
+        `太阳高度角${solar}，成像时间${imagingTime}，记录文件号：${fileRange}（${entry.modeLabel}）。`,
         orbitLine,
         `预报方法：姿轨控新方法`,
       ].filter(Boolean);
@@ -1859,17 +1852,7 @@ async function updateAs02FixedStorage(fileStart: string, srcRow: any) {
   if (!row?.id) return;
   const id = row.id;
   const targetName = String(srcRow?.name || row?.targetName || '');
-  const imagingRaw =
-    srcRow?.startAtBeijing ??
-    srcRow?.start_at_beijing ??
-    srcRow?.t0_beijing ??
-    srcRow?.startAt ??
-    srcRow?.start_at ??
-    srcRow?.t0 ??
-    row?.imagingTime ??
-    row?.t0_beijing ??
-    row?.imaging_time ??
-    '';
+  const imagingRaw = srcRow?.startAtBeijing;
   const imagingIso = imagingRaw ? toIsoString(imagingRaw) : '';
   const imagingTime = imagingIso || String(imagingRaw || row?.imagingTime || row?.t0_beijing || row?.imaging_time || '');
   const status = 1; // 待写入
@@ -1922,15 +1905,14 @@ async function createWithTemplateAS03() {
     const tasksToRecord: ForecastTaskPayload[] = [];
     const noticeEntries: SubmissionNoticeEntry[] = [];
 
-    // 获取首个空闲固存号（AS03 载荷 name=2，status=0）
-    const slot = await fetchFirstAs03EmptySlot();
-    if (!slot || slot.startFileNo == null) {
-      ElMessage.error('未找到可用的 AS03 固存号');
+    // 获取空闲固存号列表（AS03 载荷/平台），数量与勾选任务数一致
+    const slots = await fetchAs03EmptySlots(idxs.length);
+    if (!slots.length || slots.length < idxs.length) {
+      ElMessage.error('AS03 载荷固存空槽不足，无法提交');
       creating.value = false;
       return;
     }
-    // 获取首个空闲平台固存号（AS03 平台 name=3，status=0），用于平台回填
-    const platformSlot = await fetchFirstAs03PlatformEmptySlot();
+    const platformSlots = await fetchAs03PlatformEmptySlots(idxs.length);
   for (const i of idxs) {
     const row: any = list[i] || {};
     const sat = String(row.satellite || form.satellite || '');
@@ -1939,13 +1921,7 @@ async function createWithTemplateAS03() {
       (row as any).__imagingUid = generatedUid;
 
       const name = String(row.name || '');
-      const t0Raw =
-        row.startAtBeijing ??
-        row.start_at_beijing ??
-        row.t0_beijing ??
-        row.startAt ??
-        row.start_at ??
-        row.t0;
+      const t0Raw = row.startAtBeijing;
     const tfRaw =
       row.endAtBeijing ??
       row.end_beijing ??
@@ -1955,6 +1931,7 @@ async function createWithTemplateAS03() {
     const t0 = toIsoString(t0Raw);
     const tf = toIsoString(tfRaw);
     const baseSeq = Number(startFileNoMap[i] ?? '') || 0; // 用户输入的绝对延时起始号
+    const slot = slots.shift(); // 为该条任务分配一个独立的固存槽
     const fileStartValue = slot?.startFileNo ?? ''; // 固存起始号，来自空闲槽
     const resetSeqRaw = (reloadMap as any)?.[i];
     const resetSeq =
@@ -2026,6 +2003,7 @@ async function createWithTemplateAS03() {
         if (slot && slot.id) {
           try {
             await updateAs03FixedStorage(slot.id, row);
+            const platformSlot = platformSlots.shift();
             const platformStart =
               platformSlot?.startFileNo ?? platformSlot?.start_file_no ?? slot.startFileNo;
             await syncAs03PlatformStorage(platformStart, row);
@@ -2072,36 +2050,36 @@ async function createWithTemplateAS03() {
   }
 }
 
-// 拉取 AS03 载荷固存表的首个空槽（status=0，startFileNo 升序取首条）
-async function fetchFirstAs03EmptySlot(): Promise<any | null> {
+// 拉取 AS03 载荷固存表的空槽（status=0，按 startFileNo 升序）
+async function fetchAs03EmptySlots(count: number): Promise<any[]> {
   const api: any = (service as any)?.star?.fixed_storage_table;
-  if (!api?.page) return null;
+  if (!api?.page) return [];
   const res = await api.page({
     page: 1,
-    size: 1,
+    size: Math.max(1, count),
     name: 2, // AS03 payload
     status: 0,
     sort: 'startFileNo',
     order: 'ASC',
   });
   const list = res?.list || res?.data?.list || [];
-  return Array.isArray(list) && list.length ? list[0] : null;
+  return Array.isArray(list) ? list : [];
 }
 
-// 拉取 AS03 平台固存表的首个空槽（status=0，startFileNo 升序取首条）
-async function fetchFirstAs03PlatformEmptySlot(): Promise<any | null> {
+// 拉取 AS03 平台固存表的空槽（status=0，按 startFileNo 升序）
+async function fetchAs03PlatformEmptySlots(count: number): Promise<any[]> {
   const api: any = (service as any)?.star?.fixed_storage_table;
-  if (!api?.page) return null;
+  if (!api?.page) return [];
   const res = await api.page({
     page: 1,
-    size: 1,
+    size: Math.max(1, count),
     name: 3, // AS03 平台
     status: 0,
     sort: 'startFileNo',
     order: 'ASC',
   });
   const list = res?.list || res?.data?.list || [];
-  return Array.isArray(list) && list.length ? list[0] : null;
+  return Array.isArray(list) ? list : [];
 }
 
 // 根据 id 更新 AS03 载荷固存表：回填目标名、成像时间，状态置为待写入(1)
@@ -2111,14 +2089,7 @@ async function updateAs03FixedStorage(id: number, srcRow: any) {
   if (!api?.update) return;
   const name = 2;
   const targetName = String(srcRow?.name || '');
-  const imagingRaw =
-    srcRow?.startAtBeijing ??
-    srcRow?.start_at_beijing ??
-    srcRow?.t0_beijing ??
-    srcRow?.startAt ??
-    srcRow?.start_at ??
-    srcRow?.t0 ??
-    '';
+  const imagingRaw = srcRow?.startAtBeijing;
   const imagingIso = imagingRaw ? toIsoString(imagingRaw) : '';
   const imagingTime = imagingIso || String(imagingRaw || '');
   const status = 1; // 待写入
@@ -2146,14 +2117,7 @@ async function syncAs03PlatformStorage(startFileNo: number | string | undefined,
   const row = Array.isArray(list) ? list[0] : null;
   if (!row?.id) return;
   const targetName = String(srcRow?.name || '');
-  const imagingRaw =
-    srcRow?.startAtBeijing ??
-    srcRow?.start_at_beijing ??
-    srcRow?.t0_beijing ??
-    srcRow?.startAt ??
-    srcRow?.start_at ??
-    srcRow?.t0 ??
-    '';
+  const imagingRaw = srcRow?.startAtBeijing;
   const imagingIso = imagingRaw ? toIsoString(imagingRaw) : '';
   const executingTime = imagingIso || String(imagingRaw || '');
   const status = 1;
@@ -2262,13 +2226,7 @@ function buildTaskRecord(row: any, satellite: string, imagingUid?: string): Fore
     row?.t0;
   if (ephemerisSource) payload.ephemerisTime = toIsoString(ephemerisSource);
 
-  const imagingSource =
-    row?.startAtBeijing ||
-    row?.start_at_beijing ||
-    row?.t0_beijing ||
-    row?.startAt ||
-    row?.start_at ||
-    row?.t0;
+  const imagingSource = row?.startAtBeijing;
   if (imagingSource) payload.imagingTime = toIsoString(imagingSource);
 
   if (imagingUid) payload.imagingUID = imagingUid;
