@@ -195,7 +195,7 @@
 	</el-dialog>
 
 	<el-dialog v-model="editDialogVisible" title="调整任务" width="820px" :append-to-body="true">
-		<el-table :data="editableTasks" border height="420px" style="width: 100%;">
+		<el-table :data="editableTasks" border height="1000px" style="width: 100%;">
 			<el-table-column prop="name" label="名称" min-width="120">
 				<template #default="{ row }">
 					<el-input v-model="row.name" />
@@ -338,8 +338,8 @@ const tomorrow = (() => {
 })();
 const defaultStart = (() => {
 	const d = new Date();
-	d.setHours(0, 0, 0, 0);
-	d.setDate(d.getDate() + 1); // 次日 00:00
+	d.setHours(13, 0, 0, 0); // 当日 13:00
+	d.setDate(d.getDate() + 1); // 次日 13:00
 	return d.getTime();
 })();
 const defaultEnd = (() => {
@@ -371,7 +371,7 @@ const reloadTableFlag = ref(true);
 const transferTaskCount = ref(1);
 const imagingTaskCount = ref(4);
 const cloudLimit = ref(10);
-const rollLimitAbs = ref(10);
+const rollLimitAbs = ref(30);
 const planningProgress = reactive<{ visible: boolean; percent: number; text: string; status?: 'success' | 'exception' | 'warning' }>(
 	{
 		visible: false,
@@ -695,7 +695,8 @@ function buildRange(dateValue?: number | Date) {
 function buildDefaultRange(dateValue?: number | Date) {
 	const base = dateValue ? new Date(dateValue) : new Date();
 	base.setHours(0, 0, 0, 0); // 当日 0 点
-	const start = new Date(base); // 选中日期 00:00
+	const start = new Date(base);
+	start.setHours(13, 0, 0, 0); // 选中日期 13:00
 	const end = new Date(base);
 	end.setDate(end.getDate() + 1); // 次日
 	end.setHours(13, 0, 0, 0); // 次日 13:00

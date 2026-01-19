@@ -236,7 +236,7 @@ const Upsert = useUpsert({
 			prop: "telemetryInfo",
 			component: {
 				name: "el-input",
-				props: { type: "textarea", rows: 4 },
+				props: { type: "textarea", rows: 8, autosize: { minRows: 8, maxRows: 12 } },
 			},
 		},
 	],
