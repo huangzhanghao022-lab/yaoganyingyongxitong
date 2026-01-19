@@ -9,6 +9,7 @@ import { TaskLogTransmitAs03Entity } from '../../task_log/entity/transmit_as03';
 import { TaskLogDeleteAs02Entity } from '../../task_log/entity/delete_as02';
 import { TaskLogDeleteAs03Entity } from '../../task_log/entity/delete_as03';
 import { TaskConflictService } from './taskConflict';
+import { ILogger } from '@midwayjs/logger';
 
 type ValidationResult = { ok: true } | { ok: false; errors: Array<{ field: string; message: string }> };
 
@@ -22,6 +23,9 @@ export class CommandValidateService {
 
   @Inject()
   taskConflictService: TaskConflictService;
+
+  @Inject()
+  logger: ILogger;
 
   @InjectEntityModel(TaskLogImagingAs02Entity)
   imagingLogAs02Repo: Repository<TaskLogImagingAs02Entity>;
@@ -70,7 +74,7 @@ export class CommandValidateService {
     if (errors.length) return { ok: false, errors };
 
     // 时间解析失败则认为参数缺失
-    const taskTime = this.extractCommandTime(type, params);
+    const taskTime = this.extractCommandTime(type, params, satellite);
     if (!taskTime) {
       errors.push({ field: 'time', message: '缺少任务时间，无法进行冲突校验' });
       return { ok: false, errors };
@@ -89,7 +93,15 @@ export class CommandValidateService {
           errors: [{ field: 'conflict', message: '首条成像指令未通过，后续链已取消' }],
         };
       }
-      console.log('[command-validate] AS03 image non-reset, first exists, skip conflict/log', taskTime.toISOString());
+      // 第二/三条链通常携带 t0，若比首链记录更准确，则回填 imagingTime
+      if (taskTime && exist && (exist as any).id) {
+        try {
+          await this.imagingLogAs03Repo.update({ id: (exist as any).id }, { imagingTime: taskTime });
+        } catch (e) {
+          this.logger?.warn?.('[command-validate] update AS03 imagingTime from follow-up chain failed', e);
+        }
+      }
+      console.log('[command-validate] AS03 image non-reset, first exists, skip conflict/log', taskTime?.toISOString?.());
       return { ok: true };
     }
 
@@ -418,7 +430,27 @@ export class CommandValidateService {
     }
   }
   /** 提取命令的主要时间字段，用于冲突校验与记录 */
-  private extractCommandTime(type: CommandType, params: any): Date | null {
+  private extractCommandTime(type: CommandType, params: any, sat?: Sat): Date | null {
+    // AS03 成像：优先取开始时间；若仅有 tf，则按默认成像时长（或 imageTime）反推开始时间，避免使用结束时间写库
+    if (type === 'image' && sat === 'AS03') {
+      const startKeys = ['startAt', 't0', 'start_time', 'startTime', 'imagingTime'];
+      for (const k of startKeys) {
+        if (params?.[k]) {
+          const d = new Date(params[k]);
+          if (!Number.isNaN(d.getTime())) return d;
+        }
+      }
+      if (params?.tf) {
+        const tf = new Date(params.tf);
+        if (!Number.isNaN(tf.getTime())) {
+          const durationMs = Number.isFinite(Number(params?.imageTime))
+            ? Number(params.imageTime) * 1000
+            : 30 * 1000; // AS03 默认 30s
+          return new Date(tf.getTime() - durationMs);
+        }
+      }
+    }
+
     const keys = ['startAt', 't0', 'start_time', 'startTime', 'transmitTime', 'taskExecutionTime', 'imagingTime'];
     for (const k of keys) {
       if (params?.[k]) {
