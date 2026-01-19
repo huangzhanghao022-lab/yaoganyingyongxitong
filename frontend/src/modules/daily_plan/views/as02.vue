@@ -250,6 +250,12 @@ const Upsert = useUpsert({
 		next(payload);
 	},
 	onOpened(data) {
+		// 避免弹窗默认聚焦日期组件
+		setTimeout(() => {
+			try {
+				(document.activeElement as any)?.blur?.();
+			} catch {}
+		}, 0);
 		const [start, end] = splitTransit(data?.transitTime);
 		data.transitTime = start && end ? [start, end] : [];
 	},
