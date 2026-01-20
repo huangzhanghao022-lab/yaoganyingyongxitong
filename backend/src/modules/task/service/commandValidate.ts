@@ -260,12 +260,12 @@ export class CommandValidateService {
         const tVal = p[tk];
         const filled = sVal !== undefined && sVal !== '' && eVal !== undefined && eVal !== '';
         if (sVal !== undefined && sVal !== '') this.ensureIntRange(sVal, 0, 127, sk, errors, true);
-        if (eVal !== undefined && eVal !== '') {
-          this.ensureIntRange(eVal, 0, 127, ek, errors, true);
-          if (this.isInt(sVal) && this.isInt(eVal) && Number(eVal) <= Number(sVal)) {
-            errors.push({ field: ek, message: `${ek} 必须大于 ${sk}` });
+          if (eVal !== undefined && eVal !== '') {
+            this.ensureIntRange(eVal, 0, 127, ek, errors, true);
+            if (this.isInt(sVal) && this.isInt(eVal) && Number(eVal) < Number(sVal)) {
+              errors.push({ field: ek, message: `${ek} 必须大于等于 ${sk}` });
+            }
           }
-        }
         if (filled && mVal === undefined) {
           errors.push({ field: mk, message: `${mk} 不能为空` });
         } else if (mVal !== undefined && mVal !== '') {
