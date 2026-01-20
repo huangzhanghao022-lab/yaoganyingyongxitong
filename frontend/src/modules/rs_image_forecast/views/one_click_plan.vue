@@ -195,7 +195,7 @@
 
 	<el-dialog v-model="editDialogVisible" title="调整任务" width="820px" :append-to-body="true">
 		<el-space style="margin-bottom: 8px;">
-			<el-button v-if="form.satellite === 'AS02'" size="small" type="primary" plain @click="openTransferPickDialog">
+			<el-button size="small" type="primary" plain @click="openTransferPickDialog">
 				新增数传任务
 			</el-button>
 		</el-space>
@@ -460,8 +460,11 @@ const AS03_IMAGING_TEMPLATES = [
 	"673c2d8f49b1f446adc46230",
 	"673c2d9049b1f446adc4623f",
 ];
+const AS03_IMAGING_SEQ_CONSUME = 56;
 const TRANSFER_TEMPLATE_ID = "673c2d9049b1f446adc4623e";
 const TRANSFER_FOLDER_ID = "6731752608e123893cf92873";
+const AS03_TRANSFER_TEMPLATE_ID = "673c2d9049b1f446adc4623b";
+const AS03_TRANSFER_FOLDER_ID = "6731755b08e123893cf92878";
 
 const DELETE_TEMPLATE_AS02 = "673c2d9049b1f446adc4623a";
 const COMMAND_API_URL = TRANSFER_API_URL;
@@ -989,7 +992,10 @@ function openEditDialog() {
 			startTsValue: t.startTs,
 			metaText: t.meta,
 			metaFields: parseMetaFields(t.meta),
-			fileInput: t.type === "data" ? (Array.isArray(t.files) ? t.files.join(",") : "") : "",
+			fileInput:
+				t.type === "data"
+					? String(t.raw?.fileText ?? t.raw?.filesText ?? (Array.isArray(t.files) ? t.files.join(",") : ""))
+					: "",
 			deleteRange:
 				t.type === "delete"
 					? `${t.raw?.startFile ?? t.raw?.start_file ?? ""}-${t.raw?.endFile ?? t.raw?.end_file ?? ""}`
@@ -1021,10 +1027,6 @@ function normalizeTelecontrolPass(record: any) {
 }
 
 async function openTransferPickDialog() {
-	if (form.value.satellite !== "AS02") {
-		ElMessage.warning("仅支持 AS02 数传任务");
-		return;
-	}
 	transferPickDialog.visible = true;
 	transferPickDialog.loading = true;
 	transferPickDialog.selectedKey = "";
@@ -1198,16 +1200,13 @@ async function openTransferFilePickDialog(row: any) {
 		]);
 		transferFilePickDialog.payload = payload;
 		transferFilePickDialog.platform = platform;
-		if (row?.fileInput) {
-			const selected = new Set<number>();
-			String(row.fileInput)
-				.split(/[\uFF0C,]/)
-				.map((s) => Number(s.trim()))
-				.filter((n) => Number.isFinite(n))
-				.forEach((n) => selected.add(n));
-			transferFilePickDialog.selectedPayload = payload.filter((p) => selected.has(Number(p.startFileNo)));
-			transferFilePickDialog.selectedPlatform = platform.filter((p) => selected.has(Number(p.startFileNo)));
-		}
+	if (row?.fileInput) {
+		const parsed = parseTransferFileInput(String(row.fileInput));
+		const payloadSet = new Set<number>(parsed.payload);
+		const platformSet = new Set<number>(parsed.platform);
+		transferFilePickDialog.selectedPayload = payload.filter((p) => payloadSet.has(Number(p.startFileNo)));
+		transferFilePickDialog.selectedPlatform = platform.filter((p) => platformSet.has(Number(p.startFileNo)));
+	}
 	} catch (err) {
 		console.warn("[one-click-plan] fetch transfer storage rows failed", err);
 		ElMessage.error("加载固存文件失败");
@@ -1218,19 +1217,21 @@ async function openTransferFilePickDialog(row: any) {
 
 function confirmTransferFilePick() {
 	const target = editableTasks.value.find((t: any) => t.id === transferFilePickDialog.targetId);
-	const selected = [
-		...transferFilePickDialog.selectedPayload,
-		...transferFilePickDialog.selectedPlatform,
-	]
+	const payloadNums = transferFilePickDialog.selectedPayload
 		.map((row: any) => Number(row.startFileNo))
-		.filter((n) => Number.isFinite(n))
-		.sort((a, b) => a - b);
+		.filter((n) => Number.isFinite(n));
+	const platformNums = transferFilePickDialog.selectedPlatform
+		.map((row: any) => Number(row.startFileNo))
+		.filter((n) => Number.isFinite(n));
+	const selected = normalizeTransferNumbers([...payloadNums, ...platformNums]);
 	if (!selected.length) {
 		ElMessage.warning("请至少选择一个固存文件");
 		return;
 	}
 	if (target) {
-		target.fileInput = selected.join(",");
+		const satellite = form.value.satellite as "AS02" | "AS03";
+		const fileText = buildTransferFileText(payloadNums, platformNums, satellite);
+		target.fileInput = fileText || selected.join(",");
 	}
 	transferFilePickDialog.visible = false;
 }
@@ -1256,27 +1257,137 @@ function metaFieldsToMap(fields: Array<{ label: string; value: string }>): Recor
 	return map;
 }
 
-function buildGroupsFromFiles(files: number[]): TransferGroup[] {
-	const sorted = [...files].sort((a, b) => a - b);
-	const groups: TransferGroup[] = [];
-	let current: TransferGroup | null = null;
-	for (const n of sorted) {
-		if (!current) {
-			current = { start: n, end: n + 7, count: 1, duration: 90 };
+function normalizeTransferNumbers(values: number[]): number[] {
+	const uniq = new Set<number>();
+	for (const v of values) {
+		if (Number.isFinite(v)) uniq.add(v);
+	}
+	return Array.from(uniq).sort((a, b) => a - b);
+}
+
+function parseTransferFileInput(text: string): {
+	payload: number[];
+	platform: number[];
+	hasTyped: boolean;
+} {
+	const payload: number[] = [];
+	const platform: number[] = [];
+	let current: TransferSelectionSource = "payload";
+	let hasTyped = false;
+	const tokens = String(text || "")
+		.split(/[\uFF0C,]/)
+		.map((s) => s.trim())
+		.filter(Boolean);
+	const pushNumbers = (type: TransferSelectionSource, token: string) => {
+		const nums = token.match(/\d+/g);
+		if (!nums) return;
+		for (const n of nums.map(Number)) {
+			if (!Number.isFinite(n)) continue;
+			if (type === "payload") payload.push(n);
+			else platform.push(n);
+		}
+	};
+	for (const token of tokens) {
+		if (token.startsWith("载荷:")) {
+			current = "payload";
+			hasTyped = true;
+			pushNumbers("payload", token.slice(3));
 			continue;
 		}
-		const expected = current.start + current.count * 8;
-		if (n === expected) {
-			current.count += 1;
-			current.end = n + 7;
-			current.duration = current.count * 90;
+		if (token.startsWith("平台:")) {
+			current = "platform";
+			hasTyped = true;
+			pushNumbers("platform", token.slice(3));
+			continue;
+		}
+		pushNumbers(current, token);
+	}
+	return {
+		payload: normalizeTransferNumbers(payload),
+		platform: normalizeTransferNumbers(platform),
+		hasTyped,
+	};
+}
+
+function buildTransferGroupsByType(
+	numbers: number[],
+	type: TransferSelectionSource,
+	satellite: "AS02" | "AS03"
+): TransferGroup[] {
+	const sorted = normalizeTransferNumbers(numbers);
+	if (!sorted.length) return [];
+	const step = satellite === "AS03" || type === "platform" ? 1 : 8;
+	const chunk = satellite === "AS03" || type === "platform" ? 1 : 8;
+	const perFile =
+		type === "platform" ? (satellite === "AS03" ? 2 : 30) : satellite === "AS02" ? 90 : 20;
+	const segments: number[][] = [];
+	let current: number[] = [];
+	for (const num of sorted) {
+		if (!current.length) {
+			current = [num];
+			continue;
+		}
+		const last = current[current.length - 1];
+		if (num - last === step) {
+			current.push(num);
 		} else {
-			groups.push({ ...current });
-			current = { start: n, end: n + 7, count: 1, duration: 90 };
+			segments.push(current);
+			current = [num];
 		}
 	}
-	if (current) groups.push({ ...current });
-	return groups;
+	if (current.length) segments.push(current);
+	return segments.map((group) => {
+		const start = group[0];
+		const span = group.length * chunk;
+		const end = start + span - 1;
+		return {
+			start,
+			end,
+			count: group.length,
+			duration: perFile * group.length,
+			type,
+		};
+	});
+}
+
+function buildTransferGroupsFromInput(
+	fileInput: string,
+	satellite: "AS02" | "AS03"
+): { groups: TransferGroup[]; files: number[]; fileText: string } {
+	const parsed = parseTransferFileInput(fileInput);
+	const groups = [
+		...buildTransferGroupsByType(parsed.payload, "payload", satellite),
+		...buildTransferGroupsByType(parsed.platform, "platform", satellite),
+	];
+	const files = normalizeTransferNumbers([...parsed.payload, ...parsed.platform]);
+	const fileText = parsed.hasTyped || parsed.platform.length ? String(fileInput || "") : "";
+	return { groups, files, fileText };
+}
+
+function buildTransferFileText(
+	payloadNums: number[],
+	platformNums: number[],
+	satellite: "AS02" | "AS03"
+): string {
+	const payload = normalizeTransferNumbers(payloadNums);
+	const platform = normalizeTransferNumbers(platformNums);
+	if (satellite === "AS02" && !platform.length) {
+		return payload.join(",");
+	}
+	const parts: string[] = [];
+	if (payload.length) {
+		parts.push(`载荷:${payload[0]}`);
+		for (let i = 1; i < payload.length; i++) {
+			parts.push(String(payload[i]));
+		}
+	}
+	if (platform.length) {
+		parts.push(`平台:${platform[0]}`);
+		for (let i = 1; i < platform.length; i++) {
+			parts.push(String(platform[i]));
+		}
+	}
+	return parts.join(",");
 }
 
 function applyTaskEdits() {
@@ -1318,16 +1429,24 @@ function applyTaskEdits() {
 				endTs,
 			};
 			if (base.type === "data") {
-				let files: number[] = [];
-				if (e.fileInput) {
-					files = String(e.fileInput)
-						.split(/[\uFF0C,]/)
-						.map((s) => Number(s.trim()))
-						.filter((n) => Number.isFinite(n));
+				const satellite = (form.value.satellite as "AS02" | "AS03") || "AS02";
+				const groupResult = e.fileInput
+					? buildTransferGroupsFromInput(String(e.fileInput), satellite)
+					: null;
+				if (groupResult && (groupResult.groups.length || groupResult.files.length)) {
+					raw.groups = groupResult.groups;
+					raw.files = groupResult.files;
+					if (groupResult.fileText) {
+						raw.fileText = groupResult.fileText;
+					}
+				} else {
+					raw.groups = (raw.groups as TransferGroup[]) || [];
+					raw.files = raw.files || [];
+					if (e.fileInput) {
+						raw.fileText = String(e.fileInput);
+					}
 				}
-				raw.groups = files.length ? buildGroupsFromFiles(files) : (raw.groups as TransferGroup[]) || [];
-				raw.files = files.length ? files : raw.files || [];
-				base.files = raw.files.map((f: any) => String(f));
+				base.files = Array.isArray(raw.files) ? raw.files.map((f: any) => String(f)) : [];
 				base.meta = metaFromFields;
 				base.raw = raw;
 			} else if (base.type === "info") {
@@ -2449,7 +2568,14 @@ function buildUtcRange(date: string) {
 }
 
 type PendingFile = { start: number; end: number };
-type TransferGroup = { start: number; end: number; count: number; duration: number };
+type TransferSelectionSource = "payload" | "platform";
+type TransferGroup = {
+	start: number;
+	end: number;
+	count: number;
+	duration: number;
+	type?: TransferSelectionSource;
+};
 
 async function fetchPendingFiles(satellite: "AS02" | "AS03", statuses: number[] = [2]): Promise<PendingFile[]> {
 	const api: any = (service as any)?.star?.fixed_storage_table;
@@ -2778,12 +2904,22 @@ function formatBeijingTime(val: any): string {
 function buildMeta(item: TimelineItem): string {
 	const parts: string[] = [];
 	if (item.type === "data") {
-		if (item.files?.length) parts.push(`文件号: ${item.files.join(",")}`);
-		if (item.raw?.groups?.length) {
-			const ranges = item.raw.groups
-				.map((g: any) => `${g.start}-${g.end}(${g.duration || g.time || ""}s)`)
-				.join("；");
-			if (ranges) parts.push(`范围: ${ranges}`);
+		const groups = Array.isArray(item.raw?.groups) ? item.raw.groups : [];
+		const hasType = groups.some((g: any) => g?.type);
+		const fileText = String(item.raw?.fileText ?? "").trim();
+		if (fileText) {
+			parts.push(`数传文件: ${fileText}`);
+		} else if (item.files?.length) {
+			parts.push(`数传文件: ${item.files.join(",")}`);
+		}
+		const formatRange = (g: any) => `${g.start}-${g.end}(${g.duration || g.time || ""}s)`;
+		const payloadRanges = groups.filter((g: any) => g?.type !== "platform").map(formatRange).join("，");
+		const platformRanges = groups.filter((g: any) => g?.type === "platform").map(formatRange).join("，");
+		if (hasType) {
+			if (payloadRanges) parts.push(`载荷范围: ${payloadRanges}`);
+			if (platformRanges) parts.push(`平台范围: ${platformRanges}`);
+		} else if (payloadRanges) {
+			parts.push(`范围: ${payloadRanges}`);
 		}
 		if (item.antennaId) {
 			const antennaName = TELECONTROL_ANTENNA_MAP.get(String(item.antennaId)) || item.antennaId;
@@ -2917,19 +3053,27 @@ function parseTransferRangesFromText(text: string): { payload: Range[]; platform
 
 async function updateStorageStatusAfterTransfer(
 	satellite: "AS02" | "AS03",
-	groups: Array<{ start: number; end: number; duration: number; count?: number }>,
+	groups: Array<TransferGroup>,
 	fileText?: string
 ) {
 	const api: any = (service as any)?.star?.fixed_storage_table;
 	if (!api?.page || !api?.batchUpdate) return;
 	const tableMap = satellite === "AS02" ? { payload: 0, platform: 1 } : { payload: 2, platform: 3 };
 
-	const ranges = { payload: [] as Range[], platform: [] as Range[] };
-	groups.forEach((g) => {
-		if (Number.isFinite(g.start) && Number.isFinite(g.end)) {
-			ranges.payload.push({ start: Number(g.start), end: Number(g.end) });
-		}
-	});
+	const ranges = groups.reduce(
+		(acc, g) => {
+			if (Number.isFinite(g.start) && Number.isFinite(g.end)) {
+				const range = { start: Number(g.start), end: Number(g.end) };
+				if (g.type === "platform") {
+					acc.platform.push(range);
+				} else {
+					acc.payload.push(range);
+				}
+			}
+			return acc;
+		},
+		{ payload: [] as Range[], platform: [] as Range[] }
+	);
 	if (fileText) {
 		const parsed = parseTransferRangesFromText(fileText);
 		ranges.payload.push(...parsed.payload);
@@ -3059,13 +3203,63 @@ function buildTransferGroups(pending: PendingFile[]): TransferGroup[] {
 	return groups;
 }
 
+function mapTransferType(type?: TransferSelectionSource): string {
+	return type === "platform" ? "0" : "1";
+}
+
 function buildTransferBody(
-	groups: Array<{ start: number; end: number; duration: number; count?: number }>,
+	satellite: "AS02" | "AS03",
+	groups: Array<TransferGroup>,
 	geo: any,
 	t0Iso: string,
 	startSeq: number,
 	resetSeqFlag?: boolean
 ) {
+	if (satellite === "AS03") {
+		if (groups.length > 6) {
+			throw new Error("AS03 数传分组最多支持 6 组");
+		}
+		const base: Record<string, any> = {
+			spacecraftCode: "AS03",
+			templateId: AS03_TRANSFER_TEMPLATE_ID,
+			folderId: AS03_TRANSFER_FOLDER_ID,
+			name: `${geo?.name || "数传"}数传任务-${formatBeijingTime(t0Iso)}`,
+			station: String(geo?.name ?? ""),
+			stationName: String(geo?.name ?? ""),
+			start_seq: String(startSeq),
+			reset_seq: resetSeqFlag ?? Boolean(reloadTableFlag.value),
+			t0: t0Iso,
+			duration: "",
+			trans_count: String(groups.length || 1),
+			long: String(geo?.longitude ?? ""),
+			lat: String(geo?.latitude ?? ""),
+			alt: String(geo?.altitude ?? ""),
+		};
+
+		for (let i = 1; i <= 6; i++) {
+			base[`start_file${i}`] = "";
+			base[`end_file${i}`] = "";
+			base[`module${i}`] = "";
+			base[`trans_time${i}`] = "";
+		}
+
+		let totalDuration = 0;
+		groups.forEach((g, idx) => {
+			const slot = idx + 1;
+			if (slot > 6) return;
+			const duration = Number(g.duration) || 0;
+			base[`start_file${slot}`] = String(g.start ?? "");
+			base[`end_file${slot}`] = String(g.end ?? "");
+			base[`module${slot}`] = mapTransferType(g.type);
+			base[`trans_time${slot}`] = String(duration);
+			if (duration > 0) totalDuration += duration;
+		});
+		if (totalDuration > 0) {
+			base.duration = String(totalDuration);
+		}
+		return base;
+	}
+
 	const base: Record<string, any> = {
 		spacecraftCode: "AS02",
 		templateId: TRANSFER_TEMPLATE_ID,
@@ -3086,16 +3280,19 @@ function buildTransferBody(
 
 	let totalDuration = 0;
 	groups.forEach((g, idx) => {
-		totalDuration += g.duration;
+		const type = mapTransferType(g.type);
+		const duration = Number(g.duration) || 0;
+		totalDuration += duration;
 		if (idx === 0) {
 			base.start_file = String(g.start);
 			base.end_file = String(g.end);
-			base.trans_time1 = String(g.duration);
+			base.trans_time1 = String(duration);
+			base.trans_type = type;
 		} else {
 			base[`start_file${idx}`] = String(g.start);
 			base[`end_file${idx}`] = String(g.end);
-			base[`trans_type${idx}`] = "1";
-			base[`trans_time${idx + 1}`] = String(g.duration);
+			base[`trans_type${idx}`] = type;
+			base[`trans_time${idx + 1}`] = String(duration);
 		}
 	});
 	base.duration = String(totalDuration || "");
@@ -3276,10 +3473,18 @@ async function submitDataTransferTask(
 	task: TimelineItem,
 	startSeqOverride?: number
 ): Promise<number | null> {
-	const pending = task.raw?.groups ? null : await fetchPendingFiles("AS02");
-	const groups = (task.raw?.groups as TransferGroup[]) ?? buildTransferGroups(pending || []);
+	const satellite = (task.raw?.satellite || task.raw?.spacecraftCode || form.value?.satellite || "AS02") as
+		| "AS02"
+		| "AS03";
+	const pending = task.raw?.groups ? null : satellite === "AS02" ? await fetchPendingFiles("AS02") : null;
+	let groups = (task.raw?.groups as TransferGroup[]) || [];
+	if (!groups.length) {
+		if (pending) {
+			groups = buildTransferGroups(pending || []);
+		}
+	}
 	if (!groups.length || (pending && pending.length < 3)) {
-		throw new Error("待数传文件不足或分组失败");
+		throw new Error(satellite === "AS03" ? "AS03 数传任务缺少固存文件" : "待数传文件不足或分组失败");
 	}
 	const t0Iso = toIsoString(task.startTs || task.teleBegin || Date.now());
 	const t0Beijing = formatBeijingTime(task.startTs || task.teleBegin || Date.now());
@@ -3289,9 +3494,9 @@ async function submitDataTransferTask(
 	const geo = await resolveAntennaGeoById(task.antennaId, token);
 	const startSeq = startSeqOverride ?? (Number(absStartSeq.value) || 3);
 	const resetSeq = task.raw?.resetSeq ?? Boolean(reloadTableFlag.value);
-	const body = buildTransferBody(groups, geo, t0Iso, startSeq, resetSeq);
+	const body = buildTransferBody(satellite, groups, geo, t0Iso, startSeq, resetSeq);
 	await postTemplate(body, token, "transfer");
-	const consumption = groups.length + 2;
+	const consumption = groups.length + 5;
 	const lastSeq = startSeq + consumption - 1;
 
 	// 数传回填：依据文件号 -> 固存 -> imagingUid -> 任务记录表
@@ -3304,7 +3509,7 @@ async function submitDataTransferTask(
 			...parseStartNosFromMeta(task.meta),
 			...parseStartNosFromMeta(task.raw?.meta),
 		];
-		await syncTransferToTasks("AS02", groups, transferName, t0Iso, transferUid, fileStarts);
+		await syncTransferToTasks(satellite, groups, transferName, t0Iso, transferUid, fileStarts);
 	} catch (err) {
 		console.warn("[one-click-plan] sync transfer info failed", err);
 	}
@@ -3369,22 +3574,23 @@ async function submitDeleteTasks(token: string, baseSeq: number | null) {
 	ElMessage.success("固存删除任务提交成功");
 }
 
-async function fetchFixedStorageByStartList(starts: number[]): Promise<any[]> {
+async function fetchFixedStorageByStartList(starts: number[], names: number[]): Promise<any[]> {
 	const api: any = (service as any)?.star?.fixed_storage_table;
 	if (!api?.page) return [];
-	const name = 0; // AS02 载荷
 	const uniq = Array.from(new Set(starts.filter((n) => Number.isFinite(n))));
-	if (!uniq.length) return [];
+	if (!uniq.length || !names.length) return [];
 	const records: any[] = [];
-	for (const start of uniq) {
-		try {
-			const res = await api.page({ page: 1, size: 5, name, startFileNo: start });
-			const list = res?.list || res?.data?.list || [];
-			if (Array.isArray(list) && list.length) {
-				records.push(...list);
+	for (const name of names) {
+		for (const start of uniq) {
+			try {
+				const res = await api.page({ page: 1, size: 5, name, startFileNo: start });
+				const list = res?.list || res?.data?.list || [];
+				if (Array.isArray(list) && list.length) {
+					records.push(...list);
+				}
+			} catch (err) {
+				console.warn("[one-click-plan] fetchFixedStorageByStartList failed", err);
 			}
-		} catch (err) {
-			console.warn("[one-click-plan] fetchFixedStorageByStartList failed", err);
 		}
 	}
 	return records;
@@ -3413,14 +3619,15 @@ async function syncTransferToTasks(
 		pushNum(Number(g.end));
 		const count = Number((g as any)?.count);
 		if (Number.isFinite(count) && count > 1) {
-			const step = 8; // AS02 载荷默认步长
+			const step = satellite === "AS03" ? 1 : 8;
 			for (let i = 1; i < count; i++) {
 				pushNum(Number(g.start) + i * step);
 			}
 		}
 	});
 
-	const storageRows = await fetchFixedStorageByStartList(Array.from(startSet));
+	const names = satellite === "AS02" ? [0] : [2, 3];
+	const storageRows = await fetchFixedStorageByStartList(Array.from(startSet), names);
 
 	const uidSet = new Set<string>();
 	for (const row of storageRows) {
@@ -3484,20 +3691,18 @@ async function submitPlannedTasks() {
 		if (taskSwitches.imaging) {
 			await submitImagingTasks(token, satellite);
 		}
-		if (satellite === "AS02") {
-			let lastSeq: number | null = null;
-			if (taskSwitches.transfer) {
-				const transfers = timeline.value
-					.filter((item) => item.type === "data")
-					.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
-				for (let i = 0; i < transfers.length; i++) {
-					const startSeq = i === 0 ? Number(absStartSeq.value) || 3 : (lastSeq ?? 3) + 1;
-					lastSeq = await submitDataTransferTask(token, transfers[i], startSeq);
-				}
+		let lastSeq: number | null = null;
+		if (taskSwitches.transfer) {
+			const transfers = timeline.value
+				.filter((item) => item.type === "data")
+				.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+			for (let i = 0; i < transfers.length; i++) {
+				const startSeq = i === 0 ? Number(absStartSeq.value) || 3 : (lastSeq ?? 3) + 1;
+				lastSeq = await submitDataTransferTask(token, transfers[i], startSeq);
 			}
-			if (taskSwitches.delete) {
-				await submitDeleteTasks(token, lastSeq);
-			}
+		}
+		if (taskSwitches.delete && satellite === "AS02") {
+			await submitDeleteTasks(token, lastSeq);
 		}
 		await recordImagingUids();
 		await recordImagingTasks();

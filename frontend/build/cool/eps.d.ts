@@ -1894,6 +1894,312 @@ declare namespace Eps {
 
 	type json = any;
 
+	interface Antenna_shuchuan {
+		/**
+		 * antenna
+		 */
+		antenna(data?: any): Promise<any>;
+
+		/**
+		 * antenna
+		 */
+		antenna(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: { antenna: string };
+
+		/**
+		 * 权限状态
+		 */
+		_permission: { antenna: boolean };
+
+		request: Service["request"];
+	}
+
+	interface StarHistory_excel {
+		/**
+		 * download
+		 */
+		download(data?: any): Promise<any>;
+
+		/**
+		 * page
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: any[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * page
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: any[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * info
+		 */
+		info(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: { download: string; page: string; info: string };
+
+		/**
+		 * 权限状态
+		 */
+		_permission: { download: boolean; page: boolean; info: boolean };
+
+		request: Service["request"];
+	}
+
+	interface StarFixed_storage_table {
+		/**
+		 * batchUpdate
+		 */
+		batchUpdate(data?: any): Promise<any>;
+
+		/**
+		 * delete
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * info
+		 */
+		info(data?: any): Promise<as02payloadtableEntity>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<as02payloadtableEntity[]>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: as02payloadtableEntity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			batchUpdate: string;
+			delete: string;
+			update: string;
+			info: string;
+			list: string;
+			page: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			batchUpdate: boolean;
+			delete: boolean;
+			update: boolean;
+			info: boolean;
+			list: boolean;
+			page: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface TaskCommand {
+		/**
+		 * validate
+		 */
+		validate(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: { validate: string };
+
+		/**
+		 * 权限状态
+		 */
+		_permission: { validate: boolean };
+
+		request: Service["request"];
+	}
+
+	interface TaskAs02 {
+		/**
+		 * createFromForecast
+		 */
+		createFromForecast(data?: any): Promise<any>;
+
+		/**
+		 * nextUid
+		 */
+		nextUid(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskAs02Entity>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskAs02Entity[]>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			createFromForecast: string;
+			nextUid: string;
+			delete: string;
+			update: string;
+			info: string;
+			list: string;
+			page: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			createFromForecast: boolean;
+			nextUid: boolean;
+			delete: boolean;
+			update: boolean;
+			info: boolean;
+			list: boolean;
+			page: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface TaskAs03 {
+		/**
+		 * createFromForecast
+		 */
+		createFromForecast(data?: any): Promise<any>;
+
+		/**
+		 * nextUid
+		 */
+		nextUid(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskAs03Entity>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskAs03Entity[]>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			createFromForecast: string;
+			nextUid: string;
+			delete: string;
+			update: string;
+			info: string;
+			list: string;
+			page: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			createFromForecast: boolean;
+			nextUid: boolean;
+			delete: boolean;
+			update: boolean;
+			info: boolean;
+			list: boolean;
+			page: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
 	interface BaseCoding {
 		/**
 		 * 获取模块目录结构
@@ -3166,288 +3472,6 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
-	interface StarFixed_storage_table {
-		/**
-		 * batchUpdate
-		 */
-		batchUpdate(data?: any): Promise<any>;
-
-		/**
-		 * delete
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * info
-		 */
-		info(data?: any): Promise<as02payloadtableEntity>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<as02payloadtableEntity[]>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: as02payloadtableEntity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			batchUpdate: string;
-			delete: string;
-			update: string;
-			info: string;
-			list: string;
-			page: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			batchUpdate: boolean;
-			delete: boolean;
-			update: boolean;
-			info: boolean;
-			list: boolean;
-			page: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface StarHistory_excel {
-		/**
-		 * download
-		 */
-		download(data?: any): Promise<any>;
-
-		/**
-		 * page
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: any[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * page
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: any[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * info
-		 */
-		info(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: { download: string; page: string; info: string };
-
-		/**
-		 * 权限状态
-		 */
-		_permission: { download: boolean; page: boolean; info: boolean };
-
-		request: Service["request"];
-	}
-
-	interface TaskCommand {
-		/**
-		 * validate
-		 */
-		validate(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: { validate: string };
-
-		/**
-		 * 权限状态
-		 */
-		_permission: { validate: boolean };
-
-		request: Service["request"];
-	}
-
-	interface TaskAs02 {
-		/**
-		 * createFromForecast
-		 */
-		createFromForecast(data?: any): Promise<any>;
-
-		/**
-		 * nextUid
-		 */
-		nextUid(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<TaskAs02Entity>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<TaskAs02Entity[]>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: TaskAs02Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			createFromForecast: string;
-			nextUid: string;
-			delete: string;
-			update: string;
-			info: string;
-			list: string;
-			page: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			createFromForecast: boolean;
-			nextUid: boolean;
-			delete: boolean;
-			update: boolean;
-			info: boolean;
-			list: boolean;
-			page: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface TaskAs03 {
-		/**
-		 * createFromForecast
-		 */
-		createFromForecast(data?: any): Promise<any>;
-
-		/**
-		 * nextUid
-		 */
-		nextUid(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<TaskAs03Entity>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<TaskAs03Entity[]>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: TaskAs03Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			createFromForecast: string;
-			nextUid: string;
-			delete: string;
-			update: string;
-			info: string;
-			list: string;
-			page: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			createFromForecast: boolean;
-			nextUid: boolean;
-			delete: boolean;
-			update: boolean;
-			info: boolean;
-			list: boolean;
-			page: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
 	interface Task_logDelete_as02 {
 		/**
 		 * 修改
@@ -3944,30 +3968,6 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
-	interface Antenna_shuchuan {
-		/**
-		 * antenna
-		 */
-		antenna(data?: any): Promise<any>;
-
-		/**
-		 * antenna
-		 */
-		antenna(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: { antenna: string };
-
-		/**
-		 * 权限状态
-		 */
-		_permission: { antenna: boolean };
-
-		request: Service["request"];
-	}
-
 	type Service = {
 		/**
 		 * 基础请求
@@ -3986,6 +3986,9 @@ declare namespace Eps {
 			[key: string]: any;
 		}): Promise<any>;
 
+		antenna_shuchuan: Antenna_shuchuan;
+		star: { history_excel: StarHistory_excel; fixed_storage_table: StarFixed_storage_table };
+		task: { command: TaskCommand; as02: TaskAs02; as03: TaskAs03 };
 		base: {
 			coding: BaseCoding;
 			comm: BaseComm;
@@ -4008,8 +4011,6 @@ declare namespace Eps {
 		rs_image_request: { imageRequest: Rs_image_requestImageRequest };
 		rs_poi: { poi: Rs_poiPoi };
 		space: { info: SpaceInfo; type: SpaceType };
-		star: { fixed_storage_table: StarFixed_storage_table; history_excel: StarHistory_excel };
-		task: { command: TaskCommand; as02: TaskAs02; as03: TaskAs03 };
 		task_log: {
 			delete_as02: Task_logDelete_as02;
 			delete_as03: Task_logDelete_as03;
@@ -4019,7 +4020,6 @@ declare namespace Eps {
 			transmit_as03: Task_logTransmit_as03;
 		};
 		user: { address: UserAddress; info: UserInfo };
-		antenna_shuchuan: Antenna_shuchuan;
 	};
 
 	type DictKey = "brand" | "occupation";

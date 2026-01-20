@@ -663,8 +663,8 @@ function integrateStorage() {
 	}
 
 	const satellite = form.satellite;
-	const payloadPerFile = satellite === "AS02" ? 90 : 30;
-	const platformPerFile = 30;
+	const payloadPerFile = satellite === "AS02" ? 90 : 20;
+	const platformPerFile = satellite === "AS03" ? 2 : 30;
 
 	const buildGroups = (source: StorageRow[], type: SelectionSource): IntegratedGroup[] => {
 		if (!source.length) return [];
@@ -848,10 +848,12 @@ function computeGroupFallbackDuration(group: IntegratedGroup, satellite: string 
 	}
 	const perFile =
 		group.type === 'platform'
-			? 30
+			? satellite === 'AS03'
+				? 2
+				: 30
 			: satellite === 'AS02'
 			? 90
-			: 30;
+			: 20;
 	const count = Number(group.count);
 	const safeCount = Number.isFinite(count) && count > 0 ? count : 1;
 	return perFile * safeCount;
@@ -1176,8 +1178,8 @@ function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 			}
 		});
 
-		const payloadPerFile = 30;
-		const platformPerFile = 30;
+		const payloadPerFile = 20;
+		const platformPerFile = 2;
 		let accumulatedDuration = 0;
 
 		groups.forEach((group, groupIndex) => {
@@ -1241,8 +1243,8 @@ function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 		body[`trans_time${suffix}`] = '';
 	});
 
-	const payloadPerFile = satellite === 'AS02' ? 90 : 30;
-	const platformPerFile = 30;
+	const payloadPerFile = satellite === 'AS02' ? 90 : 20;
+	const platformPerFile = satellite === 'AS03' ? 2 : 30;
 	let accumulatedDuration = 0;
 
 	groups.forEach((group, index) => {
