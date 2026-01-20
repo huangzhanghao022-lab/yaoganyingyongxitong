@@ -10,6 +10,7 @@ import { TaskLogDeleteAs02Entity } from '../../task_log/entity/delete_as02';
 import { TaskLogDeleteAs03Entity } from '../../task_log/entity/delete_as03';
 import { TaskConflictService } from './taskConflict';
 import { ILogger } from '@midwayjs/logger';
+import { AntennaShuchuanService } from '../../antenna_shuchuan/service/antenna_shuchuan';
 
 type ValidationResult = { ok: true } | { ok: false; errors: Array<{ field: string; message: string }> };
 
@@ -26,6 +27,9 @@ export class CommandValidateService {
 
   @Inject()
   logger: ILogger;
+
+  @Inject()
+  antennaShuchuanService: AntennaShuchuanService;
 
   @InjectEntityModel(TaskLogImagingAs02Entity)
   imagingLogAs02Repo: Repository<TaskLogImagingAs02Entity>;
@@ -44,6 +48,8 @@ export class CommandValidateService {
 
   @InjectEntityModel(TaskLogDeleteAs03Entity)
   deleteLogAs03Repo: Repository<TaskLogDeleteAs03Entity>;
+
+  private stationCache: { ts: number; names: string[] } | null = null;
 
   async validate(body: any): Promise<ValidationResult> {
     const errors: Array<{ field: string; message: string }> = [];
@@ -64,7 +70,7 @@ export class CommandValidateService {
         await this.validateImage(satellite, params, errors);
         break;
       case 'transfer':
-        this.validateTransfer(satellite, params, errors);
+        await this.validateTransfer(satellite, params, errors);
         break;
       case 'delete':
         this.validateDelete(satellite, params, errors);
@@ -189,7 +195,7 @@ export class CommandValidateService {
     }
   }
 
-  private validateTransfer(sat: Sat, p: any, errors: Array<{ field: string; message: string }>) {
+  private async validateTransfer(sat: Sat, p: any, errors: Array<{ field: string; message: string }>) {
     const now = Date.now();
     const t0 = this.parseDate(p.t0);
     const durationLimit = 400;
@@ -201,6 +207,33 @@ export class CommandValidateService {
     this.ensureNumber(p.long, 'long', errors);
     this.ensureNumber(p.lat, 'lat', errors);
     this.ensureNumber(p.alt, 'alt', errors);
+
+    const stationNameRaw =
+      this.pickString(p, ['station', 'stationName', 'transferName'], '') || '';
+    const stationNameFromName = !stationNameRaw
+      ? this.extractStationFromName(this.pickString(p, ['name'], '') || '')
+      : '';
+    const stationCandidate = stationNameRaw || stationNameFromName;
+    if (!stationCandidate) {
+      errors.push({ field: 'station', message: '数传站不能为空' });
+      return;
+    }
+    try {
+      const stationList = await this.loadTransferStations();
+      if (!stationList.length) {
+        errors.push({ field: 'station', message: '数传站列表为空，无法校验' });
+        return;
+      }
+      const normalized = this.normalizeStationName(stationCandidate);
+      if (!stationList.includes(normalized)) {
+        errors.push({ field: 'station', message: '数传站不支持数传或不存在' });
+        return;
+      }
+    } catch (err) {
+      this.logger?.warn?.('[command-validate] fetch station list failed', err);
+      errors.push({ field: 'station', message: '数传站校验失败' });
+      return;
+    }
 
     if (sat === 'AS02') {
       // trans_type0-8, trans_time1-9
@@ -603,6 +636,44 @@ export class CommandValidateService {
       if (Number.isFinite(n)) return n;
     }
     return undefined;
+  }
+
+  private normalizeStationName(value: string): string {
+    return String(value || '')
+      .trim()
+      .replace(/\s+/g, '')
+      .toLowerCase();
+  }
+
+  private extractStationFromName(value: string): string {
+    let cleaned = this.stripTimeSuffix(value || '');
+    cleaned = cleaned.replace(/(星邑)?数传任务.*$/i, '');
+    cleaned = cleaned.replace(/[-_]+$/g, '').trim();
+    return cleaned;
+  }
+
+  private async loadTransferStations(): Promise<string[]> {
+    const now = Date.now();
+    if (this.stationCache && now - this.stationCache.ts < 5 * 60 * 1000) {
+      return this.stationCache.names;
+    }
+    const list = await this.antennaShuchuanService.fetchStations();
+    const names = Array.from(
+      new Set(
+        (list || [])
+          .flatMap((item: any) => [
+            item?.name,
+            item?.code,
+            item?.stationName,
+            item?.stationCode,
+          ])
+          .filter(Boolean)
+          .map((v: any) => this.normalizeStationName(String(v)))
+          .filter(Boolean)
+      )
+    );
+    this.stationCache = { ts: now, names };
+    return names;
   }
 
   private buildFileNumber(p: any): string {
