@@ -90,7 +90,7 @@
 						:max="400"
 						:step="1"
 						controls-position="right"
-						style="width: 150px"
+						style="width: 100px"
 					/>
 				</el-space>
 
@@ -102,7 +102,7 @@
 						:max="8"
 						:step="1"
 						controls-position="right"
-						style="width: 150px"
+						style="width: 100px"
 					/>
 				</el-space>
 
@@ -114,7 +114,7 @@
 						:max="9"
 						:step="1"
 						controls-position="right"
-						style="width: 150px"
+						style="width: 100px"
 					/>
 				</el-space>
 
@@ -126,7 +126,7 @@
 						:max="100"
 						:step="1"
 						controls-position="right"
-						style="width: 150px"
+						style="width: 100px"
 					/>
 				</el-space>
 
@@ -138,7 +138,7 @@
 						:max="60"
 						:step="1"
 						controls-position="right"
-						style="width: 150px"
+						style="width: 100px"
 					/>
 				</el-space>
 			</el-space>
@@ -1904,8 +1904,8 @@ async function runOneClickPlan() {
 			r.roll_angle_value ??
 			r.side_swipe_angle ??
 			null,
-		rollText: pickRollAngle(r),
-		solarText: pickSolarAngle(r),
+		rollText: formatAngleText(pickRollAngle(r)),
+		solarText: formatAngleText(pickSolarAngle(r)),
 		cloud: r.cloud ?? null,
 		priority: r.priority ?? null,
 	} as TimelineItem;
@@ -2035,7 +2035,7 @@ function updateChart() {
 				const d = p.data;
 				if (!d || !d.name) return "";
 				const gapText =
-					d.gapMinutes != null ? `<div style="color:#606266;font-weight:600;">Gap: ${d.gapMinutes} min</div>` : "";
+					d.gapMinutes != null ? `<div style="color:#606266;font-weight:600;">时间间隔: ${d.gapMinutes} min</div>` : "";
 				return `
 					<div style="min-width:180px;">
 						<div style="font-weight:600;margin-bottom:4px;">${d.name}</div>
@@ -2737,6 +2737,12 @@ function pickSolarAngle(source: any): string {
 		source?.sun_angle ??
 		"";
 	return cand == null ? "" : String(cand);
+}
+
+function formatAngleText(value: any): string {
+	const num = Number(value);
+	if (!Number.isFinite(num)) return value == null ? "" : String(value);
+	return num.toFixed(3);
 }
 
 function mapSolarAngleCode(value: any): string {
@@ -3853,7 +3859,7 @@ function padBase36(value: number, length: number): string {
 
 .timeline-chart {
 	width: 100%;
-	height: 380px;
+	height: 200px;
 }
 
 .summary-text {
