@@ -3944,6 +3944,30 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface Antenna_shuchuan {
+		/**
+		 * antenna
+		 */
+		antenna(data?: any): Promise<any>;
+
+		/**
+		 * antenna
+		 */
+		antenna(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: { antenna: string };
+
+		/**
+		 * 权限状态
+		 */
+		_permission: { antenna: boolean };
+
+		request: Service["request"];
+	}
+
 	type Service = {
 		/**
 		 * 基础请求
@@ -3995,6 +4019,7 @@ declare namespace Eps {
 			transmit_as03: Task_logTransmit_as03;
 		};
 		user: { address: UserAddress; info: UserInfo };
+		antenna_shuchuan: Antenna_shuchuan;
 	};
 
 	type DictKey = "brand" | "occupation";

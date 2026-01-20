@@ -275,7 +275,6 @@ const icons = {
 };
 
 const TOKEN_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token";
-const ANTENNA_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi-transform/get-all-antenna";
 
 const statusDict: Record<number, string> = {
 	0: "空",
@@ -541,26 +540,13 @@ function handleStationChange(value: string) {
 async function fetchStationOptions() {
 	stationLoading.value = true;
 	try {
-		const tokenRes = await axios.post(TOKEN_URL, {
-			username: "02ptemplate@yinhe.ht",
-			password: "123456",
-			loginType: 2,
-		});
-		const token = tokenRes?.data?.data?.token;
-		if (!token) {
-			throw new Error("获取数传站 token 失败");
-		}
-
-		const antennaRes = await axios.post(
-			ANTENNA_URL,
-			{},
-			{
-				headers: {
-					"x-web-token": token,
-				},
-			}
-		);
-		const list = antennaRes?.data?.data?.getAllAntenna ?? [];
+		const url = `${appConfig.baseUrl}/admin/antenna_shuchuan/antenna`;
+		const res = await request({
+			url,
+			method: "POST",
+			NProgress: false,
+		} as any);
+		const list = (res as any)?.data?.list ?? (res as any)?.list ?? [];
 
 		stationOptions.value = list.map((item: any) => ({
 			label: item.name || item.code || "",
@@ -1168,6 +1154,8 @@ function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 			templateId: '673c2d9049b1f446adc4623b',
 			folderId: '6731755b08e123893cf92878',
 			name: composedName,
+			station: stationLabel,
+			stationName: stationLabel,
 			start_seq: String(form.startCommand ?? ''),
 			reset_seq: String(form.reloadTable ?? ''),
 			duration: String(form.duration ?? ''),
@@ -1228,6 +1216,8 @@ function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 		templateId: TRANSFER_TEMPLATE_ID,
 		folderId: TRANSFER_FOLDER_ID,
 		name: composedName,
+		station: stationLabel,
+		stationName: stationLabel,
 		start_seq: String(form.startCommand ?? ''),
 		reset_seq: String(form.reloadTable ?? ''),
 		t0: toIsoString(form.transferT0),

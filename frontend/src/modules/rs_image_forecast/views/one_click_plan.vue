@@ -3071,6 +3071,8 @@ function buildTransferBody(
 		templateId: TRANSFER_TEMPLATE_ID,
 		folderId: TRANSFER_FOLDER_ID,
 		name: `${geo?.name || "数传"}数传任务-${formatBeijingTime(t0Iso)}`,
+		station: String(geo?.name ?? ""),
+		stationName: String(geo?.name ?? ""),
 		start_seq: String(startSeq),
 		reset_seq: resetSeqFlag ?? Boolean(reloadTableFlag.value),
 		t0: t0Iso,
