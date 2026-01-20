@@ -3323,6 +3323,67 @@ function buildDeleteBody(range: { start: number; end: number }, startTimeIso: st
 	};
 }
 
+async function submitAs03ImagingTask(
+	token: string,
+	item: TimelineItem,
+	slot: any,
+	platformSlot: any,
+	startSeq: number,
+	resetSeq: boolean
+): Promise<number> {
+	const startIso = toIsoString(item.startTs);
+	const endIso = toIsoString(item.endTs ?? (Number(item.startTs) + 30 * 1000));
+	const imagingUid = ensureImagingUid(item);
+	const baseSeq = Number(startSeq) || 3;
+	const bodies = [
+		{
+			spacecraftCode: "AS03",
+			templateId: AS03_IMAGING_TEMPLATES[0],
+			folderId: AS03_IMAGING_FOLDER,
+			name: `1.${item.name || "成像任务"}-焦面断电-${formatBeijingTime(item.startTs)}`,
+			reset_seq: resetSeq,
+			start_seq: String(baseSeq),
+			tf: endIso,
+			fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
+		},
+		{
+			spacecraftCode: "AS03",
+			templateId: AS03_IMAGING_TEMPLATES[1],
+			folderId: AS03_IMAGING_FOLDER,
+			name: `2.${item.name || "成像任务"}-制冷机启动${formatBeijingTime(item.startTs)}`,
+			t0: startIso,
+			start_seq: String(baseSeq + 14),
+			fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
+		},
+		{
+			spacecraftCode: "AS03",
+			templateId: AS03_IMAGING_TEMPLATES[2],
+			folderId: AS03_IMAGING_FOLDER,
+			name: `3.${item.name || "成像任务"}-成像序列+转姿态GNSS转存-${formatBeijingTime(item.startTs)}`,
+			start_seq: String(baseSeq + 47),
+			t0: startIso,
+			tf: endIso,
+			side_swipe_angle: pickRollAngle(item.raw ?? item),
+			fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
+			imagingUid,
+		},
+	];
+	for (const body of bodies) {
+		await postTemplate(body, token);
+	}
+	try {
+		await updateFixedStorageSlot(2, slot, item, { imagingTime: startIso, executingTime: startIso });
+		await updateFixedStorageSlot(3, platformSlot, item, {
+			fileName: `${item.name || "成像任务"}`,
+			executingTime: startIso,
+			imagingTime: startIso,
+		});
+	} catch (err) {
+		console.warn("[one-click-plan] 回填 AS03 固存失败", err);
+	}
+	return baseSeq + AS03_IMAGING_SEQ_CONSUME - 1;
+}
+
 async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 	const imaging = timeline.value
 		.filter((item) => item.type !== "data" && item.type !== "delete")
@@ -3405,65 +3466,16 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		throw new Error(`AS03 平台固存空槽不足，需 ${imaging.length} 个，现有 ${platformSlots.length} 个`);
 	}
 	let success = 0;
+	let currentSeq = Number(absStartSeq.value) || 3;
+	let resetSeq = Boolean(reloadTableFlag.value);
 	for (let i = 0; i < imaging.length; i++) {
 		const item = imaging[i];
 		const slot = slots[i];
 		const platformSlot = platformSlots[i];
-		const startIso = toIsoString(item.startTs);
-		const endIso = toIsoString(item.endTs ?? (Number(item.startTs) + 30 * 1000));
-		const imagingUid = ensureImagingUid(item);
-		// AS03 绝对延时指令号：首个任务从外部输入起算，每个任务占用 56 个序号
-		const baseSeqStart = Number(absStartSeq.value) || 3;
-		const baseSeq = baseSeqStart + i * 56;
-		const resetSeq = i === 0 ? Boolean(reloadTableFlag.value) : false;
-		const bodies = [
-			{
-				spacecraftCode: "AS03",
-				templateId: AS03_IMAGING_TEMPLATES[0],
-				folderId: AS03_IMAGING_FOLDER,
-				name: `1.${item.name || "成像任务"}-焦面断电-${formatBeijingTime(item.startTs)}`,
-				reset_seq: resetSeq,
-				start_seq: String(baseSeq),
-				tf: endIso,
-				fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
-			},
-			{
-				spacecraftCode: "AS03",
-				templateId: AS03_IMAGING_TEMPLATES[1],
-				folderId: AS03_IMAGING_FOLDER,
-				name: `2.${item.name || "成像任务"}-制冷机启停-${formatBeijingTime(item.startTs)}`,
-				t0: startIso,
-				start_seq: String(baseSeq + 14),
-				fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
-			},
-			{
-				spacecraftCode: "AS03",
-				templateId: AS03_IMAGING_TEMPLATES[2],
-				folderId: AS03_IMAGING_FOLDER,
-				name: `3.${item.name || "成像任务"}-成像序列+转姿态+GNSS转存-${formatBeijingTime(item.startTs)}`,
-				start_seq: String(baseSeq + 47),
-				t0: startIso,
-				tf: endIso,
-				side_swipe_angle: pickRollAngle(item.raw ?? item),
-				fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
-				imagingUid,
-			},
-		];
-		for (const body of bodies) {
-			await postTemplate(body, token);
-		}
+		const lastSeq = await submitAs03ImagingTask(token, item, slot, platformSlot, currentSeq, resetSeq);
+		currentSeq = lastSeq + 1;
+		resetSeq = false;
 		success += 1;
-		try {
-			await updateFixedStorageSlot(2, slot, item, { imagingTime: startIso, executingTime: startIso });
-			// 同步写入平台固存表，按平台槽顺序，名称/时间沿用载荷成像任务
-			await updateFixedStorageSlot(3, platformSlot, item, {
-				fileName: `${item.name || "成像任务"}`,
-				executingTime: startIso,
-				imagingTime: startIso,
-			});
-		} catch (err) {
-			console.warn("[one-click-plan] 回填 AS03 固存失败", err);
-		}
 	}
 	ElMessage.success(`AS03 成像任务提交成功 ${success}/${imaging.length}`);
 }
@@ -3492,7 +3504,8 @@ async function submitDataTransferTask(
 		throw new Error("数传开始时间无效");
 	}
 	const geo = await resolveAntennaGeoById(task.antennaId, token);
-	const startSeq = startSeqOverride ?? (Number(absStartSeq.value) || 3);
+	const startSeqRaw = task.raw?.startSeq ?? task.raw?.start_seq ?? startSeqOverride;
+	const startSeq = Number.isFinite(Number(startSeqRaw)) ? Number(startSeqRaw) : Number(absStartSeq.value) || 3;
 	const resetSeq = task.raw?.resetSeq ?? Boolean(reloadTableFlag.value);
 	const body = buildTransferBody(satellite, groups, geo, t0Iso, startSeq, resetSeq);
 	await postTemplate(body, token, "transfer");
@@ -3675,6 +3688,33 @@ function openSubmitSummaryDialog() {
 	submissionDialogVisible.value = true;
 }
 
+function resolveTaskStartTs(task: TimelineItem): number {
+	const applyTs = (ts: number) => {
+		if (!Number.isFinite(ts)) return NaN;
+		task.startTs = ts;
+		return ts;
+	};
+	const directNum = Number(task.startTs);
+	if (Number.isFinite(directNum)) return applyTs(directNum);
+	const rawTs = task.raw?.startTs ?? task.raw?.start_ts;
+	if (typeof rawTs === "number" && Number.isFinite(rawTs)) return applyTs(rawTs);
+	if (typeof rawTs === "string" && rawTs.trim()) {
+		const parsed = Date.parse(rawTs.replace(" ", "T"));
+		if (Number.isFinite(parsed)) return applyTs(parsed);
+	}
+	const tele = task.teleBegin ?? task.raw?.teleBegin ?? task.raw?.tele_begin;
+	const teleNum = Number(tele);
+	if (Number.isFinite(teleNum)) {
+		return applyTs(task.type === "data" ? teleNum + 60 * 1000 : teleNum);
+	}
+	const timeText = task.time ?? task.raw?.time;
+	if (timeText) {
+		const parsed = Date.parse(String(timeText).replace(" ", "T"));
+		if (Number.isFinite(parsed)) return applyTs(parsed);
+	}
+	return NaN;
+}
+
 async function submitPlannedTasks() {
 	if (!submissionSummary.value) {
 		submissionSummary.value = buildSubmissionSummaryText();
@@ -3688,21 +3728,74 @@ async function submitPlannedTasks() {
 	submitting.value = true;
 	try {
 		const token = await getToken();
-		if (taskSwitches.imaging) {
-			await submitImagingTasks(token, satellite);
-		}
-		let lastSeq: number | null = null;
-		if (taskSwitches.transfer) {
-			const transfers = timeline.value
-				.filter((item) => item.type === "data")
-				.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
-			for (let i = 0; i < transfers.length; i++) {
-				const startSeq = i === 0 ? Number(absStartSeq.value) || 3 : (lastSeq ?? 3) + 1;
-				lastSeq = await submitDataTransferTask(token, transfers[i], startSeq);
+		if (satellite === "AS03") {
+			const ordered = timeline.value
+				.filter((item) => {
+					if (item.type === "data") return taskSwitches.transfer;
+					if (item.type === "delete") return false;
+					return taskSwitches.imaging;
+				})
+				.slice()
+				.sort((a, b) => {
+					const aTs = resolveTaskStartTs(a);
+					const bTs = resolveTaskStartTs(b);
+					return (Number.isFinite(aTs) ? aTs : 0) - (Number.isFinite(bTs) ? bTs : 0);
+				});
+			const imagingTasks = ordered.filter((item) => item.type !== "data" && item.type !== "delete");
+			let slots: any[] = [];
+			let platformSlots: any[] = [];
+			if (taskSwitches.imaging && imagingTasks.length) {
+				slots = await fetchEmptySlots(2, imagingTasks.length);
+				platformSlots = await fetchEmptySlots(3, imagingTasks.length);
+				if (slots.length < imagingTasks.length) {
+					throw new Error(`AS03 载荷固存空槽不足，需 ${imagingTasks.length} 个，现有 ${slots.length} 个`);
+				}
+				if (platformSlots.length < imagingTasks.length) {
+					throw new Error(`AS03 平台固存空槽不足，需 ${imagingTasks.length} 个，现有 ${platformSlots.length} 个`);
+				}
 			}
-		}
-		if (taskSwitches.delete && satellite === "AS02") {
-			await submitDeleteTasks(token, lastSeq);
+			let imagingIndex = 0;
+			let currentSeq = Number(absStartSeq.value) || 3;
+			let resetSeq = Boolean(reloadTableFlag.value);
+			for (const task of ordered) {
+				if (task.type === "data") {
+					const startTs = resolveTaskStartTs(task);
+					if (!Number.isFinite(startTs)) {
+						throw new Error("数传任务开始时间无效");
+					}
+					task.raw = { ...(task.raw || {}), resetSeq, startSeq: currentSeq };
+					const lastSeq = await submitDataTransferTask(token, task, currentSeq);
+					if (lastSeq != null) {
+						currentSeq = lastSeq;
+					}
+					resetSeq = false;
+					continue;
+				}
+				resolveTaskStartTs(task);
+				const slot = slots[imagingIndex];
+				const platformSlot = platformSlots[imagingIndex];
+				imagingIndex += 1;
+				const lastSeq = await submitAs03ImagingTask(token, task, slot, platformSlot, currentSeq, resetSeq);
+				currentSeq = lastSeq + 1;
+				resetSeq = false;
+			}
+		} else {
+			if (taskSwitches.imaging) {
+				await submitImagingTasks(token, satellite);
+			}
+			let lastSeq: number | null = null;
+			if (taskSwitches.transfer) {
+				const transfers = timeline.value
+					.filter((item) => item.type === "data")
+					.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
+				for (let i = 0; i < transfers.length; i++) {
+					const startSeq = i === 0 ? Number(absStartSeq.value) || 3 : (lastSeq ?? 3) + 1;
+					lastSeq = await submitDataTransferTask(token, transfers[i], startSeq);
+				}
+			}
+			if (taskSwitches.delete && satellite === "AS02") {
+				await submitDeleteTasks(token, lastSeq);
+			}
 		}
 		await recordImagingUids();
 		await recordImagingTasks();
