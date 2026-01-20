@@ -194,6 +194,11 @@
 	</el-dialog>
 
 	<el-dialog v-model="editDialogVisible" title="调整任务" width="820px" :append-to-body="true">
+		<el-space style="margin-bottom: 8px;">
+			<el-button v-if="form.satellite === 'AS02'" size="small" type="primary" plain @click="openTransferPickDialog">
+				新增数传任务
+			</el-button>
+		</el-space>
 		<el-table :data="editableTasks" border height="520px" style="width: 100%;">
 			<el-table-column prop="name" label="名称" min-width="120">
 				<template #default="{ row }">
@@ -233,16 +238,27 @@
 					<el-tag size="small">{{ row.type }}</el-tag>
 				</template>
 			</el-table-column>
-			<el-table-column prop="_deleted" label="操作" width="100">
+			<el-table-column prop="_deleted" label="操作" width="140">
 				<template #default="{ row }">
-					<el-button
-						size="small"
-						:type="row._deleted ? 'info' : 'danger'"
-						text
-						@click="toggleDelete(row)"
-					>
-						{{ row._deleted ? "撤销" : "删除" }}
-					</el-button>
+					<div class="action-buttons">
+						<el-button
+							v-if="row.type === 'data'"
+							size="small"
+							type="primary"
+							text
+							@click="openTransferFilePickDialog(row)"
+						>
+							选择固存文件
+						</el-button>
+						<el-button
+							size="small"
+							:type="row._deleted ? 'info' : 'danger'"
+							text
+							@click="toggleDelete(row)"
+						>
+							{{ row._deleted ? "撤销" : "删除" }}
+						</el-button>
+					</div>
 				</template>
 			</el-table-column>
 		</el-table>
@@ -250,6 +266,125 @@
 			<el-space>
 				<el-button @click="editDialogVisible = false">取消</el-button>
 				<el-button type="primary" @click="applyTaskEdits">保存</el-button>
+			</el-space>
+		</template>
+	</el-dialog>
+
+	<el-dialog v-model="transferPickDialog.visible" title="新增数传任务" width="720px" :append-to-body="true">
+		<el-table :data="transferPickDialog.list" height="360px" style="width: 100%;" v-loading="transferPickDialog.loading">
+			<el-table-column label="选择" width="70">
+				<template #default="{ row }">
+					<el-radio v-model="transferPickDialog.selectedKey" :label="transferPickKey(row)">
+						<span></span>
+					</el-radio>
+				</template>
+			</el-table-column>
+			<el-table-column label="轨次开始" min-width="160">
+				<template #default="{ row }">
+					{{ formatDisplay(new Date(row.beginTime)) }}
+				</template>
+			</el-table-column>
+			<el-table-column label="轨次结束" min-width="160">
+				<template #default="{ row }">
+					{{ row.endTime ? formatDisplay(new Date(row.endTime)) : "-" }}
+				</template>
+			</el-table-column>
+			<el-table-column label="天线" min-width="120">
+				<template #default="{ row }">
+					{{ TELECONTROL_ANTENNA_MAP.get(String(row.antennaId ?? "")) || row.antennaId || "-" }}
+				</template>
+			</el-table-column>
+		</el-table>
+		<template #footer>
+			<el-space>
+				<el-button @click="transferPickDialog.visible = false">取消</el-button>
+				<el-button type="primary" :disabled="!transferPickDialog.selectedKey" @click="confirmAddTransferTask">
+					添加
+				</el-button>
+			</el-space>
+		</template>
+	</el-dialog>
+
+	<el-dialog v-model="transferFilePickDialog.visible" title="选择固存文件" width="860px" :append-to-body="true">
+		<el-alert
+			type="info"
+			show-icon
+			:closable="false"
+			style="margin-bottom: 12px"
+			description="自动按当前卫星拉取载荷与平台固存表状态，支持多选"
+		/>
+		<el-tabs v-model="transferFilePickDialog.activeTab">
+			<el-tab-pane label="载荷固存表" name="payload">
+				<el-table
+					:data="transferFilePickDialog.payload"
+					:border="true"
+					:height="360"
+					style="width: 100%"
+					v-loading="transferFilePickDialog.loading"
+					@selection-change="rows => (transferFilePickDialog.selectedPayload = rows)"
+				>
+					<el-table-column type="selection" width="48" />
+					<el-table-column prop="display" label="目标/文件" min-width="180" show-overflow-tooltip />
+					<el-table-column prop="startFileNo" label="开始文件号" width="120" />
+					<el-table-column label="状态" width="120">
+						<template #default="{ row }">
+							<el-tag
+								v-if="row.status != null"
+								:disable-transitions="true"
+								size="small"
+								:type="getStorageTagProps(row.status).type"
+								:color="getStorageTagProps(row.status).color"
+							>
+								{{ row.statusLabel }}
+							</el-tag>
+							<span v-else>-</span>
+						</template>
+					</el-table-column>
+					<el-table-column prop="updateTime" label="更新时间" min-width="150" />
+				</el-table>
+			</el-tab-pane>
+			<el-tab-pane label="平台固存表" name="platform">
+				<el-table
+					:data="transferFilePickDialog.platform"
+					:border="true"
+					:height="360"
+					style="width: 100%"
+					v-loading="transferFilePickDialog.loading"
+					@selection-change="rows => (transferFilePickDialog.selectedPlatform = rows)"
+				>
+					<el-table-column type="selection" width="48" />
+					<el-table-column prop="display" label="目标/文件" min-width="180" show-overflow-tooltip />
+					<el-table-column prop="startFileNo" label="开始文件号" width="120" />
+					<el-table-column label="状态" width="120">
+						<template #default="{ row }">
+							<el-tag
+								v-if="row.status != null"
+								:disable-transitions="true"
+								size="small"
+								:type="getStorageTagProps(row.status).type"
+								:color="getStorageTagProps(row.status).color"
+							>
+								{{ row.statusLabel }}
+							</el-tag>
+							<span v-else>-</span>
+						</template>
+					</el-table-column>
+					<el-table-column prop="updateTime" label="更新时间" min-width="150" />
+				</el-table>
+			</el-tab-pane>
+		</el-tabs>
+		<template #footer>
+			<el-space>
+				<el-tag type="info">载荷已选 {{ transferFilePickDialog.selectedPayload.length }} 条</el-tag>
+				<el-tag type="info">平台已选 {{ transferFilePickDialog.selectedPlatform.length }} 条</el-tag>
+				<el-button
+					type="primary"
+					:disabled="!transferFilePickDialog.selectedPayload.length && !transferFilePickDialog.selectedPlatform.length"
+					@click="confirmTransferFilePick"
+				>
+					确认
+				</el-button>
+				<el-button @click="transferFilePickDialog.visible = false">关闭</el-button>
 			</el-space>
 		</template>
 	</el-dialog>
@@ -440,6 +575,36 @@ const sequenceItems = computed(() => {
 });
 const editDialogVisible = ref(false);
 const editableTasks = ref<any[]>([]);
+const transferPickDialog = reactive<{
+	visible: boolean;
+	loading: boolean;
+	list: Array<{ key: string; beginTime: number; endTime: number | null; antennaId?: string | null; raw: any }>;
+	selectedKey: string;
+}>({
+	visible: false,
+	loading: false,
+	list: [],
+	selectedKey: "",
+});
+const transferFilePickDialog = reactive<{
+	visible: boolean;
+	loading: boolean;
+	activeTab: "payload" | "platform";
+	payload: any[];
+	platform: any[];
+	selectedPayload: any[];
+	selectedPlatform: any[];
+	targetId: string;
+}>({
+	visible: false,
+	loading: false,
+	activeTab: "payload",
+	payload: [],
+	platform: [],
+	selectedPayload: [],
+	selectedPlatform: [],
+	targetId: "",
+});
 const ONE_CLICK_PLAN_CACHE_KEY = "one_click_plan_cache_v1";
 const ONE_CLICK_PLAN_RELOAD_FLAG = "__one_click_plan_reload_handled";
 const UID_EPOCH = new Date("2025-01-01T00:00:00Z").getTime();
@@ -763,6 +928,17 @@ function buildDefaultRange(dateValue?: number | Date) {
 	return { start, end };
 }
 
+function buildChartRange(dateValue?: number | Date) {
+	const base = dateValue ? new Date(dateValue) : new Date();
+	base.setHours(0, 0, 0, 0); // ?? 00:00
+	const start = new Date(base);
+	const end = new Date(base);
+	end.setDate(end.getDate() + 1);
+	end.setHours(13, 0, 0, 0); // ?? 13:00
+	return { start, end };
+}
+
+
 function formatDisplay(date: Date | string) {
 	const d = typeof date === "string" ? new Date(date) : date;
 	const pad = (n: number) => String(n).padStart(2, "0");
@@ -823,6 +999,242 @@ function openEditDialog() {
 	editDialogVisible.value = true;
 }
 
+function transferPickKey(item: { key: string }) {
+	return item.key;
+}
+
+function normalizeTelecontrolPass(record: any) {
+	const beginRaw = record?.beginTime ?? record?.dataTrans?.beginTime;
+	const endRaw = record?.dataTrans?.endTime ?? record?.endTime;
+	const beginTime = Number(beginRaw);
+	if (!Number.isFinite(beginTime)) return null;
+	const endTime = Number(endRaw);
+	const antennaId = record?.antennaId ?? record?.antenna_id ?? null;
+	const key = `${beginTime}-${antennaId ?? "na"}`;
+	return {
+		key,
+		beginTime,
+		endTime: Number.isFinite(endTime) ? endTime : null,
+		antennaId: antennaId ? String(antennaId) : null,
+		raw: record,
+	};
+}
+
+async function openTransferPickDialog() {
+	if (form.value.satellite !== "AS02") {
+		ElMessage.warning("仅支持 AS02 数传任务");
+		return;
+	}
+	transferPickDialog.visible = true;
+	transferPickDialog.loading = true;
+	transferPickDialog.selectedKey = "";
+	transferPickDialog.list = [];
+	try {
+		const token = await getToken();
+		const spacecraftId = getSpacecraftIdBySatellite(form.value.satellite);
+		if (!spacecraftId) throw new Error("spacecraft id missing");
+		const dayMs = 24 * 60 * 60 * 1000;
+		const dayStart = new Date(form.value.date);
+		dayStart.setHours(0, 0, 0, 0);
+		const dayStartMs = dayStart.getTime();
+		const dayEndMs = dayStartMs + dayMs;
+		const all: Array<{ key: string; beginTime: number; endTime: number | null; antennaId?: string | null; raw: any }> = [];
+		const seen = new Set<string>();
+		const dateStr = formatDateYMD(dayStart);
+		const records = await fetchTelecontrolRecords(token, dateStr, spacecraftId);
+		for (const rec of records || []) {
+			const normalized = normalizeTelecontrolPass(rec);
+			if (!normalized) continue;
+			if (normalized.beginTime < dayStartMs || normalized.beginTime >= dayEndMs) continue;
+			if (seen.has(normalized.key)) continue;
+			seen.add(normalized.key);
+			all.push(normalized);
+		}
+		all.sort((a, b) => a.beginTime - b.beginTime);
+		transferPickDialog.list = all;
+		if (!all.length) {
+			ElMessage.warning("当前日期范围内未找到轨次");
+		}
+	} catch (err) {
+		console.warn("[one-click-plan] fetch telecontrol passes failed", err);
+		ElMessage.error("加载轨次失败");
+	} finally {
+		transferPickDialog.loading = false;
+	}
+}
+
+function confirmAddTransferTask() {
+	const chosen = transferPickDialog.list.find((item) => item.key === transferPickDialog.selectedKey);
+	if (!chosen) {
+		ElMessage.warning("请选择轨次");
+		return;
+	}
+	const startTs = chosen.beginTime + 60 * 1000;
+	const endTs = Number.isFinite(chosen.endTime ?? NaN) ? Number(chosen.endTime) : startTs;
+	const antennaId = chosen.antennaId ? String(chosen.antennaId) : null;
+	const task: TimelineItem = {
+		id: `data-${startTs}-${Date.now()}`,
+		name: "\u6570\u4f20\u4efb\u52a1",
+		type: "data",
+		time: formatDisplay(new Date(startTs)),
+		meta: "",
+		startTs,
+		endTs,
+		raw: { groups: [], resetSeq: false, files: [] },
+		antennaId,
+		teleBegin: chosen.beginTime,
+		teleEnd: Number.isFinite(chosen.endTime ?? NaN) ? Number(chosen.endTime) : null,
+		files: [],
+	};
+	task.meta = buildMeta(task);
+	editableTasks.value.push({
+		...task,
+		startTsValue: task.startTs,
+		metaText: task.meta,
+		metaFields: parseMetaFields(task.meta),
+		fileInput: "",
+		deleteRange: "",
+		_deleted: false,
+	});
+	transferPickDialog.visible = false;
+}
+
+const storageStatusDict: Record<number, string> = {
+	0: "空",
+	1: "已写入",
+	2: "已写入待数传",
+	3: "已数传待反馈",
+	4: "解析有问题",
+	5: "已重传待反馈",
+	6: "已数传待删除",
+	7: "已安排数传",
+};
+
+type StorageTagStyle = { type?: "info" | "warning" | "danger" | "success" | "primary"; color?: string };
+
+const storageStatusTagMap: Record<number, StorageTagStyle> = {
+	0: { type: "info" },
+	1: { type: "primary" },
+	2: { type: "warning" },
+	3: { color: "#f78fb3" },
+	4: { type: "danger" },
+	5: { type: "danger" },
+	6: { type: "success" },
+	7: { type: "primary" },
+};
+
+function getStorageTagProps(status: number | null | undefined): StorageTagStyle {
+	if (status == null) return {};
+	return storageStatusTagMap[status] || {};
+}
+
+type StorageRow = {
+	id: number | string;
+	display: string;
+	startFileNo: string;
+	status: number | null;
+	statusLabel: string;
+	updateTime: string;
+	raw: Record<string, any>;
+};
+
+function mapStorageRow(item: Record<string, any>): StorageRow {
+	const display = item.targetName || item.fileName || item.platformFileName || item.code || "-";
+	const startFileNo = item.startFileNo ?? item.beginFileNo ?? item.fileNo ?? "-";
+	const status = typeof item.status === "number" ? item.status : null;
+	const updateTime = item.updateTime || item.writeTime || "-";
+	return {
+		id: item.id ?? `${display}-${startFileNo}`,
+		display,
+		startFileNo: String(startFileNo ?? "-") || "-",
+		status,
+		statusLabel: status != null ? (storageStatusDict[status] || `状态${status}`) : "-",
+		updateTime,
+		raw: item,
+	};
+}
+
+async function fetchStorageByName(name: number): Promise<StorageRow[]> {
+	const api: any = (service as any)?.star?.fixed_storage_table;
+	if (!api?.page) return [];
+	const res = await api.page({ page: 1, size: 200, name, sort: "startFileNo", order: "ASC" });
+	const list = res?.list || res?.data?.list || [];
+	return list
+		.map((item: any) => mapStorageRow(item))
+		.sort((a, b) => {
+			const toNum = (val: string) => {
+				const num = Number(val);
+				return Number.isFinite(num) ? num : Number.MAX_SAFE_INTEGER;
+			};
+			const av = toNum(a.startFileNo);
+			const bv = toNum(b.startFileNo);
+			if (av !== Number.MAX_SAFE_INTEGER || bv !== Number.MAX_SAFE_INTEGER) {
+				return av - bv;
+			}
+			return String(a.startFileNo).localeCompare(String(b.startFileNo));
+		});
+}
+
+async function openTransferFilePickDialog(row: any) {
+	if (row?.type !== "data") return;
+	transferFilePickDialog.visible = true;
+	transferFilePickDialog.loading = true;
+	transferFilePickDialog.activeTab = "payload";
+	transferFilePickDialog.payload = [];
+	transferFilePickDialog.platform = [];
+	transferFilePickDialog.selectedPayload = [];
+	transferFilePickDialog.selectedPlatform = [];
+	transferFilePickDialog.targetId = row.id;
+	try {
+		const satellite = form.value.satellite;
+		if (!satellite) {
+			ElMessage.warning("请先选择卫星");
+			return;
+		}
+		const tablePair = satellite === "AS02" ? { payload: 0, platform: 1 } : { payload: 2, platform: 3 };
+		const [payload, platform] = await Promise.all([
+			fetchStorageByName(tablePair.payload),
+			fetchStorageByName(tablePair.platform),
+		]);
+		transferFilePickDialog.payload = payload;
+		transferFilePickDialog.platform = platform;
+		if (row?.fileInput) {
+			const selected = new Set<number>();
+			String(row.fileInput)
+				.split(/[\uFF0C,]/)
+				.map((s) => Number(s.trim()))
+				.filter((n) => Number.isFinite(n))
+				.forEach((n) => selected.add(n));
+			transferFilePickDialog.selectedPayload = payload.filter((p) => selected.has(Number(p.startFileNo)));
+			transferFilePickDialog.selectedPlatform = platform.filter((p) => selected.has(Number(p.startFileNo)));
+		}
+	} catch (err) {
+		console.warn("[one-click-plan] fetch transfer storage rows failed", err);
+		ElMessage.error("加载固存文件失败");
+	} finally {
+		transferFilePickDialog.loading = false;
+	}
+}
+
+function confirmTransferFilePick() {
+	const target = editableTasks.value.find((t: any) => t.id === transferFilePickDialog.targetId);
+	const selected = [
+		...transferFilePickDialog.selectedPayload,
+		...transferFilePickDialog.selectedPlatform,
+	]
+		.map((row: any) => Number(row.startFileNo))
+		.filter((n) => Number.isFinite(n))
+		.sort((a, b) => a - b);
+	if (!selected.length) {
+		ElMessage.warning("请至少选择一个固存文件");
+		return;
+	}
+	if (target) {
+		target.fileInput = selected.join(",");
+	}
+	transferFilePickDialog.visible = false;
+}
+
 function parseMetaFields(meta: string | undefined): Array<{ label: string; value: string }> {
 	if (!meta) return [];
 	return meta.split("|").map((part) => {
@@ -869,79 +1281,89 @@ function buildGroupsFromFiles(files: number[]): TransferGroup[] {
 
 function applyTaskEdits() {
 	const edits = editableTasks.value;
-	const deletedIds = new Set(
-		edits.filter((e: any) => e._deleted).map((e: any) => e.id)
-	);
-		const updated = timeline.value.map((t) => {
-			const e = edits.find((x: any) => x.id === t.id);
-			if (!e) return t;
+	const existingMap = new Map(timeline.value.map((t) => [t.id, t]));
+	const updated = edits
+		.filter((e: any) => !e._deleted)
+		.map((e: any) => {
+			const base: TimelineItem =
+				existingMap.get(e.id) ||
+				({
+					id: e.id,
+					name: e.name || "\u6570\u4f20\u4efb\u52a1",
+					type: e.type || "data",
+					time: e.time || formatDisplay(new Date(Number(e.startTsValue) || Date.now())),
+					meta: e.metaText || "",
+					startTs: Number(e.startTsValue) || Date.now(),
+					endTs: e.endTs,
+					raw: e.raw || {},
+					antennaId: e.antennaId ?? null,
+					teleBegin: e.teleBegin ?? null,
+					teleEnd: e.teleEnd ?? null,
+					files: Array.isArray(e.files) ? e.files : [],
+				} as TimelineItem);
 			const startTs = Number(e.startTsValue);
-			const meta = e.metaText ?? t.meta;
-			const metaFromFields = t.type === "data" ? meta : meta;
-			const metaMap = Array.isArray(e.metaFields) ? metaFieldsToMap(e.metaFields) : {};
-			const timeTs = Number.isFinite(startTs) ? startTs : t.startTs;
-			const delta = Number.isFinite(timeTs) && Number.isFinite(t.startTs) ? timeTs - t.startTs : 0;
-			const oldEnd = Number(t.endTs);
-			const endTs = Number.isFinite(oldEnd) ? oldEnd + delta : undefined;
-			const timeText = Number.isFinite(timeTs) ? formatDisplay(new Date(timeTs)) : t.time;
+			const meta = e.metaText ?? base.meta;
+			const metaFromFields = base.type === "data" ? meta : meta;
+			const timeTs = Number.isFinite(startTs) ? startTs : base.startTs;
+			const delta = Number.isFinite(timeTs) && Number.isFinite(base.startTs) ? timeTs - base.startTs : 0;
+			const oldEnd = Number(base.endTs);
+			const endTs = Number.isFinite(oldEnd) ? oldEnd + delta : base.endTs;
+			const timeText = Number.isFinite(timeTs) ? formatDisplay(new Date(timeTs)) : base.time;
 			const raw: any = {
-				...t.raw,
-				name: e.name || t.raw?.name,
+				...base.raw,
+				name: e.name || base.raw?.name,
 				startTs: timeTs,
-			startAt: timeTs,
+				startAt: timeTs,
 				startAtBeijing: timeTs,
 				endTs,
 			};
-		if (t.type === "data") {
-			let files: number[] = [];
-			if (e.fileInput) {
-				files = String(e.fileInput)
-					.split(/[，,]/)
-					.map((s) => Number(s.trim()))
-					.filter((n) => Number.isFinite(n));
-			}
-			raw.groups = files.length ? buildGroupsFromFiles(files) : (raw.groups as TransferGroup[]) || [];
-			raw.files = files.length ? files : raw.files || [];
-			t.files = raw.files.map((f: any) => String(f));
-			t.meta = metaFromFields;
-			t.raw = raw;
-		} else if (t.type === "info") {
-			if (e.storageSlot) {
-				raw.storageSlot = String(e.storageSlot);
-				t.storageSlot = String(e.storageSlot);
-			}
-			t.meta = metaFromFields;
-			t.raw = raw;
-		} else if (t.type === "delete") {
-			if (e.deleteRange) {
-				const m = String(e.deleteRange).match(/(\d+)\s*[-~－]\s*(\d+)/);
-				if (m) {
-					const s = Number(m[1]);
-					const eEnd = Number(m[2]);
-					if (Number.isFinite(s) && Number.isFinite(eEnd) && eEnd > s) {
-						raw.startFile = s;
-						raw.endFile = eEnd;
-						t.meta = `删除文件: ${s}-${eEnd}`;
+			if (base.type === "data") {
+				let files: number[] = [];
+				if (e.fileInput) {
+					files = String(e.fileInput)
+						.split(/[\uFF0C,]/)
+						.map((s) => Number(s.trim()))
+						.filter((n) => Number.isFinite(n));
+				}
+				raw.groups = files.length ? buildGroupsFromFiles(files) : (raw.groups as TransferGroup[]) || [];
+				raw.files = files.length ? files : raw.files || [];
+				base.files = raw.files.map((f: any) => String(f));
+				base.meta = metaFromFields;
+				base.raw = raw;
+			} else if (base.type === "info") {
+				if (e.storageSlot) {
+					raw.storageSlot = String(e.storageSlot);
+					base.storageSlot = String(e.storageSlot);
+				}
+				base.meta = metaFromFields;
+				base.raw = raw;
+			} else if (base.type === "delete") {
+				if (e.deleteRange) {
+					const m = String(e.deleteRange).match(/(\d+)\s*[-~\uFF0C]\s*(\d+)/);
+					if (m) {
+						const s = Number(m[1]);
+						const eEnd = Number(m[2]);
+						if (Number.isFinite(s) && Number.isFinite(eEnd) && eEnd > s) {
+							raw.startFile = s;
+							raw.endFile = eEnd;
+							base.meta = `\u5220\u9664\u6587\u4ef6: ${s}-${eEnd}`;
+						}
 					}
 				}
+				base.raw = raw;
 			}
-			t.raw = raw;
-		}
-		return {
-			...t,
-			name: e.name || t.name,
-			startTs: timeTs,
-			endTs,
-			time: timeText,
-			raw,
-		};
-	});
-	timeline.value = updated
-		.filter((t) => !deletedIds.has(t.id))
-		.map((it) => ({ ...it, meta: buildMeta(it) }));
+			return {
+				...base,
+				name: e.name || base.name,
+				startTs: timeTs,
+				endTs,
+				time: timeText,
+				raw,
+			};
+		});
+	timeline.value = updated.map((it) => ({ ...it, meta: buildMeta(it) }));
 	editDialogVisible.value = false;
 	updateChart();
-	// 重新构建摘要，确保提交弹窗使用最新参数
 	submissionSummary.value = buildSubmissionSummaryText();
 }
 
@@ -1554,7 +1976,7 @@ async function runOneClickPlan() {
 
 function updateChart() {
 	if (!chart || !timeline.value.length) return;
-	const { start, end } = planRange.value;
+	const { start, end } = buildChartRange(form.value.date);
 	const startMs = start.getTime();
 	const endMs = end.getTime();
 
@@ -2058,12 +2480,6 @@ async function fetchPendingFiles(satellite: "AS02" | "AS03", statuses: number[] 
 		}
 	}
 	console.log("[one-click-plan] fetchPendingFiles total", { statuses, count: all.length });
-	// 若首选状态不足，再尝试 status 6（已写入待数传）
-	if (!all.length && !statuses.includes(6)) {
-		const res = await api.page({ page: 1, size: 200, name, status: 6 });
-		const list = res?.list || res?.data?.list || [];
-		all.push(...list);
-	}
 	const list = all;
 	const sorted = list
 		.map((x: any) => {
@@ -3393,6 +3809,16 @@ function padBase36(value: number, length: number): string {
 .file-inline {
 	flex-direction: row;
 	align-items: center;
+}
+.action-buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	align-items: flex-start;
+	width: 100%;
+}
+.action-buttons :deep(.el-button) {
+	margin-left: 0;
 }
 </style>
 
