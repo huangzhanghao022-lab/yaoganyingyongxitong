@@ -1074,6 +1074,8 @@ function confirmAddTransferTask() {
 	const startTs = chosen.beginTime + 60 * 1000;
 	const endTs = Number.isFinite(chosen.endTime ?? NaN) ? Number(chosen.endTime) : startTs;
 	const antennaId = chosen.antennaId ? String(chosen.antennaId) : null;
+	const hasTransferTask = editableTasks.value.some((t: any) => t.type === "data" && !t._deleted);
+	const resetSeq = Boolean(reloadTableFlag.value) && !hasTransferTask;
 	const task: TimelineItem = {
 		id: `data-${startTs}-${Date.now()}`,
 		name: "\u6570\u4f20\u4efb\u52a1",
@@ -1082,7 +1084,7 @@ function confirmAddTransferTask() {
 		meta: "",
 		startTs,
 		endTs,
-		raw: { groups: [], resetSeq: false, files: [] },
+		raw: { groups: [], resetSeq, files: [] },
 		antennaId,
 		teleBegin: chosen.beginTime,
 		teleEnd: Number.isFinite(chosen.endTime ?? NaN) ? Number(chosen.endTime) : null,
