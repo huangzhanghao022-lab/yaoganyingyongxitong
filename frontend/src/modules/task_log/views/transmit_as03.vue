@@ -165,6 +165,26 @@ const Search = useSearch();
 const Crud = useCrud(
 	{
 		service: service.task_log.transmit_as03,
+		onDelete(selectionRows) {
+			const rows = Array.isArray(selectionRows) ? selectionRows : selectionRows ? [selectionRows] : [];
+			const times = rows.map((row: any) => row?.transmitTime).filter((time: any) => !!time);
+			if (!times.length) {
+				// @ts-ignore
+				Crud.value?.app?.message?.warning?.(t('请选择要删除的任务'));
+				return;
+			}
+			return service
+				.request({
+					url: '/admin/task_log/task_manage/delete',
+					method: 'POST',
+					data: { satellite: 'AS03', type: 'transfer', times },
+				})
+				.then(() => {
+					// @ts-ignore
+					Crud.value?.app?.message?.success?.(t('删除成功'));
+					Crud.value?.refresh();
+				});
+		},
 	},
 	app => {
 		app.refresh();

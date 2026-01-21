@@ -3844,6 +3844,25 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface Task_logTask_manage {
+		/**
+		 * delete
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: { delete: string };
+
+		/**
+		 * 权限状态
+		 */
+		_permission: { delete: boolean };
+
+		request: Service["request"];
+	}
+
 	interface UserAddress {
 		/**
 		 * 删除
@@ -4018,6 +4037,7 @@ declare namespace Eps {
 			imaging_as03: Task_logImaging_as03;
 			transmit_as02: Task_logTransmit_as02;
 			transmit_as03: Task_logTransmit_as03;
+			task_manage: Task_logTask_manage;
 		};
 		user: { address: UserAddress; info: UserInfo };
 	};
