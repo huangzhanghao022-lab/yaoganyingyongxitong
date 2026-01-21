@@ -45,6 +45,7 @@ export class TaskAs03Service extends BaseService {
 
     return this.taskAs03Entity.save(entities);
   }
+
 }
 
 type ForecastTaskPayload = {
