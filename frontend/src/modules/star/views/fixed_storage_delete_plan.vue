@@ -453,8 +453,8 @@ function buildDeleteBodyAs03(form: typeof taskDialog.form) {
 }
 
 function mapModule(scope: string) {
-	if (scope === "载荷") return "01";
-	return "00";
+	if (scope === "载荷") return "1";
+	return "0";
 }
 
 function buildCommandName(form: typeof taskDialog.form) {

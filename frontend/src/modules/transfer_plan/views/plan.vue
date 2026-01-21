@@ -893,7 +893,7 @@ function validateTransferParams(): boolean {
 			ElMessage.error('数传文件号异常');
 			return false;
 		}
-		if (end <= start) {
+		if (end < start) {
 			ElMessage.error('数传文件号异常');
 			return false;
 		}
