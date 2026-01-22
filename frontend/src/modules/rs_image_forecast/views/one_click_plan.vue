@@ -340,7 +340,11 @@
 							<span v-else>-</span>
 						</template>
 					</el-table-column>
-					<el-table-column prop="updateTime" label="更新时间" min-width="150" />
+					<el-table-column label="任务执行时间" min-width="150">
+						<template #default="{ row }">
+							{{ row.executionTime ? formatDisplay(new Date(row.executionTime)) : "-" }}
+						</template>
+					</el-table-column>
 				</el-table>
 			</el-tab-pane>
 			<el-tab-pane label="平台固存表" name="platform">
@@ -369,7 +373,11 @@
 							<span v-else>-</span>
 						</template>
 					</el-table-column>
-					<el-table-column prop="updateTime" label="更新时间" min-width="150" />
+					<el-table-column label="任务执行时间" min-width="150">
+						<template #default="{ row }">
+							{{ row.executionTime ? formatDisplay(new Date(row.executionTime)) : "-" }}
+						</template>
+					</el-table-column>
 				</el-table>
 			</el-tab-pane>
 		</el-tabs>
@@ -1105,11 +1113,11 @@ function confirmAddTransferTask() {
 
 const storageStatusDict: Record<number, string> = {
 	0: "空",
-	1: "已写入",
+	1: "待写入",
 	2: "已写入待数传",
-	3: "已数传待反馈",
+	3: "已数传待反演",
 	4: "解析有问题",
-	5: "已重传待反馈",
+	5: "已重传待反演",
 	6: "已数传待删除",
 	7: "已安排数传",
 };
@@ -1138,22 +1146,31 @@ type StorageRow = {
 	startFileNo: string;
 	status: number | null;
 	statusLabel: string;
-	updateTime: string;
+	executionTime: string;
 	raw: Record<string, any>;
 };
 
 function mapStorageRow(item: Record<string, any>): StorageRow {
-	const display = item.targetName || item.fileName || item.platformFileName || item.code || "-";
+	const display = item.targetName || item.fileName || item.platformFileName || "-";
 	const startFileNo = item.startFileNo ?? item.beginFileNo ?? item.fileNo ?? "-";
 	const status = typeof item.status === "number" ? item.status : null;
-	const updateTime = item.updateTime || item.writeTime || "-";
+	const executionTimeRaw =
+		item.imagingTime ||
+		item.executingTime ||
+		item.executeTime ||
+		item.taskExecutionTime ||
+		item.startTime ||
+		"";
+	const executionTimeStr = executionTimeRaw ? String(executionTimeRaw) : "";
+	const executionTime =
+		executionTimeStr && !Number.isNaN(new Date(executionTimeStr).getTime()) ? executionTimeStr : "";
 	return {
 		id: item.id ?? `${display}-${startFileNo}`,
 		display,
 		startFileNo: String(startFileNo ?? "-") || "-",
 		status,
-		statusLabel: status != null ? (storageStatusDict[status] || `状态${status}`) : "-",
-		updateTime,
+		statusLabel: status != null ? (storageStatusDict[status] || `ç¶æ${status}`) : "-",
+		executionTime,
 		raw: item,
 	};
 }
@@ -1596,6 +1613,68 @@ async function runOneClickPlan() {
 				return Math.abs(rollNum) <= rollLimitVal;
 			});
 
+		// é¢„å…ˆè®¡ç®—æ•°ä¼ /åˆ é™¤ä»»åŠ¡ï¼Œä¾›ä½Žä¼˜å…ˆçº§ç­›é€‰æ—¶å›ºå®šé¢„ç•™çª—å£
+		const excludeStarts = new Set<number>();
+		if (taskSwitches.transfer && form.value.satellite === "AS02") {
+			let need = Math.max(1, Number(transferTaskCount.value) || 1);
+			console.log("[one-click-plan] transfer planning need", need);
+			let dayOffset = 0;
+			while (need > 0 && dayOffset < 3) {
+				const dayMs = dayOffset * 24 * 60 * 60 * 1000;
+				const dayStart = new Date(opsStart.getTime() + dayMs);
+				const dayEnd = new Date(opsEnd.getTime() + dayMs);
+				const tasks = await buildDataTransTasks(token, dayStart, dayEnd, need, excludeStarts, notes);
+				if (tasks.length) {
+					dataTasks.push(...tasks);
+					need -= tasks.length;
+				}
+				console.log("[one-click-plan] transfer day", dayOffset, {
+					got: tasks.map((t) => ({ start: t.startTs, files: t.raw?.groups?.map((g: any) => g.start) })),
+					remain: need,
+				});
+				dayOffset += 1;
+			}
+		}
+		if (taskSwitches.delete && form.value.satellite === "AS02") {
+			deleteTasks = await buildDeleteTasks(opsStart, opsEnd);
+		} else {
+			deleteTasks = [];
+		}
+		const transferBuf = form.value.satellite === "AS02" ? 80 * 60 * 1000 : 180 * 60 * 1000;
+		const deleteBuf = 30 * 60 * 1000;
+		dataTasks.forEach((d) => {
+			if (d.startTs) reservedSlots.push({ ts: d.startTs, buffer: transferBuf });
+		});
+		deleteTasks.forEach((d) => {
+			if (d.startTs) reservedSlots.push({ ts: d.startTs, buffer: deleteBuf });
+		});
+
+		if (!taskSwitches.imaging) {
+			let items: TimelineItem[] = [];
+			if (dataTasks.length) items = items.concat(dataTasks);
+			if (deleteTasks.length) items = items.concat(deleteTasks);
+			if (!items.length) {
+				throw new Error("未生成可用任务");
+			}
+			items = items
+				.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0))
+				.map((it) => ({ ...it, meta: buildMeta(it) }));
+			timeline.value = items;
+			if (taskSwitches.transfer && form.value.satellite === "AS02") {
+				const expected = Math.max(1, Number(transferTaskCount.value) || 1);
+				if (dataTasks.length < expected) {
+					notes.push(`数传任务期望 ${expected} 次，实际生成 ${dataTasks.length} 次。`);
+				}
+			}
+			planningNotes.value = notes;
+			ElMessage.success("Plan finished");
+			planPreviewText.value = buildSubmissionSummaryText();
+			planningProgress.percent = 100;
+			planningProgress.status = "success";
+			planningProgress.text = "规划完成";
+			return;
+		}
+
 		if (taskSwitches.imaging) {
 			planningProgress.percent = 20;
 			planningProgress.text = "加载目标与星历";
@@ -1607,41 +1686,6 @@ async function runOneClickPlan() {
 			orbitElements.value = ephemeris;
 
 			// 预先计算数传/删除预留时间窗口，供低优先级筛选使用
-			const excludeStarts = new Set<number>();
-			if (taskSwitches.transfer && form.value.satellite === "AS02") {
-				let need = Math.max(1, Number(transferTaskCount.value) || 1);
-				console.log("[one-click-plan] transfer planning need", need);
-				let dayOffset = 0;
-				while (need > 0 && dayOffset < 3) {
-					const dayMs = dayOffset * 24 * 60 * 60 * 1000;
-					const dayStart = new Date(opsStart.getTime() + dayMs);
-					const dayEnd = new Date(opsEnd.getTime() + dayMs);
-					const tasks = await buildDataTransTasks(token, dayStart, dayEnd, need, excludeStarts, notes);
-					if (tasks.length) {
-						dataTasks.push(...tasks);
-						need -= tasks.length;
-					}
-					console.log("[one-click-plan] transfer day", dayOffset, {
-						got: tasks.map((t) => ({ start: t.startTs, files: t.raw?.groups?.map((g: any) => g.start) })),
-						remain: need,
-					});
-					dayOffset += 1;
-				}
-			}
-			if (taskSwitches.delete && form.value.satellite === "AS02") {
-				deleteTasks = await buildDeleteTasks(opsStart, opsEnd);
-			} else {
-				deleteTasks = [];
-			}
-			const transferBuf = form.value.satellite === "AS02" ? 80 * 60 * 1000 : 180 * 60 * 1000;
-			const deleteBuf = 30 * 60 * 1000;
-			dataTasks.forEach((d) => {
-				if (d.startTs) reservedSlots.push({ ts: d.startTs, buffer: transferBuf });
-			});
-			deleteTasks.forEach((d) => {
-				if (d.startTs) reservedSlots.push({ ts: d.startTs, buffer: deleteBuf });
-			});
-
 			const countFeasible = () => {
 				const cloudFiltered = forecastPool.filter((r) => {
 					if (r?.__manualHigh) return true;
@@ -3511,7 +3555,7 @@ async function submitDataTransferTask(
 	const resetSeq = task.raw?.resetSeq ?? Boolean(reloadTableFlag.value);
 	const body = buildTransferBody(satellite, groups, geo, t0Iso, startSeq, resetSeq);
 	await postTemplate(body, token, "transfer");
-	const consumption = groups.length + 5;
+	const consumption = satellite === "AS03" ? groups.length + 5 : groups.length + 2;
 	const lastSeq = startSeq + consumption - 1;
 
 	// 数传回填：依据文件号 -> 固存 -> imagingUid -> 任务记录表

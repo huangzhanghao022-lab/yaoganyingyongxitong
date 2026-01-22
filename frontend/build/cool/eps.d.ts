@@ -2200,6 +2200,397 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface Task_logTask_manage {
+		/**
+		 * delete
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: { delete: string };
+
+		/**
+		 * 权限状态
+		 */
+		_permission: { delete: boolean };
+
+		request: Service["request"];
+	}
+
+	interface Task_logDelete_as02 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogDeleteAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogDeleteAs02Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogDeleteAs02Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logDelete_as03 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogDeleteAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogDeleteAs03Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogDeleteAs03Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logImaging_as02 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogImagingAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogImagingAs02Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogImagingAs02Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logImaging_as03 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogImagingAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogImagingAs03Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogImagingAs03Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logTransmit_as02 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogTransmitAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogTransmitAs02Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogTransmitAs02Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logTransmit_as03 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogTransmitAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogTransmitAs03Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogTransmitAs03Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
 	interface BaseCoding {
 		/**
 		 * 获取模块目录结构
@@ -3472,397 +3863,6 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
-	interface Task_logDelete_as02 {
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: TaskLogDeleteAs02Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<TaskLogDeleteAs02Entity[]>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<TaskLogDeleteAs02Entity>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			update: string;
-			delete: string;
-			page: string;
-			list: string;
-			info: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			update: boolean;
-			delete: boolean;
-			page: boolean;
-			list: boolean;
-			info: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface Task_logDelete_as03 {
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: TaskLogDeleteAs03Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<TaskLogDeleteAs03Entity[]>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<TaskLogDeleteAs03Entity>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			update: string;
-			delete: string;
-			page: string;
-			list: string;
-			info: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			update: boolean;
-			delete: boolean;
-			page: boolean;
-			list: boolean;
-			info: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface Task_logImaging_as02 {
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: TaskLogImagingAs02Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<TaskLogImagingAs02Entity[]>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<TaskLogImagingAs02Entity>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			update: string;
-			delete: string;
-			page: string;
-			list: string;
-			info: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			update: boolean;
-			delete: boolean;
-			page: boolean;
-			list: boolean;
-			info: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface Task_logImaging_as03 {
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: TaskLogImagingAs03Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<TaskLogImagingAs03Entity[]>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<TaskLogImagingAs03Entity>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			update: string;
-			delete: string;
-			page: string;
-			list: string;
-			info: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			update: boolean;
-			delete: boolean;
-			page: boolean;
-			list: boolean;
-			info: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface Task_logTransmit_as02 {
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: TaskLogTransmitAs02Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<TaskLogTransmitAs02Entity[]>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<TaskLogTransmitAs02Entity>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			update: string;
-			delete: string;
-			page: string;
-			list: string;
-			info: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			update: boolean;
-			delete: boolean;
-			page: boolean;
-			list: boolean;
-			info: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface Task_logTransmit_as03 {
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: TaskLogTransmitAs03Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<TaskLogTransmitAs03Entity[]>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<TaskLogTransmitAs03Entity>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			update: string;
-			delete: string;
-			page: string;
-			list: string;
-			info: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			update: boolean;
-			delete: boolean;
-			page: boolean;
-			list: boolean;
-			info: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface Task_logTask_manage {
-		/**
-		 * delete
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: { delete: string };
-
-		/**
-		 * 权限状态
-		 */
-		_permission: { delete: boolean };
-
-		request: Service["request"];
-	}
-
 	interface UserAddress {
 		/**
 		 * 删除
@@ -4008,6 +4008,15 @@ declare namespace Eps {
 		antenna_shuchuan: Antenna_shuchuan;
 		star: { history_excel: StarHistory_excel; fixed_storage_table: StarFixed_storage_table };
 		task: { command: TaskCommand; as02: TaskAs02; as03: TaskAs03 };
+		task_log: {
+			task_manage: Task_logTask_manage;
+			delete_as02: Task_logDelete_as02;
+			delete_as03: Task_logDelete_as03;
+			imaging_as02: Task_logImaging_as02;
+			imaging_as03: Task_logImaging_as03;
+			transmit_as02: Task_logTransmit_as02;
+			transmit_as03: Task_logTransmit_as03;
+		};
 		base: {
 			coding: BaseCoding;
 			comm: BaseComm;
@@ -4030,15 +4039,6 @@ declare namespace Eps {
 		rs_image_request: { imageRequest: Rs_image_requestImageRequest };
 		rs_poi: { poi: Rs_poiPoi };
 		space: { info: SpaceInfo; type: SpaceType };
-		task_log: {
-			delete_as02: Task_logDelete_as02;
-			delete_as03: Task_logDelete_as03;
-			imaging_as02: Task_logImaging_as02;
-			imaging_as03: Task_logImaging_as03;
-			transmit_as02: Task_logTransmit_as02;
-			transmit_as03: Task_logTransmit_as03;
-			task_manage: Task_logTask_manage;
-		};
 		user: { address: UserAddress; info: UserInfo };
 	};
 
