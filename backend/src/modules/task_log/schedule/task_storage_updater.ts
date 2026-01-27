@@ -1,7 +1,7 @@
 import { Provide, Inject } from '@midwayjs/core';
 import { Job, IJob } from '@midwayjs/cron';
 import { InjectEntityModel, InjectDataSource } from '@midwayjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
+import { Repository, LessThanOrEqual, MoreThanOrEqual, In, IsNull } from 'typeorm';
 import { TaskLogImagingAs02Entity } from '../entity/imaging_as02';
 import { TaskLogImagingAs03Entity } from '../entity/imaging_as03';
 import { TaskLogTransmitAs02Entity } from '../entity/transmit_as02';
@@ -13,6 +13,7 @@ import { as03payloadtableEntity } from '../../star/entity/as03_payload_table/as0
 import { as02platformtableEntity } from '../../star/entity/as02_platform_table/as02_platform_table';
 import { as03platformtableEntity } from '../../star/entity/as03_platform_table/as03_platform_table';
 import { ILogger } from '@midwayjs/logger';
+import { FixedStorageUpdateLogService } from '../../fixed_storage_log/service/fixed_storage_update_log';
 import { DataSource } from 'typeorm';
 
 // 状态枚举
@@ -32,6 +33,7 @@ const STATUS = {
 })
 export class TaskStorageUpdater implements IJob {
   @Inject() logger: ILogger;
+  @Inject() fixedStorageUpdateLogService: FixedStorageUpdateLogService;
   @InjectDataSource() dataSource: DataSource;
 
   @InjectEntityModel(TaskLogImagingAs02Entity) imagingAs02Repo: Repository<TaskLogImagingAs02Entity>;
@@ -56,10 +58,10 @@ export class TaskStorageUpdater implements IJob {
 
   private async handleImaging(now: Date) {
     const tasks = await this.imagingAs02Repo.find({
-      where: { status: In([0, 1, 2]), imagingTime: LessThanOrEqual(now) },
+      where: { status: In([0, 1, 2]), imagingTime: LessThanOrEqual(now), storageAppliedAt: IsNull() },
     });
     const tasks03 = await this.imagingAs03Repo.find({
-      where: { status: In([0, 1, 2]), imagingTime: LessThanOrEqual(now) },
+      where: { status: In([0, 1, 2]), imagingTime: LessThanOrEqual(now), storageAppliedAt: IsNull() },
     });
     await Promise.all([
       ...tasks.map((t) => this.markImagingDone(t, 'AS02')),
@@ -73,7 +75,7 @@ export class TaskStorageUpdater implements IJob {
       this.dataSource.getRepository(as03platformtableEntity),
     ];
     for (const repo of repos) {
-      await repo
+      const result = await repo
         .createQueryBuilder()
         .update()
         .set({ status: STATUS.WRITTEN_WAIT_TX, updateTime: now })
@@ -81,6 +83,14 @@ export class TaskStorageUpdater implements IJob {
         .andWhere('executingTime IS NOT NULL')
         .andWhere('executingTime <= :now', { now })
         .execute();
+      if (result?.affected) {
+        await this.logStorageUpdate({
+          tableName: repo.metadata.tableName,
+          action: 'task_storage_updater.platform',
+          target: { affected: result.affected },
+          change: { status: STATUS.WRITTEN_WAIT_TX },
+        });
+      }
     }
   }
 
@@ -108,7 +118,7 @@ export class TaskStorageUpdater implements IJob {
         );
         return;
       }
-      await this.updateRangeStatus(
+      const affected = await this.updateRangeStatus(
         repo,
         startFileNo,
         startFileNo,
@@ -120,6 +130,20 @@ export class TaskStorageUpdater implements IJob {
         },
         [STATUS.PENDING_WRITE]
       );
+      if (affected) {
+        await this.logStorageUpdate({
+          tableName: repo.metadata.tableName,
+          action: 'task_storage_updater.imaging',
+          target: { startFileNo, endFileNo: startFileNo },
+          change: {
+            status: STATUS.WRITTEN_WAIT_TX,
+            targetName: (task as any).imagingTargetName,
+            imagingUid: (task as any).imagingUid,
+            imagingTime: task.imagingTime,
+          },
+          dataSource: { taskLogId: task.id, satellite: sat },
+        });
+      }
     } else {
       const ok = await this.checkRangeStatus(repo, startFileNo, endFileNo, [STATUS.PENDING_WRITE]);
       if (!ok) {
@@ -131,7 +155,7 @@ export class TaskStorageUpdater implements IJob {
         );
         return;
       }
-      await this.updateRangeStatus(
+      const affected = await this.updateRangeStatus(
         repo,
         startFileNo,
         endFileNo,
@@ -143,17 +167,32 @@ export class TaskStorageUpdater implements IJob {
         },
         [STATUS.PENDING_WRITE]
       );
+      if (affected) {
+        await this.logStorageUpdate({
+          tableName: repo.metadata.tableName,
+          action: 'task_storage_updater.imaging',
+          target: { startFileNo, endFileNo },
+          change: {
+            status: STATUS.WRITTEN_WAIT_TX,
+            targetName: (task as any).imagingTargetName,
+            imagingUid: (task as any).imagingUid,
+            imagingTime: task.imagingTime,
+          },
+          dataSource: { taskLogId: task.id, satellite: sat },
+        });
+      }
     }
     task.status = 3; // 成像执行完成
+    (task as any).storageAppliedAt = new Date();
     await (sat === 'AS02' ? this.imagingAs02Repo : this.imagingAs03Repo).save(task);
   }
 
   private async handleTransmit(now: Date) {
     const tasks = await this.transmitAs02Repo.find({
-      where: { status: In([0, 1, 2]), transmitTime: LessThanOrEqual(now) },
+      where: { status: In([0, 1, 2]), transmitTime: LessThanOrEqual(now), storageAppliedAt: IsNull() },
     });
     const tasks03 = await this.transmitAs03Repo.find({
-      where: { status: In([0, 1, 2]), transmitTime: LessThanOrEqual(now) },
+      where: { status: In([0, 1, 2]), transmitTime: LessThanOrEqual(now), storageAppliedAt: IsNull() },
     });
     await Promise.all([
       ...tasks.map((t) => this.markTransmitDone(t, 'AS02')),
@@ -171,22 +210,48 @@ export class TaskStorageUpdater implements IJob {
     const platformRepo = this.getPlatformRepo(sat);
     const fromStatuses = [STATUS.WRITTEN_WAIT_TX, STATUS.TX_WAIT_DELETE, STATUS.TX_SCHEDULED, 4]; // 4 兼容可能存在的中间状态
     for (const r of payload) {
-      await this.updateRangeStatus(repo, r.start, r.end, STATUS.TX_WAIT_FEEDBACK, {}, fromStatuses);
+      const affected = await this.updateRangeStatus(repo, r.start, r.end, STATUS.TX_WAIT_FEEDBACK, {}, fromStatuses);
+      if (affected) {
+        await this.logStorageUpdate({
+          tableName: repo.metadata.tableName,
+          action: 'task_storage_updater.transmit',
+          target: { startFileNo: r.start, endFileNo: r.end },
+          change: { status: STATUS.TX_WAIT_FEEDBACK },
+          dataSource: { taskLogId: task.id, satellite: sat },
+        });
+      }
     }
     for (const r of platform) {
-      await this.updateRangeStatus(platformRepo, r.start, r.end, STATUS.TX_WAIT_FEEDBACK, {}, fromStatuses);
+      const affected = await this.updateRangeStatus(
+        platformRepo,
+        r.start,
+        r.end,
+        STATUS.TX_WAIT_FEEDBACK,
+        {},
+        fromStatuses
+      );
+      if (affected) {
+        await this.logStorageUpdate({
+          tableName: platformRepo.metadata.tableName,
+          action: 'task_storage_updater.transmit',
+          target: { startFileNo: r.start, endFileNo: r.end },
+          change: { status: STATUS.TX_WAIT_FEEDBACK },
+          dataSource: { taskLogId: task.id, satellite: sat },
+        });
+      }
     }
     task.status = 3; // 数传任务执行完成
     task.transmitExecutionTime = task.transmitTime;
+    (task as any).storageAppliedAt = new Date();
     await (sat === 'AS02' ? this.transmitAs02Repo : this.transmitAs03Repo).save(task);
   }
 
   private async handleDelete(now: Date) {
     const tasks = await this.deleteAs02Repo.find({
-      where: { status: In([0, 1, 2]), taskExecutionTime: LessThanOrEqual(now) },
+      where: { status: In([0, 1, 2]), taskExecutionTime: LessThanOrEqual(now), storageAppliedAt: IsNull() },
     });
     const tasks03 = await this.deleteAs03Repo.find({
-      where: { status: In([0, 1, 2]), taskExecutionTime: LessThanOrEqual(now) },
+      where: { status: In([0, 1, 2]), taskExecutionTime: LessThanOrEqual(now), storageAppliedAt: IsNull() },
     });
     await Promise.all([
       ...tasks.map((t) => this.markDeleteDone(t, 'AS02')),
@@ -205,13 +270,67 @@ export class TaskStorageUpdater implements IJob {
     const clearPayloadPatch = { targetName: null, imagingUid: null, imagingTime: null, updateTime: new Date() };
     const clearPlatformPatch = { fileName: null, imagingUid: null, executingTime: null, updateTime: new Date() };
     for (const r of payload) {
-      await this.updateRangeStatus(repo, r.start, r.end, STATUS.EMPTY, clearPayloadPatch, [STATUS.TX_WAIT_DELETE, STATUS.TX_WAIT_FEEDBACK, STATUS.WRITTEN_WAIT_TX, STATUS.PENDING_WRITE, STATUS.TX_SCHEDULED]);
+      const affected = await this.updateRangeStatus(
+        repo,
+        r.start,
+        r.end,
+        STATUS.EMPTY,
+        clearPayloadPatch,
+        [STATUS.TX_WAIT_DELETE, STATUS.TX_WAIT_FEEDBACK, STATUS.WRITTEN_WAIT_TX, STATUS.PENDING_WRITE, STATUS.TX_SCHEDULED]
+      );
+      if (affected) {
+        await this.logStorageUpdate({
+          tableName: repo.metadata.tableName,
+          action: 'task_storage_updater.delete',
+          target: { startFileNo: r.start, endFileNo: r.end },
+          change: { status: STATUS.EMPTY, cleared: true },
+          dataSource: { taskLogId: task.id, satellite: sat },
+        });
+      }
     }
     for (const r of platform) {
-      await this.updateRangeStatus(platformRepo, r.start, r.end, STATUS.EMPTY, clearPlatformPatch, [STATUS.TX_WAIT_DELETE, STATUS.TX_WAIT_FEEDBACK, STATUS.WRITTEN_WAIT_TX, STATUS.PENDING_WRITE, STATUS.TX_SCHEDULED]);
+      const affected = await this.updateRangeStatus(
+        platformRepo,
+        r.start,
+        r.end,
+        STATUS.EMPTY,
+        clearPlatformPatch,
+        [STATUS.TX_WAIT_DELETE, STATUS.TX_WAIT_FEEDBACK, STATUS.WRITTEN_WAIT_TX, STATUS.PENDING_WRITE, STATUS.TX_SCHEDULED]
+      );
+      if (affected) {
+        await this.logStorageUpdate({
+          tableName: platformRepo.metadata.tableName,
+          action: 'task_storage_updater.delete',
+          target: { startFileNo: r.start, endFileNo: r.end },
+          change: { status: STATUS.EMPTY, cleared: true },
+          dataSource: { taskLogId: task.id, satellite: sat },
+        });
+      }
     }
     task.status = 3; // 删除执行完成
+    (task as any).storageAppliedAt = new Date();
     await (sat === 'AS02' ? this.deleteAs02Repo : this.deleteAs03Repo).save(task);
+  }
+
+  private async logStorageUpdate(input: {
+    tableName: string;
+    action: string;
+    target?: any;
+    change?: any;
+    dataSource?: any;
+    remark?: string;
+  }) {
+    if (!this.fixedStorageUpdateLogService) return;
+    await this.fixedStorageUpdateLogService.writeLog({
+      tableName: input.tableName,
+      action: input.action,
+      sourceType: 'schedule',
+      sourceApi: 'task_storage_updater',
+      target: input.target,
+      change: input.change,
+      dataSource: input.dataSource,
+      remark: input.remark,
+    });
   }
 
   private getStorageRepo(sat: 'AS02' | 'AS03') {
@@ -243,14 +362,15 @@ export class TaskStorageUpdater implements IJob {
     targetStatus: number,
     patch: Record<string, any>,
     fromStatuses?: number[]
-  ) {
+  ): Promise<number> {
     const qb = repo.createQueryBuilder().update();
     qb.set({ ...patch, status: targetStatus, updateTime: new Date() });
     qb.where('startFileNo BETWEEN :s AND :e', { s: start, e: end });
     if (fromStatuses && fromStatuses.length) {
       qb.andWhere('status IN (:...st)', { st: fromStatuses });
     }
-    await qb.execute();
+    const result = await qb.execute();
+    return result?.affected || 0;
   }
 
   private parseFileNumbers(text: string | null | undefined): Array<{ start: number; end: number }> {

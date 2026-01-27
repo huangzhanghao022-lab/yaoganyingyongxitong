@@ -1,4 +1,4 @@
-import { Provide } from '@midwayjs/core';
+import { Provide, Inject } from '@midwayjs/core';
 import { BaseService } from '@cool-midway/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Between, In, Repository } from 'typeorm';
@@ -12,6 +12,7 @@ import { as02payloadtableEntity } from '../../star/entity/as02_payload_table/as0
 import { as02platformtableEntity } from '../../star/entity/as02_platform_table/as02_platform_table';
 import { as03payloadtableEntity } from '../../star/entity/as03_payload_table/as03_payload_table';
 import { as03platformtableEntity } from '../../star/entity/as03_platform_table/as03_platform_table';
+import { FixedStorageUpdateLogService } from '../../fixed_storage_log/service/fixed_storage_update_log';
 
 type FileRange = { start: number; end: number };
 type TransferFileRanges = { payload: FileRange[]; platform: FileRange[] };
@@ -48,6 +49,9 @@ export class TaskLogTaskManageService extends BaseService {
 
   @InjectEntityModel(as03platformtableEntity)
   as03PlatformEntity: Repository<as03platformtableEntity>;
+
+  @Inject()
+  fixedStorageUpdateLogService: FixedStorageUpdateLogService;
 
   async deleteByTaskIds(param: {
     satellite?: string;
@@ -246,6 +250,13 @@ export class TaskLogTaskManageService extends BaseService {
           updateTime: new Date(),
         }
       );
+      await this.logStorageUpdate({
+        tableName: this.as02PayloadEntity.metadata.tableName,
+        action: 'task_manage.rollback.imaging',
+        target: { ids: payloadIds },
+        change: { status: 0, cleared: true },
+        dataSource: { imagingTime, imagingUid },
+      });
     }
 
     const platformIds = platformRows.map((row: any) => Number(row?.id)).filter((id) => Number.isFinite(id));
@@ -260,6 +271,13 @@ export class TaskLogTaskManageService extends BaseService {
           updateTime: new Date(),
         }
       );
+      await this.logStorageUpdate({
+        tableName: this.as02PlatformEntity.metadata.tableName,
+        action: 'task_manage.rollback.imaging',
+        target: { ids: platformIds },
+        change: { status: 0, cleared: true },
+        dataSource: { imagingTime, imagingUid },
+      });
     }
   }
 
@@ -284,6 +302,13 @@ export class TaskLogTaskManageService extends BaseService {
           updateTime: new Date(),
         }
       );
+      await this.logStorageUpdate({
+        tableName: this.as03PayloadEntity.metadata.tableName,
+        action: 'task_manage.rollback.imaging',
+        target: { ids: payloadIds },
+        change: { status: 0, cleared: true },
+        dataSource: { imagingTime, imagingUid },
+      });
     }
 
     const platformIds = platformRows.map((row: any) => Number(row?.id)).filter((id) => Number.isFinite(id));
@@ -298,6 +323,13 @@ export class TaskLogTaskManageService extends BaseService {
           updateTime: new Date(),
         }
       );
+      await this.logStorageUpdate({
+        tableName: this.as03PlatformEntity.metadata.tableName,
+        action: 'task_manage.rollback.imaging',
+        target: { ids: platformIds },
+        change: { status: 0, cleared: true },
+        dataSource: { imagingTime, imagingUid },
+      });
     }
   }
 
@@ -463,6 +495,12 @@ export class TaskLogTaskManageService extends BaseService {
           updateTime: new Date(),
         }
       );
+      await this.logStorageUpdate({
+        tableName: repo.metadata.tableName,
+        action: 'task_manage.rollback.transfer',
+        target: { ids: Array.from(pendingIds) },
+        change: { status: 1 },
+      });
     }
     if (writtenIds.size) {
       await repo.update(
@@ -472,6 +510,33 @@ export class TaskLogTaskManageService extends BaseService {
           updateTime: new Date(),
         }
       );
+      await this.logStorageUpdate({
+        tableName: repo.metadata.tableName,
+        action: 'task_manage.rollback.transfer',
+        target: { ids: Array.from(writtenIds) },
+        change: { status: 2 },
+      });
     }
+  }
+
+  private async logStorageUpdate(input: {
+    tableName: string;
+    action: string;
+    target?: any;
+    change?: any;
+    dataSource?: any;
+    remark?: string;
+  }) {
+    if (!this.fixedStorageUpdateLogService) return;
+    await this.fixedStorageUpdateLogService.writeLog({
+      tableName: input.tableName,
+      action: input.action,
+      sourceType: 'task_manage',
+      sourceApi: '/admin/task_log/task_manage/delete',
+      target: input.target,
+      change: input.change,
+      dataSource: input.dataSource,
+      remark: input.remark,
+    });
   }
 }

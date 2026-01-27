@@ -9,6 +9,7 @@ import { as03platformtableEntity } from '../entity/as03_platform_table/as03_plat
 import { ILogger } from '@midwayjs/logger';
 import { InjectDataSource, InjectEntityModel } from '@midwayjs/typeorm'; // 添加 InjectEntityModel 导入
 import { IMidwayContext } from '@midwayjs/core';
+import { FixedStorageUpdateLogService } from '../../fixed_storage_log/service/fixed_storage_update_log';
 import * as xlsx from "node-xlsx";
 
 @Provide()
@@ -21,6 +22,9 @@ export class FixedStorageService extends BaseService {
 
   @Inject()
   ctx: IMidwayContext;
+
+  @Inject()
+  fixedStorageUpdateLogService: FixedStorageUpdateLogService;
 
   private repoMap: Map<number, Repository<any>> = new Map();
 
@@ -73,6 +77,43 @@ export class FixedStorageService extends BaseService {
     return repo;
   }
 
+  private getTableNameByCode(code: number): string | undefined {
+    const tableMap: Record<number, string> = {
+      0: 'as02_payload_table',
+      1: 'as02_platform_table',
+      2: 'as03_payload_table',
+      3: 'as03_platform_table',
+    };
+    return tableMap[code];
+  }
+
+  private async logFixedStorageChange(input: {
+    tableCode?: number;
+    tableName?: string;
+    action: string;
+    target?: any;
+    change?: any;
+    dataSource?: any;
+    remark?: string;
+  }) {
+    if (!this.fixedStorageUpdateLogService) return;
+    const tableName =
+      input.tableName ?? (input.tableCode != null ? this.getTableNameByCode(input.tableCode) : undefined);
+    await this.fixedStorageUpdateLogService.writeLog(
+      {
+        tableCode: input.tableCode,
+        tableName,
+        action: input.action,
+        sourceType: 'api',
+        target: input.target,
+        change: input.change,
+        dataSource: input.dataSource,
+        remark: input.remark,
+      },
+      this.ctx
+    );
+  }
+
   private isValidField(repo: Repository<any>, fieldName: string): boolean {
     return repo.metadata.columns.map(col => col.propertyName).includes(fieldName);
   }
@@ -95,7 +136,16 @@ export class FixedStorageService extends BaseService {
       }
   
       const repo = this.getCurrentRepo(name);
-      return await repo.save(entityData);
+      const saved = await repo.save(entityData);
+
+      await this.logFixedStorageChange({
+        tableCode: name,
+        action: 'fixed_storage.add',
+        target: { ids: [saved?.id].filter(Boolean) },
+        change: { data: entityData },
+      });
+
+      return saved;
       
 
     } catch (err) {
@@ -126,13 +176,23 @@ export class FixedStorageService extends BaseService {
       const repo = this.getCurrentRepo(name);
       const entity = await repo.findOne({ where: { id: entityData.id } });
       if (!entity) throw new Error(`ID ${entityData.id} 不存在`);
+      const before = { ...entity };
       Object.assign(entity, entityData);
 
       const operator = (this.ctx as any).user?.username || 'unknown';
       await this.exportSnapshotExcel(name,  operator);
       
   
-      return await repo.save(entity);
+      const saved = await repo.save(entity);
+
+      await this.logFixedStorageChange({
+        tableCode: name,
+        action: 'fixed_storage.update',
+        target: { ids: [entityData.id] },
+        change: { before, after: saved, patch: entityData },
+      });
+
+      return saved;
       
 
     } catch (err) {
@@ -159,6 +219,13 @@ export class FixedStorageService extends BaseService {
       const operator = (this.ctx as any).user?.username || 'unknown';
       await this.exportSnapshotExcel(name, operator);
 
+      await this.logFixedStorageChange({
+        tableCode: name,
+        action: 'fixed_storage.batch_update',
+        target: { ids },
+        change: { patch },
+      });
+
       return { affected: ids.length };
     } catch (err) {
       this.logger.error('[批量更新] 失败: %s | 参数: %j', err.message, param, { stack: err.stack });
@@ -184,6 +251,12 @@ export class FixedStorageService extends BaseService {
       const repo = this.getCurrentRepo(name);
       this.logger.info('[删除] 操作表: %s | IDs: %j', repo.metadata.tableName, idList);
       await repo.delete({ id: In(idList) });
+
+      await this.logFixedStorageChange({
+        tableCode: name,
+        action: 'fixed_storage.delete',
+        target: { ids: idList },
+      });
       
 
     } catch (err) {

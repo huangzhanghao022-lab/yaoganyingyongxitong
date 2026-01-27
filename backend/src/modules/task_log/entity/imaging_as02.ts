@@ -39,4 +39,7 @@ export class TaskLogImagingAs02Entity extends BaseEntity {
 
   @Column({ comment: '状态', type: 'int', default: 0 })
   status: number;
+
+  @Column({ comment: '固存回填时间', nullable: true })
+  storageAppliedAt?: Date;
 }
