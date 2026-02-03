@@ -11,11 +11,22 @@ import { TaskLogDeleteAs03Entity } from '../../task_log/entity/delete_as03';
 import { TaskConflictService } from './taskConflict';
 import { ILogger } from '@midwayjs/logger';
 import { AntennaShuchuanService } from '../../antenna_shuchuan/service/antenna_shuchuan';
+import axios from 'axios';
 
 type ValidationResult = { ok: true } | { ok: false; errors: Array<{ field: string; message: string }> };
 
 type CommandType = 'image' | 'transfer' | 'delete';
 type Sat = 'AS02' | 'AS03';
+
+const TELECONTROL_TOKEN_URL =
+  'http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token';
+const TELECONTROL_CHAIN_URL =
+  'http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template';
+const TELECONTROL_CREDENTIALS = {
+  username: '02ptemplate@yinhe.ht',
+  password: '123456',
+  loginType: 2,
+};
 
 @Provide()
 export class CommandValidateService {
@@ -50,8 +61,9 @@ export class CommandValidateService {
   deleteLogAs03Repo: Repository<TaskLogDeleteAs03Entity>;
 
   private stationCache: { ts: number; names: string[] } | null = null;
+  private tokenCache: { ts: number; token: string } | null = null;
 
-  async validate(body: any): Promise<ValidationResult> {
+  async validate(body: any, options?: { skipSave?: boolean }): Promise<ValidationResult> {
     const errors: Array<{ field: string; message: string }> = [];
     const type: CommandType = body?.type;
     const satellite: Sat = body?.satellite;
@@ -132,15 +144,75 @@ export class CommandValidateService {
     }
 
     // 通过后写入对应任务记录表（不阻断请求）
-    try {
-      await this.saveTaskLog(satellite, type, params, taskTime, body?.commandChainId);
-    } catch (err) {
-      // 写库失败不阻断指令校验，但记录提示
-      errors.push({ field: 'log', message: '任务记录写入失败' });
-      return { ok: false, errors };
+    if (!options?.skipSave) {
+      try {
+        await this.saveTaskLog(satellite, type, params, taskTime, body?.commandChainId);
+      } catch (err) {
+        // 写库失败不阻断指令校验，但记录提示
+        errors.push({ field: 'log', message: '任务记录写入失败' });
+        return { ok: false, errors };
+      }
     }
 
     return { ok: true };
+  }
+
+  async submit(body: any): Promise<ValidationResult & { data?: any; commandChainId?: string }> {
+    const validateResult = await this.validate(body, { skipSave: true });
+    if (!validateResult.ok) return validateResult as any;
+    const type: CommandType = body?.type;
+    const satellite: Sat = body?.satellite;
+    const params = body?.params || {};
+
+    const taskTimeRaw = body?.taskTime;
+    const taskTime = taskTimeRaw ? new Date(taskTimeRaw) : this.extractCommandTime(type, params, satellite);
+    if (!taskTime || Number.isNaN(taskTime.getTime())) {
+      return { ok: false, errors: [{ field: 'time', message: '缂哄皯浠诲姟鏃堕棿' }] };
+    }
+
+    try {
+      const respData = await this.createCommandChain(params);
+      const ids = respData?.data?.ids || respData?.ids || [];
+      const idList = Array.isArray(ids) ? ids : ids ? [ids] : [];
+      const commandChainId = idList.length ? String(idList[0]) : undefined;
+      if (idList.length) {
+        await this.saveTaskLog(satellite, type, params, taskTime, idList);
+      }
+      return { ok: true, data: respData?.data ?? respData, commandChainId };
+    } catch (err: any) {
+      return {
+        ok: false,
+        errors: [{ field: 'submit', message: err?.message || '指令链提交失败' }],
+      };
+    }
+  }
+
+  private async fetchTelecontrolToken(): Promise<string> {
+    const now = Date.now();
+    if (this.tokenCache && now - this.tokenCache.ts < 5 * 60 * 1000) {
+      return this.tokenCache.token;
+    }
+    const resp = await axios.post(TELECONTROL_TOKEN_URL, TELECONTROL_CREDENTIALS, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = resp?.data;
+    const token = data?.data?.token ?? data?.token ?? data?.data;
+    if (!token) {
+      throw new Error('获取指令链 token 失败');
+    }
+    this.tokenCache = { ts: now, token };
+    return token;
+  }
+
+  private async createCommandChain(params: any): Promise<any> {
+    const token = await this.fetchTelecontrolToken();
+    const resp = await axios.post(TELECONTROL_CHAIN_URL, params, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-web-token': token,
+      },
+    });
+    return resp?.data ?? {};
   }
 
   private async validateImage(sat: Sat, p: any, errors: Array<{ field: string; message: string }>) {
@@ -263,7 +335,7 @@ export class CommandValidateService {
           if (eVal !== undefined && eVal !== '') {
             this.ensureIntRange(eVal, 0, 127, ek, errors, true);
             if (this.isInt(sVal) && this.isInt(eVal) && Number(eVal) < Number(sVal)) {
-              errors.push({ field: ek, message: `${ek} 必须大于等于 ${sk}` });
+          errors.push({ field: ek, message: `${ek} 必须大于等于 ${sk}` });
             }
           }
         if (filled && mVal === undefined) {
@@ -504,7 +576,13 @@ export class CommandValidateService {
       case 'image':
         if (sat === 'AS02') {
           const exist = await this.findExistingLog(this.imagingLogAs02Repo, 'imagingTime', sat, time);
-          if (exist) return;
+          if (exist) {
+            if (commandChainId) {
+              const merged = this.mergeCommandChainIds((exist as any).commandChainId, commandChainId);
+              await this.imagingLogAs02Repo.update({ id: (exist as any).id } as any, { commandChainId: merged } as any);
+            }
+            return;
+          }
           const entity = new TaskLogImagingAs02Entity();
           entity.satelliteCode = sat;
           entity.imagingTargetName = this.stripTimeSuffix(
@@ -529,9 +607,18 @@ export class CommandValidateService {
           await this.imagingLogAs02Repo.save(entity);
         } else {
           const hasReset = params?.reset_seq !== undefined;
-          if (!hasReset) return; // 非首链不写记录
-          const exist = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', sat, time);
-          if (exist) return; // 已写过首链
+          // AS03 三条链时间可能相差几十秒，非首链放宽匹配窗口
+          const toleranceMs = hasReset ? 1000 : 5 * 60 * 1000;
+          const exist = await this.findExistingLog(this.imagingLogAs03Repo, 'imagingTime', sat, time, toleranceMs);
+          if (exist) {
+            if (commandChainId) {
+              const merged = this.mergeCommandChainIds((exist as any).commandChainId, commandChainId);
+              await this.imagingLogAs03Repo.update({ id: (exist as any).id } as any, { commandChainId: merged } as any);
+            }
+            return; // follow-up chain merged
+          }
+          if (!hasReset) return; // non-reset without base log, skip
+
           const entity = new TaskLogImagingAs03Entity();
           entity.satelliteCode = sat;
           const rawName =
@@ -562,7 +649,13 @@ export class CommandValidateService {
       case 'transfer':
         if (sat === 'AS02') {
           const exist = await this.findExistingLog(this.transferLogAs02Repo, 'transmitTime', sat, time);
-          if (exist) return;
+          if (exist) {
+            if (commandChainId) {
+              const merged = this.mergeCommandChainIds((exist as any).commandChainId, commandChainId);
+              await this.transferLogAs02Repo.update({ id: (exist as any).id } as any, { commandChainId: merged } as any);
+            }
+            return;
+          }
           const entity = new TaskLogTransmitAs02Entity();
           entity.satelliteCode = sat;
           entity.transmitStationName = this.stripTimeSuffix(
@@ -579,7 +672,13 @@ export class CommandValidateService {
           await this.transferLogAs02Repo.save(entity);
         } else {
           const exist = await this.findExistingLog(this.transferLogAs03Repo, 'transmitTime', sat, time);
-          if (exist) return;
+          if (exist) {
+            if (commandChainId) {
+              const merged = this.mergeCommandChainIds((exist as any).commandChainId, commandChainId);
+              await this.transferLogAs03Repo.update({ id: (exist as any).id } as any, { commandChainId: merged } as any);
+            }
+            return;
+          }
           const entity = new TaskLogTransmitAs03Entity();
           entity.satelliteCode = sat;
           entity.transmitStationName = this.stripTimeSuffix(
@@ -599,7 +698,13 @@ export class CommandValidateService {
       case 'delete':
         if (sat === 'AS02') {
           const exist = await this.findExistingLog(this.deleteLogAs02Repo, 'taskExecutionTime', sat, time);
-          if (exist) return;
+          if (exist) {
+            if (commandChainId) {
+              const merged = this.mergeCommandChainIds((exist as any).deleteCommandChainId, commandChainId);
+              await this.deleteLogAs02Repo.update({ id: (exist as any).id } as any, { deleteCommandChainId: merged } as any);
+            }
+            return;
+          }
           const entity = new TaskLogDeleteAs02Entity();
           entity.satelliteCode = sat;
           entity.taskExecutionTime = time;
@@ -609,7 +714,13 @@ export class CommandValidateService {
           await this.deleteLogAs02Repo.save(entity);
         } else {
           const exist = await this.findExistingLog(this.deleteLogAs03Repo, 'taskExecutionTime', sat, time);
-          if (exist) return;
+          if (exist) {
+            if (commandChainId) {
+              const merged = this.mergeCommandChainIds((exist as any).deleteCommandChainId, commandChainId);
+              await this.deleteLogAs03Repo.update({ id: (exist as any).id } as any, { deleteCommandChainId: merged } as any);
+            }
+            return;
+          }
           const entity = new TaskLogDeleteAs03Entity();
           entity.satelliteCode = sat;
           entity.taskExecutionTime = time;
@@ -788,6 +899,36 @@ export class CommandValidateService {
       ''
     );
     return cleaned.trim();
+  }
+
+  private mergeCommandChainIds(current: string | undefined | null, incoming: string | string[]): string {
+    const ids = this.parseCommandChainIds(current);
+    const incomingList = Array.isArray(incoming) ? incoming : [incoming];
+    for (const raw of incomingList) {
+      const next = String(raw || '').trim();
+      if (next && !ids.includes(next)) {
+        ids.push(next);
+      }
+    }
+    return JSON.stringify(ids);
+  }
+
+  private parseCommandChainIds(value: string | undefined | null): string[] {
+    if (!value) return [];
+    const raw = String(value).trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((v) => String(v)).filter(Boolean);
+      }
+    } catch {
+      // fallback
+    }
+    return raw
+      .split(/[,\s;]+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
   }
 
   /** 查找同一卫星+时间的已存在记录，允许 1s 容忍，避免同批次多链重复冲突/写入 */

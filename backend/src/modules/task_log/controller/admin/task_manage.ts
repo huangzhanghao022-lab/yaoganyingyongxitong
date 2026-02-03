@@ -15,4 +15,10 @@ export class AdminTaskLogTaskManageController extends BaseController {
     const result = await this.taskLogTaskManageService.deleteByTaskIds(param);
     return this.ok(result);
   }
+
+  @Post('/command_chain')
+  async updateCommandChain(@Body() param: any) {
+    const result = await this.taskLogTaskManageService.updateCommandChainId(param);
+    return this.ok(result);
+  }
 }

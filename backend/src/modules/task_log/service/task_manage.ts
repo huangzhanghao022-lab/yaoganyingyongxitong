@@ -8,18 +8,42 @@ import { TaskLogImagingAs02Entity } from '../entity/imaging_as02';
 import { TaskLogImagingAs03Entity } from '../entity/imaging_as03';
 import { TaskLogTransmitAs02Entity } from '../entity/transmit_as02';
 import { TaskLogTransmitAs03Entity } from '../entity/transmit_as03';
+import { TaskLogDeleteAs02Entity } from '../entity/delete_as02';
+import { TaskLogDeleteAs03Entity } from '../entity/delete_as03';
 import { as02payloadtableEntity } from '../../star/entity/as02_payload_table/as02_payload_table';
 import { as02platformtableEntity } from '../../star/entity/as02_platform_table/as02_platform_table';
 import { as03payloadtableEntity } from '../../star/entity/as03_payload_table/as03_payload_table';
 import { as03platformtableEntity } from '../../star/entity/as03_platform_table/as03_platform_table';
 import { FixedStorageUpdateLogService } from '../../fixed_storage_log/service/fixed_storage_update_log';
+import axios from 'axios';
+import { ILogger } from '@midwayjs/logger';
 
 type FileRange = { start: number; end: number };
 type TransferFileRanges = { payload: FileRange[]; platform: FileRange[] };
+type TelecontrolDeleteResult = {
+  id: string;
+  ok: boolean;
+  status?: number;
+  data?: any;
+  error?: string;
+  url?: string;
+  payload?: { id: string; fromState: number; toState: number };
+};
 const DELETABLE_LOG_STATUSES = new Set([0, 1, 2]);
+const CHAIN_DELETE_SKIP_STATUSES = new Set([3, 4]); // 已执行完成 / 任务取消
+const TELECONTROL_CHAIN_DELETE_URL = 'http://ttnonc-webui.cyk3.yhroot.com/v2/api/telecontrol/chain/delete';
+const TELECONTROL_TOKEN_URL = 'http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token';
+const TELECONTROL_CREDENTIALS = {
+  username: '02ptemplate@yinhe.ht',
+  password: '123456',
+  loginType: 2,
+};
 
 @Provide()
 export class TaskLogTaskManageService extends BaseService {
+  @Inject()
+  logger: ILogger;
+  private tokenCache: { ts: number; token: string } | null = null;
   @InjectEntityModel(TaskAs02Entity)
   taskAs02Entity: Repository<TaskAs02Entity>;
 
@@ -37,6 +61,12 @@ export class TaskLogTaskManageService extends BaseService {
 
   @InjectEntityModel(TaskLogTransmitAs03Entity)
   taskLogTransmitAs03Entity: Repository<TaskLogTransmitAs03Entity>;
+
+  @InjectEntityModel(TaskLogDeleteAs02Entity)
+  taskLogDeleteAs02Entity: Repository<TaskLogDeleteAs02Entity>;
+
+  @InjectEntityModel(TaskLogDeleteAs03Entity)
+  taskLogDeleteAs03Entity: Repository<TaskLogDeleteAs03Entity>;
 
   @InjectEntityModel(as02payloadtableEntity)
   as02PayloadEntity: Repository<as02payloadtableEntity>;
@@ -59,7 +89,8 @@ export class TaskLogTaskManageService extends BaseService {
     type?: string;
     time?: string | number | Date;
     times?: Array<string | number | Date>;
-  }): Promise<{ count: number }> {
+  }): Promise<{ count: number; warnings?: string[]; telecontrolDeletes?: TelecontrolDeleteResult[] }> {
+    this.logger?.info?.('[task-manage] delete request: %s', JSON.stringify(param || {}));
     const ids = Array.isArray(param?.ids)
       ? param.ids
       : param?.ids != null
@@ -73,8 +104,8 @@ export class TaskLogTaskManageService extends BaseService {
         .map((t) => (t instanceof Date ? t : new Date(t as any)))
         .filter((d) => Number.isFinite(d.getTime()));
       const type = String(param?.type || '').toLowerCase();
-      if (parsedTimes.length && (type === 'imaging' || type === 'transfer')) {
-        return this.deleteByTimes(satellite, type as 'imaging' | 'transfer', parsedTimes);
+      if (parsedTimes.length && (type === 'imaging' || type === 'transfer' || type === 'delete')) {
+        return this.deleteByTimes(satellite, type as 'imaging' | 'transfer' | 'delete', parsedTimes);
       }
       return { count: 0 };
     }
@@ -95,34 +126,114 @@ export class TaskLogTaskManageService extends BaseService {
 
   private async deleteByTimes(
     satellite: string,
-    type: 'imaging' | 'transfer',
+    type: 'imaging' | 'transfer' | 'delete',
     times: Date[]
-  ): Promise<{ count: number }> {
+  ): Promise<{ count: number; warnings?: string[]; telecontrolDeletes?: TelecontrolDeleteResult[] }> {
     const repo = satellite === 'AS03' ? this.taskAs03Entity : this.taskAs02Entity;
     let deleted = 0;
+    const warnings: string[] = [];
+    const telecontrolDeletes: TelecontrolDeleteResult[] = [];
     for (const time of times) {
       const { start, end } = this.buildTimeRange(time);
       if (type === 'imaging') {
         if (satellite === 'AS03') {
+          try {
+            telecontrolDeletes.push(
+              ...(await this.deleteTelecontrolChainsByTime(
+                this.taskLogImagingAs03Entity,
+                'imagingTime',
+                time,
+                'commandChainId',
+                5 * 60 * 1000
+              ))
+            );
+          } catch (err: any) {
+            warnings.push(`AS03 成像链删除异常（已忽略）：${err?.message || err}`);
+          }
           const logCount = await this.deleteImagingLogsAs03(time);
-          if (!logCount) continue;
-          await this.rollbackFixedStorageAs03(time);
+          if (!logCount) {
+            warnings.push(`AS03 成像日志未找到，仍继续删除任务记录：${time.toISOString?.() ?? String(time)}`);
+          } else {
+            try {
+              await this.rollbackFixedStorageAs03(time);
+            } catch (err: any) {
+              warnings.push(`AS03 成像固存回退失败，已继续删除任务记录：${err?.message || err}`);
+            }
+          }
         } else {
+          try {
+            telecontrolDeletes.push(
+              ...(await this.deleteTelecontrolChainsByTime(
+                this.taskLogImagingAs02Entity,
+                'imagingTime',
+                time,
+                'commandChainId'
+              ))
+            );
+          } catch (err: any) {
+            warnings.push(`AS02 成像链删除异常（已忽略）：${err?.message || err}`);
+          }
           const logCount = await this.deleteImagingLogsAs02(time);
-          if (!logCount) continue;
-          await this.rollbackFixedStorageAs02(time);
+          if (!logCount) {
+            warnings.push(`AS02 成像日志未找到，仍继续删除任务记录：${time.toISOString?.() ?? String(time)}`);
+          } else {
+            try {
+              await this.rollbackFixedStorageAs02(time);
+            } catch (err: any) {
+              warnings.push(`AS02 成像固存回退失败，已继续删除任务记录：${err?.message || err}`);
+            }
+          }
         }
         const res = await repo.delete({ imagingTime: Between(start, end) } as any);
         deleted += res?.affected || 0;
-      } else {
+      } else if (type === 'transfer') {
         if (satellite === 'AS03') {
+          try {
+            telecontrolDeletes.push(
+              ...(await this.deleteTelecontrolChainsByTime(
+                this.taskLogTransmitAs03Entity,
+                'transmitTime',
+                time,
+                'commandChainId',
+                5 * 60 * 1000
+              ))
+            );
+          } catch (err: any) {
+            warnings.push(`AS03 数传链删除异常（已忽略）：${err?.message || err}`);
+          }
           const { count: logCount, ranges } = await this.deleteTransferLogsAs03(time);
-          if (!logCount) continue;
-          await this.rollbackTransferFilesAs03(ranges);
+          if (!logCount) {
+            warnings.push(`AS03 数传日志未找到，仍继续删除任务记录：${time.toISOString?.() ?? String(time)}`);
+          } else {
+            try {
+              await this.rollbackTransferFilesAs03(ranges);
+            } catch (err: any) {
+              warnings.push(`AS03 数传固存回退失败，已继续删除任务记录：${err?.message || err}`);
+            }
+          }
         } else {
+          try {
+            telecontrolDeletes.push(
+              ...(await this.deleteTelecontrolChainsByTime(
+                this.taskLogTransmitAs02Entity,
+                'transmitTime',
+                time,
+                'commandChainId'
+              ))
+            );
+          } catch (err: any) {
+            warnings.push(`AS02 数传链删除异常（已忽略）：${err?.message || err}`);
+          }
           const { count: logCount, ranges } = await this.deleteTransferLogsAs02(time);
-          if (!logCount) continue;
-          await this.rollbackTransferFilesAs02(ranges);
+          if (!logCount) {
+            warnings.push(`AS02 数传日志未找到，仍继续删除任务记录：${time.toISOString?.() ?? String(time)}`);
+          } else {
+            try {
+              await this.rollbackTransferFilesAs02(ranges);
+            } catch (err: any) {
+              warnings.push(`AS02 数传固存回退失败，已继续删除任务记录：${err?.message || err}`);
+            }
+          }
         }
         const res = await repo.update(
           { transferTime: Between(start, end) } as any,
@@ -134,23 +245,67 @@ export class TaskLogTaskManageService extends BaseService {
           }
         );
         deleted += res?.affected || 0;
+      } else {
+        if (satellite === 'AS03') {
+          try {
+            telecontrolDeletes.push(
+              ...(await this.deleteTelecontrolChainsByTime(
+                this.taskLogDeleteAs03Entity,
+                'taskExecutionTime',
+                time,
+                'deleteCommandChainId',
+                5 * 60 * 1000
+              ))
+            );
+          } catch (err: any) {
+            warnings.push(`AS03 删除链删除异常（已忽略）：${err?.message || err}`);
+          }
+          const logCount = await this.deleteDeleteLogsAs03(time);
+          if (!logCount) {
+            warnings.push(`AS03 删除日志未找到，仍继续删除任务记录：${time.toISOString?.() ?? String(time)}`);
+          }
+          deleted += logCount;
+        } else {
+          try {
+            telecontrolDeletes.push(
+              ...(await this.deleteTelecontrolChainsByTime(
+                this.taskLogDeleteAs02Entity,
+                'taskExecutionTime',
+                time,
+                'deleteCommandChainId'
+              ))
+            );
+          } catch (err: any) {
+            warnings.push(`AS02 删除链删除异常（已忽略）：${err?.message || err}`);
+          }
+          const logCount = await this.deleteDeleteLogsAs02(time);
+          if (!logCount) {
+            warnings.push(`AS02 删除日志未找到，仍继续删除任务记录：${time.toISOString?.() ?? String(time)}`);
+          }
+          deleted += logCount;
+        }
       }
     }
-    return { count: deleted };
+    const base = { count: deleted };
+    const withWarnings = warnings.length ? { ...base, warnings } : base;
+    return telecontrolDeletes.length ? { ...withWarnings, telecontrolDeletes } : withWarnings;
   }
 
-  private async deleteAs02(ids: number[]): Promise<{ count: number }> {
+  private async deleteAs02(ids: number[]): Promise<{ count: number; telecontrolDeletes?: TelecontrolDeleteResult[] }> {
     const tasks = await this.taskAs02Entity.find({ where: { id: In(ids) } });
     if (!tasks.length) return { count: 0 };
+    const telecontrolDeletes: TelecontrolDeleteResult[] = [];
 
     for (const task of tasks) {
       if (task.imagingTime) {
+        telecontrolDeletes.push(...(await this.deleteTelecontrolChainsByTime(this.taskLogImagingAs02Entity, 'imagingTime', task.imagingTime, 'commandChainId')));
         const logCount = await this.deleteImagingLogsAs02(task.imagingTime);
         if (logCount) {
           await this.rollbackFixedStorageAs02(task.imagingTime, task.imagingUID || undefined);
         }
       }
       if (task.transferTime) {
+        telecontrolDeletes.push(...(await this.deleteTelecontrolChainsByTime(this.taskLogTransmitAs02Entity, 'transmitTime', task.transferTime, 'commandChainId')));
         const { count: logCount, ranges } = await this.deleteTransferLogsAs02(task.transferTime);
         if (logCount) {
           await this.rollbackTransferFilesAs02(ranges);
@@ -159,21 +314,271 @@ export class TaskLogTaskManageService extends BaseService {
     }
 
     await this.taskAs02Entity.delete({ id: In(ids) });
-    return { count: tasks.length };
+    return telecontrolDeletes.length ? { count: tasks.length, telecontrolDeletes } : { count: tasks.length };
   }
 
-  private async deleteAs03(ids: number[]): Promise<{ count: number }> {
+  async updateCommandChainId(param: {
+    satellite?: string;
+    type?: 'image' | 'transfer' | 'delete';
+    time?: string | number | Date;
+    commandChainId?: string;
+    toleranceMs?: number;
+    force?: boolean;
+  }): Promise<{ updated: number }> {
+    const satellite = String(param?.satellite || '').toUpperCase();
+    const type = String(param?.type || '').toLowerCase() as 'image' | 'transfer' | 'delete';
+    const rawTime = param?.time;
+    const commandChainId = param?.commandChainId ? String(param.commandChainId) : '';
+    if (!satellite || !['AS02', 'AS03'].includes(satellite)) {
+      return { updated: 0 };
+    }
+    if (!type || !['image', 'transfer', 'delete'].includes(type)) {
+      return { updated: 0 };
+    }
+    if (!rawTime || !commandChainId) {
+      return { updated: 0 };
+    }
+    const time = rawTime instanceof Date ? rawTime : new Date(rawTime as any);
+    if (!Number.isFinite(time.getTime())) {
+      return { updated: 0 };
+    }
+    const toleranceMs = Number.isFinite(param?.toleranceMs) ? Number(param?.toleranceMs) : 1000;
+    const { start, end } = this.buildTimeRange(time, toleranceMs);
+
+    if (type === 'image') {
+      const repo = satellite === 'AS03' ? this.taskLogImagingAs03Entity : this.taskLogImagingAs02Entity;
+      const row: any = await repo.findOne({ where: { satelliteCode: satellite, imagingTime: Between(start, end) } as any });
+      if (!row) return { updated: 0 };
+      const merged = param?.force
+        ? JSON.stringify([commandChainId])
+        : this.mergeCommandChainIds(row.commandChainId, commandChainId);
+      if (row.commandChainId === merged) return { updated: 0 };
+      await repo.update({ id: row.id } as any, { commandChainId: merged } as any);
+      return { updated: 1 };
+    }
+
+    if (type === 'transfer') {
+      const repo = satellite === 'AS03' ? this.taskLogTransmitAs03Entity : this.taskLogTransmitAs02Entity;
+      const row: any = await repo.findOne({ where: { satelliteCode: satellite, transmitTime: Between(start, end) } as any });
+      if (!row) return { updated: 0 };
+      const merged = param?.force
+        ? JSON.stringify([commandChainId])
+        : this.mergeCommandChainIds(row.commandChainId, commandChainId);
+      if (row.commandChainId === merged) return { updated: 0 };
+      await repo.update({ id: row.id } as any, { commandChainId: merged } as any);
+      return { updated: 1 };
+    }
+
+    const repo = satellite === 'AS03' ? this.taskLogDeleteAs03Entity : this.taskLogDeleteAs02Entity;
+    const row: any = await repo.findOne({ where: { satelliteCode: satellite, taskExecutionTime: Between(start, end) } as any });
+    if (!row) return { updated: 0 };
+    const merged = param?.force
+      ? JSON.stringify([commandChainId])
+      : this.mergeCommandChainIds(row.deleteCommandChainId, commandChainId);
+    if (row.deleteCommandChainId === merged) return { updated: 0 };
+    await repo.update({ id: row.id } as any, { deleteCommandChainId: merged } as any);
+    return { updated: 1 };
+  }
+
+  private mergeCommandChainIds(current: string | undefined | null, incoming: string): string {
+    const ids = this.parseCommandChainIds(current);
+    const next = String(incoming || '').trim();
+    if (next && !ids.includes(next)) {
+      ids.push(next);
+    }
+    return JSON.stringify(ids);
+  }
+
+  private parseCommandChainIds(value: string | undefined | null): string[] {
+    if (!value) return [];
+    const raw = String(value).trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((v) => String(v)).filter(Boolean);
+      }
+    } catch {
+      // fall through to split
+    }
+    return raw
+      .split(/[,\s;]+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+
+  private async deleteTelecontrolChainsFromRows<T extends { status?: number }>(
+    rows: T[],
+    field: keyof T & string
+  ): Promise<TelecontrolDeleteResult[]> {
+    const ids = new Set<string>();
+    let skippedByStatus = 0;
+    let emptyIdRows = 0;
+    for (const row of rows) {
+      const status = Number((row as any)?.status);
+      if (CHAIN_DELETE_SKIP_STATUSES.has(status)) {
+        skippedByStatus += 1;
+        continue;
+      }
+      const raw = (row as any)?.[field];
+      const list = this.parseCommandChainIds(raw);
+      if (!list.length) {
+        emptyIdRows += 1;
+      }
+      for (const id of list) {
+        if (id) ids.add(id);
+      }
+    }
+    this.logger?.info?.(
+      '[task-manage] telecontrol delete candidates: %s',
+      JSON.stringify({
+        rows: rows.length,
+        skippedByStatus,
+        emptyIdRows,
+        totalIds: ids.size,
+        ids: Array.from(ids),
+      })
+    );
+    if (!ids.size) return [];
+    let token = '';
+    try {
+      token = await this.fetchTelecontrolToken();
+    } catch (err) {
+      const message = (err as any)?.message || String(err);
+      this.logger?.warn?.('[task-manage] telecontrol token fetch failed: %s', message);
+      return Array.from(ids).map((id) => ({
+        id,
+        ok: false,
+        error: message,
+        url: TELECONTROL_CHAIN_DELETE_URL,
+        payload: { id, fromState: 1, toState: 2 },
+      }));
+    }
+    const results: TelecontrolDeleteResult[] = [];
+    for (const id of ids) {
+      try {
+        this.logger?.info?.(
+          '[task-manage] telecontrol delete request: %s',
+          JSON.stringify({ id, fromState: 1, toState: 2 })
+        );
+        this.logger?.info?.(
+          '[task-manage] telecontrol delete url: %s',
+          TELECONTROL_CHAIN_DELETE_URL
+        );
+        const resp = await axios.post(
+          TELECONTROL_CHAIN_DELETE_URL,
+          { id, fromState: 1, toState: 2 },
+          { headers: { 'Content-Type': 'application/json', 'x-web-token': token } }
+        );
+        this.logger?.info?.(
+          '[task-manage] telecontrol delete ok: %s',
+          JSON.stringify({ id, status: resp?.status, data: resp?.data })
+        );
+        results.push({
+          id,
+          ok: true,
+          status: resp?.status,
+          data: resp?.data,
+          url: TELECONTROL_CHAIN_DELETE_URL,
+          payload: { id, fromState: 1, toState: 2 },
+        });
+      } catch (err) {
+        // 删除测运控链失败不阻断本地删除
+        // 仅记录在日志系统中，便于后续排查
+        const message = (err as any)?.message || String(err);
+        await this.logStorageUpdate({
+          tableName: 'telecontrol_chain',
+          action: 'task_manage.delete_chain',
+          target: { id },
+          change: { fromState: 1, toState: 2 },
+          dataSource: { error: message },
+          remark: 'delete telecontrol chain failed',
+        });
+        this.logger?.warn?.('[task-manage] telecontrol delete failed: %s', id, err as any);
+        results.push({
+          id,
+          ok: false,
+          error: message,
+          url: TELECONTROL_CHAIN_DELETE_URL,
+          payload: { id, fromState: 1, toState: 2 },
+        });
+      }
+    }
+    return results;
+  }
+
+  private async deleteTelecontrolChainsByTime<T extends { status?: number }>(
+    repo: Repository<T>,
+    timeField: keyof T & string,
+    time: Date,
+    idField: keyof T & string,
+    toleranceMs = 1000
+  ): Promise<TelecontrolDeleteResult[]> {
+    const { start, end } = this.buildTimeRange(time, toleranceMs);
+    this.logger?.info?.(
+      '[task-manage] telecontrol delete scan: %s',
+      JSON.stringify({
+        timeField,
+        from: start?.toISOString?.() ?? String(start),
+        to: end?.toISOString?.() ?? String(end),
+      })
+    );
+    const rows = await repo.find({ where: { [timeField]: Between(start, end) } as any });
+    if (!rows.length) {
+      this.logger?.warn?.('[task-manage] telecontrol delete scan empty: %s', String(time));
+      return [];
+    }
+    return this.deleteTelecontrolChainsFromRows(rows, idField);
+  }
+
+  private async fetchTelecontrolToken(): Promise<string> {
+    const now = Date.now();
+    if (this.tokenCache && now - this.tokenCache.ts < 5 * 60 * 1000) {
+      return this.tokenCache.token;
+    }
+    const resp = await axios.post(TELECONTROL_TOKEN_URL, TELECONTROL_CREDENTIALS, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = resp?.data;
+    const token = data?.data?.token ?? data?.token ?? data?.data;
+    if (!token) {
+      this.logger?.warn?.(
+        '[task-manage] telecontrol token missing: %s',
+        JSON.stringify({ status: resp?.status, data })
+      );
+      throw new Error('telecontrol token missing');
+    }
+    this.tokenCache = { ts: now, token };
+    return token;
+  }
+
+  private async deleteAs03(ids: number[]): Promise<{ count: number; telecontrolDeletes?: TelecontrolDeleteResult[] }> {
     const tasks = await this.taskAs03Entity.find({ where: { id: In(ids) } });
     if (!tasks.length) return { count: 0 };
+    const telecontrolDeletes: TelecontrolDeleteResult[] = [];
 
     for (const task of tasks) {
       if (task.imagingTime) {
+        telecontrolDeletes.push(...(await this.deleteTelecontrolChainsByTime(
+          this.taskLogImagingAs03Entity,
+          'imagingTime',
+          task.imagingTime,
+          'commandChainId',
+          5 * 60 * 1000
+        )));
         const logCount = await this.deleteImagingLogsAs03(task.imagingTime);
         if (logCount) {
           await this.rollbackFixedStorageAs03(task.imagingTime, task.imagingUID || undefined);
         }
       }
       if (task.transferTime) {
+        telecontrolDeletes.push(...(await this.deleteTelecontrolChainsByTime(
+          this.taskLogTransmitAs03Entity,
+          'transmitTime',
+          task.transferTime,
+          'commandChainId',
+          5 * 60 * 1000
+        )));
         const { count: logCount, ranges } = await this.deleteTransferLogsAs03(task.transferTime);
         if (logCount) {
           await this.rollbackTransferFilesAs03(ranges);
@@ -182,7 +587,7 @@ export class TaskLogTaskManageService extends BaseService {
     }
 
     await this.taskAs03Entity.delete({ id: In(ids) });
-    return { count: tasks.length };
+    return telecontrolDeletes.length ? { count: tasks.length, telecontrolDeletes } : { count: tasks.length };
   }
 
   private async deleteImagingLogsAs02(imagingTime: Date): Promise<number> {
@@ -200,6 +605,24 @@ export class TaskLogTaskManageService extends BaseService {
     if (!rows.length) return 0;
     this.assertDeletableLogStatus(rows, 'imaging');
     await this.taskLogImagingAs03Entity.delete({ imagingTime: Between(start, end) });
+    return rows.length;
+  }
+
+  private async deleteDeleteLogsAs02(taskTime: Date): Promise<number> {
+    const { start, end } = this.buildTimeRange(taskTime);
+    const rows = await this.taskLogDeleteAs02Entity.find({ where: { taskExecutionTime: Between(start, end) } });
+    if (!rows.length) return 0;
+    this.assertDeletableLogStatus(rows, 'delete');
+    await this.taskLogDeleteAs02Entity.delete({ taskExecutionTime: Between(start, end) });
+    return rows.length;
+  }
+
+  private async deleteDeleteLogsAs03(taskTime: Date): Promise<number> {
+    const { start, end } = this.buildTimeRange(taskTime);
+    const rows = await this.taskLogDeleteAs03Entity.find({ where: { taskExecutionTime: Between(start, end) } });
+    if (!rows.length) return 0;
+    this.assertDeletableLogStatus(rows, 'delete');
+    await this.taskLogDeleteAs03Entity.delete({ taskExecutionTime: Between(start, end) });
     return rows.length;
   }
 
@@ -333,10 +756,10 @@ export class TaskLogTaskManageService extends BaseService {
     }
   }
 
-  private assertDeletableLogStatus(rows: Array<{ status?: number }>, type: 'imaging' | 'transfer') {
+  private assertDeletableLogStatus(rows: Array<{ status?: number }>, type: 'imaging' | 'transfer' | 'delete') {
     const blocked = rows.filter((row) => !DELETABLE_LOG_STATUSES.has(Number(row?.status)));
     if (blocked.length) {
-      const label = type === 'transfer' ? '数传' : '成像';
+      const label = type === 'transfer' ? 'transfer' : type === 'delete' ? 'delete' : 'imaging';
       throw new Error(`仅允许删除指令已生成/已挂载/已上注的${label}任务`);
     }
   }

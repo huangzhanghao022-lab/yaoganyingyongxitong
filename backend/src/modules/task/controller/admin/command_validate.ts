@@ -12,4 +12,10 @@ export class CommandValidateController extends BaseController {
     const result = await this.commandValidateService.validate(body);
     return this.ok(result);
   }
+
+  @Post('/submit')
+  async submit(@Body() body: any) {
+    const result = await this.commandValidateService.submit(body);
+    return this.ok(result);
+  }
 }
