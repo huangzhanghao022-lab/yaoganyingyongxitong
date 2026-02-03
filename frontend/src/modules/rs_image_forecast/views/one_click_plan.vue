@@ -1169,7 +1169,7 @@ function mapStorageRow(item: Record<string, any>): StorageRow {
 		display,
 		startFileNo: String(startFileNo ?? "-") || "-",
 		status,
-		statusLabel: status != null ? (storageStatusDict[status] || `ç¶æ${status}`) : "-",
+		statusLabel: status != null ? (storageStatusDict[status] || `状态${status}`) : "-",
 		executionTime,
 		raw: item,
 	};
@@ -1613,7 +1613,7 @@ async function runOneClickPlan() {
 				return Math.abs(rollNum) <= rollLimitVal;
 			});
 
-		// é¢„å…ˆè®¡ç®—æ•°ä¼ /åˆ é™¤ä»»åŠ¡ï¼Œä¾›ä½Žä¼˜å…ˆçº§ç­›é€‰æ—¶å›ºå®šé¢„ç•™çª—å£
+		
 		const excludeStarts = new Set<number>();
 		if (taskSwitches.transfer && form.value.satellite === "AS02") {
 			let need = Math.max(1, Number(transferTaskCount.value) || 1);
@@ -3048,20 +3048,65 @@ async function updateFixedStorageSlot(
 	await api.update({ name, data: payload });
 }
 
-async function postTemplate(body: Record<string, any>, token: string, type: "image" | "transfer" | "delete" = "image") {
-	await validateCommandRequest(type, String(body.spacecraftCode || form.value.satellite || ""), body);
-	const resp = await fetch(TRANSFER_API_URL, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"x-web-token": token,
-		},
-		body: JSON.stringify(body),
-	});
-	if (!resp.ok) {
-		const txt = await resp.text();
-		throw new Error(txt || `HTTP ${resp.status}`);
+async function recordCommandChainId(
+	type: "image" | "transfer" | "delete",
+	satellite: string,
+	timeValue: string | undefined,
+	respData: any
+) {
+	const ids = respData?.data?.ids || respData?.ids || [];
+	const commandChainId = Array.isArray(ids) ? ids[0] : ids;
+	if (!commandChainId || !timeValue) return;
+	try {
+		await request({
+			url: `${appConfig.baseUrl}/admin/task_log/task_manage/command_chain`,
+			method: "POST",
+			data: {
+				satellite,
+				type,
+				time: timeValue,
+				commandChainId: String(commandChainId),
+			},
+			NProgress: false,
+		} as any);
+	} catch (err) {
+		console.warn("[one-click-plan] record commandChainId failed", err);
 	}
+}
+
+async function postTemplate(
+	body: Record<string, any>,
+	token: string,
+	type: "image" | "transfer" | "delete" = "image",
+	timeForLog?: string
+) {
+	const payload = {
+		type,
+		satellite: String(body.spacecraftCode || form.value.satellite || ""),
+		params: body,
+		taskTime:
+			timeForLog ||
+			body.startAt ||
+			body.t0 ||
+			body.start_time ||
+			body.startTime ||
+			body.transmitTime ||
+			body.taskExecutionTime ||
+			body.imagingTime ||
+			body.tf,
+	};
+	const res = await request({
+		url: `${appConfig.baseUrl}/admin/task/command/submit`,
+		method: "POST",
+		data: payload,
+		NProgress: false,
+	} as any);
+	const result = (res as any)?.data ?? res;
+	if (result?.ok === false && Array.isArray(result?.errors)) {
+		const msg = result.errors.map((e: any) => `${e.field}: ${e.message}`).join("锛?");
+		throw new Error(msg || "鎸囦护鍙傛暟鏍￠獙/鎻愪氦澶辫触");
+	}
+	return result?.data ?? result;
 }
 
 type Range = { start: number; end: number };
@@ -3415,7 +3460,8 @@ async function submitAs03ImagingTask(
 		},
 	];
 	for (const body of bodies) {
-		await postTemplate(body, token);
+		const timeForLog = startIso;
+		await postTemplate(body, token, "image", timeForLog);
 	}
 	try {
 		await updateFixedStorageSlot(2, slot, item, { imagingTime: startIso, executingTime: startIso });
@@ -3490,7 +3536,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 				fileStart: String(slotNo),
 				imagingUid,
 			};
-			await postTemplate(body, token);
+			await postTemplate(body, token, "image", body.startAt);
 			success += 1;
 			try {
 				await updateFixedStorageSlot(0, slot, item, { imagingTime: startIso, executingTime: startIso });
@@ -3554,7 +3600,7 @@ async function submitDataTransferTask(
 	const startSeq = Number.isFinite(Number(startSeqRaw)) ? Number(startSeqRaw) : Number(absStartSeq.value) || 3;
 	const resetSeq = task.raw?.resetSeq ?? Boolean(reloadTableFlag.value);
 	const body = buildTransferBody(satellite, groups, geo, t0Iso, startSeq, resetSeq);
-	await postTemplate(body, token, "transfer");
+	await postTemplate(body, token, "transfer", t0Iso);
 	const consumption = satellite === "AS03" ? groups.length + 5 : groups.length + 2;
 	const lastSeq = startSeq + consumption - 1;
 
@@ -3625,7 +3671,7 @@ async function submitDeleteTasks(token: string, baseSeq: number | null) {
 			throw new Error("删除任务开始时间无效");
 		}
 		const body = buildDeleteBody({ start: deleteStart, end: deleteEnd }, startIso, currentSeq);
-		await postTemplate(body, token, "delete");
+		await postTemplate(body, token, "delete", startIso);
 		const fileCount = Number(task.raw?.count ?? task.deleteFiles?.length ?? 1);
 		const consumption = 3 + (Number.isFinite(fileCount) ? fileCount : 1);
 		currentSeq += consumption;

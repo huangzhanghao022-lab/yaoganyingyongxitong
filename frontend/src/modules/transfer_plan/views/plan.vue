@@ -1299,6 +1299,32 @@ async function validateCommandRequest(
 	}
 }
 
+async function recordCommandChainId(
+	type: 'image' | 'transfer' | 'delete',
+	satellite: string,
+	timeValue: string | undefined,
+	respData: any
+) {
+	const ids = respData?.data?.ids || respData?.ids || [];
+	const commandChainId = Array.isArray(ids) ? ids[0] : ids;
+	if (!commandChainId || !timeValue) return;
+	try {
+		await request({
+			url: `${appConfig.baseUrl}/admin/task_log/task_manage/command_chain`,
+			method: 'POST',
+			data: {
+				satellite,
+				type,
+				time: timeValue,
+				commandChainId: String(commandChainId),
+			},
+			NProgress: false,
+		} as any);
+	} catch (err) {
+		console.warn('[transfer-plan] record commandChainId failed', err);
+	}
+}
+
 async function submitTransferTask() {
 	const satellite = form.satellite;
 	resetTransferNotice();
@@ -1330,18 +1356,21 @@ async function submitTransferTask() {
 		const token = await acquireToken();
 		const body = buildTransferBody(integratedGroups.value);
 		console.log('[transfer-plan] submit payload:', body);
-		await validateCommandRequest('transfer', satellite, body);
-		const resp = await fetch(TRANSFER_API_URL, {
+		const submitRes = await request({
+			url: `${appConfig.baseUrl}/admin/task/command/submit`,
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'x-web-token': token,
+			data: {
+				type: 'transfer',
+				satellite,
+				params: body,
+				taskTime: body.t0 || form.transferT0,
 			},
-			body: JSON.stringify(body),
-		});
-		if (!resp.ok) {
-			const errText = await resp.text();
-			throw new Error(errText || `HTTP ${resp.status}`);
+			NProgress: false,
+		} as any);
+		const submitResult = (submitRes as any)?.data ?? submitRes;
+		if (submitResult?.ok === false) {
+			const msg = (submitResult?.errors || []).map((e) => `${e.field}: ${e.message}`).join('?');
+			throw new Error(msg || '??????');
 		}
 		await updateStorageStatusAfterTransfer(satellite as 'AS02' | 'AS03', integratedGroups.value);
 		const transferUid = await syncTransferAfterSubmit(satellite);

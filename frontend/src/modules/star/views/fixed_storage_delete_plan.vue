@@ -394,19 +394,21 @@ async function createDeleteCommand() {
 	const token = await acquireToken();
 	const body = satellite === "AS03" ? buildDeleteBodyAs03(taskDialog.form) : buildDeleteBodyAs02(taskDialog.form);
 
-	await validateCommandRequest("delete", satellite, body);
-	const resp = await fetch(COMMAND_API_URL, {
+	const submitRes = await request({
+		url: `${appConfig.baseUrl}/admin/task/command/submit`,
 		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"x-web-token": token,
+		data: {
+			type: "delete",
+			satellite,
+			params: body,
+			taskTime: body.start_time || body.t0,
 		},
-		body: JSON.stringify(body),
-	});
-
-	if (!resp.ok) {
-		const txt = await resp.text();
-		throw new Error(txt || `HTTP ${resp.status}`);
+		NProgress: false,
+	} as any);
+	const submitResult = (submitRes as any)?.data ?? submitRes;
+	if (submitResult?.ok === false) {
+		const msg = (submitResult?.errors || []).map((e) => `${e.field}: ${e.message}`).join('?');
+		throw new Error(msg || '??????');
 	}
 
 	ElMessage.success("指令已生成并提交");
@@ -503,6 +505,31 @@ async function validateCommandRequest(type: "image" | "transfer" | "delete", sat
 		}
 	} catch (err: any) {
 		throw new Error(err?.message || "指令参数校验失败");
+	}
+}
+async function recordCommandChainId(
+	type: "image" | "transfer" | "delete",
+	satellite: string,
+	timeValue: string | undefined,
+	respData: any
+) {
+	const ids = respData?.data?.ids || respData?.ids || [];
+	const commandChainId = Array.isArray(ids) ? ids[0] : ids;
+	if (!commandChainId || !timeValue) return;
+	try {
+		await request({
+			url: `${appConfig.baseUrl}/admin/task_log/task_manage/command_chain`,
+			method: "POST",
+			data: {
+				satellite,
+				type,
+				time: timeValue,
+				commandChainId: String(commandChainId),
+			},
+			NProgress: false,
+		} as any);
+	} catch (err) {
+		console.warn("[fixed-storage-delete] record commandChainId failed", err);
 	}
 }
 </script>

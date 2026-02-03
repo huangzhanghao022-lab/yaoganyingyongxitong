@@ -1699,8 +1699,6 @@ async function createWithTemplate() {
   }
 
   creating.value = true;
-  const token = await getToken();
-
   let ok = 0;
   const tasksToRecord: ForecastTaskPayload[] = [];
   const noticeEntries: SubmissionNoticeEntry[] = [];
@@ -1762,16 +1760,19 @@ async function createWithTemplate() {
         fileStart: String(startFileNoMap[i] ?? ''),
       } as any;
 
-      await validateCommandRequest('image', String(body.spacecraftCode || 'AS02'), body);
-      const resp = await fetch('http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template', {
+      const submitRes = await request({
+        url: `${appConfig.baseUrl}/admin/task/command/submit`,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-web-token': token,
+        data: {
+          type: 'image',
+          satellite: String(body.spacecraftCode || 'AS02'),
+          params: body,
+          taskTime: body.startAt,
         },
-        body: JSON.stringify(body),
-      });
-      if (resp.ok) {
+        NProgress: false,
+      } as any);
+      const submitResult = (submitRes as any)?.data ?? submitRes;
+      if (submitResult?.ok !== false) {
         ok += 1;
         try {
           await updateAs02FixedStorage(String(body.fileStart || ''), row);
@@ -1898,8 +1899,6 @@ async function createWithTemplateAS03() {
   }
 
   creating.value = true;
-  const token = await getToken();
-
     let ok = 0;
     let total = 0;
     const tasksToRecord: ForecastTaskPayload[] = [];
@@ -1982,16 +1981,19 @@ async function createWithTemplateAS03() {
       let rowSuccess = true;
       for (const body of bodies) {
         total += 1;
-        await validateCommandRequest('image', String(body.spacecraftCode || 'AS03'), body);
-        const resp = await fetch('http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template', {
+        const submitRes = await request({
+          url: `${appConfig.baseUrl}/admin/task/command/submit`,
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-web-token': token,
+          data: {
+            type: 'image',
+            satellite: String(body.spacecraftCode || 'AS03'),
+            params: body,
+            taskTime: t0,
           },
-          body: JSON.stringify(body),
-        });
-        if (resp.ok) {
+          NProgress: false,
+        } as any);
+        const submitResult = (submitRes as any)?.data ?? submitRes;
+        if (submitResult?.ok !== false) {
           ok += 1;
         } else {
           rowSuccess = false;
@@ -2375,6 +2377,32 @@ async function validateCommandRequest(
     }
   } catch (err: any) {
     throw new Error(err?.message || '指令参数校验失败');
+  }
+}
+
+async function recordCommandChainId(
+  type: 'image' | 'transfer' | 'delete',
+  satellite: string,
+  timeValue: string | undefined,
+  respData: any
+) {
+  const ids = respData?.data?.ids || respData?.ids || [];
+  const commandChainId = Array.isArray(ids) ? ids[0] : ids;
+  if (!commandChainId || !timeValue) return;
+  try {
+    await request({
+      url: `${appConfig.baseUrl}/admin/task_log/task_manage/command_chain`,
+      method: 'POST',
+      data: {
+        satellite,
+        type,
+        time: timeValue,
+        commandChainId: String(commandChainId),
+      },
+      NProgress: false,
+    } as any);
+  } catch (err) {
+    console.warn('[forecast] record commandChainId failed', err);
   }
 }
 </script>

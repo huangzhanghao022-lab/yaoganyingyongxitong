@@ -1403,6 +1403,11 @@ declare namespace Eps {
 		status?: number;
 
 		/**
+		 * 固存回填时间
+		 */
+		storageAppliedAt?: Date;
+
+		/**
 		 * 创建时间
 		 */
 		createTime?: string;
@@ -1448,6 +1453,11 @@ declare namespace Eps {
 		 * 状态
 		 */
 		status?: number;
+
+		/**
+		 * 固存回填时间
+		 */
+		storageAppliedAt?: Date;
 
 		/**
 		 * 创建时间
@@ -1527,6 +1537,11 @@ declare namespace Eps {
 		status?: number;
 
 		/**
+		 * 固存回填时间
+		 */
+		storageAppliedAt?: Date;
+
+		/**
 		 * 创建时间
 		 */
 		createTime?: string;
@@ -1604,6 +1619,11 @@ declare namespace Eps {
 		status?: number;
 
 		/**
+		 * 固存回填时间
+		 */
+		storageAppliedAt?: Date;
+
+		/**
 		 * 创建时间
 		 */
 		createTime?: string;
@@ -1676,6 +1696,11 @@ declare namespace Eps {
 		status?: number;
 
 		/**
+		 * 固存回填时间
+		 */
+		storageAppliedAt?: Date;
+
+		/**
 		 * 创建时间
 		 */
 		createTime?: string;
@@ -1746,6 +1771,11 @@ declare namespace Eps {
 		 * 状态
 		 */
 		status?: number;
+
+		/**
+		 * 固存回填时间
+		 */
+		storageAppliedAt?: Date;
 
 		/**
 		 * 创建时间
@@ -2036,14 +2066,19 @@ declare namespace Eps {
 		validate(data?: any): Promise<any>;
 
 		/**
+		 * submit
+		 */
+		submit(data?: any): Promise<any>;
+
+		/**
 		 * 权限标识
 		 */
-		permission: { validate: string };
+		permission: { validate: string; submit: string };
 
 		/**
 		 * 权限状态
 		 */
-		_permission: { validate: boolean };
+		_permission: { validate: boolean; submit: boolean };
 
 		request: Service["request"];
 	}
@@ -2202,6 +2237,11 @@ declare namespace Eps {
 
 	interface Task_logTask_manage {
 		/**
+		 * command_chain
+		 */
+		command_chain(data?: any): Promise<any>;
+
+		/**
 		 * delete
 		 */
 		delete(data?: any): Promise<any>;
@@ -2209,26 +2249,26 @@ declare namespace Eps {
 		/**
 		 * 权限标识
 		 */
-		permission: { delete: string };
+		permission: { command_chain: string; delete: string };
 
 		/**
 		 * 权限状态
 		 */
-		_permission: { delete: boolean };
+		_permission: { command_chain: boolean; delete: boolean };
 
 		request: Service["request"];
 	}
 
 	interface Task_logDelete_as02 {
 		/**
+		 * delete
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
 		 * 修改
 		 */
 		update(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
 
 		/**
 		 * 分页查询
@@ -2258,8 +2298,8 @@ declare namespace Eps {
 		 * 权限标识
 		 */
 		permission: {
-			update: string;
 			delete: string;
+			update: string;
 			page: string;
 			list: string;
 			info: string;
@@ -2270,8 +2310,8 @@ declare namespace Eps {
 		 * 权限状态
 		 */
 		_permission: {
-			update: boolean;
 			delete: boolean;
+			update: boolean;
 			page: boolean;
 			list: boolean;
 			info: boolean;
@@ -2283,14 +2323,14 @@ declare namespace Eps {
 
 	interface Task_logDelete_as03 {
 		/**
+		 * delete
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
 		 * 修改
 		 */
 		update(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
 
 		/**
 		 * 分页查询
@@ -2320,8 +2360,8 @@ declare namespace Eps {
 		 * 权限标识
 		 */
 		permission: {
-			update: string;
 			delete: string;
+			update: string;
 			page: string;
 			list: string;
 			info: string;
@@ -2332,8 +2372,8 @@ declare namespace Eps {
 		 * 权限状态
 		 */
 		_permission: {
-			update: boolean;
 			delete: boolean;
+			update: boolean;
 			page: boolean;
 			list: boolean;
 			info: boolean;
