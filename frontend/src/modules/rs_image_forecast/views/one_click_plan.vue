@@ -3575,7 +3575,8 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 async function submitDataTransferTask(
 	token: string,
 	task: TimelineItem,
-	startSeqOverride?: number
+	startSeqOverride?: number,
+	resetSeqOverride?: boolean
 ): Promise<number | null> {
 	const satellite = (task.raw?.satellite || task.raw?.spacecraftCode || form.value?.satellite || "AS02") as
 		| "AS02"
@@ -3598,7 +3599,8 @@ async function submitDataTransferTask(
 	const geo = await resolveAntennaGeoById(task.antennaId, token);
 	const startSeqRaw = task.raw?.startSeq ?? task.raw?.start_seq ?? startSeqOverride;
 	const startSeq = Number.isFinite(Number(startSeqRaw)) ? Number(startSeqRaw) : Number(absStartSeq.value) || 3;
-	const resetSeq = task.raw?.resetSeq ?? Boolean(reloadTableFlag.value);
+	const resetSeq =
+		resetSeqOverride ?? task.raw?.resetSeq ?? Boolean(reloadTableFlag.value);
 	const body = buildTransferBody(satellite, groups, geo, t0Iso, startSeq, resetSeq);
 	await postTemplate(body, token, "transfer", t0Iso);
 	const consumption = satellite === "AS03" ? groups.length + 5 : groups.length + 2;
@@ -3856,7 +3858,7 @@ async function submitPlannedTasks() {
 						throw new Error("数传任务开始时间无效");
 					}
 					task.raw = { ...(task.raw || {}), resetSeq, startSeq: currentSeq };
-					const lastSeq = await submitDataTransferTask(token, task, currentSeq);
+					const lastSeq = await submitDataTransferTask(token, task, currentSeq, resetSeq);
 					if (lastSeq != null) {
 						currentSeq = lastSeq;
 					}
@@ -3882,7 +3884,8 @@ async function submitPlannedTasks() {
 					.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
 				for (let i = 0; i < transfers.length; i++) {
 					const startSeq = i === 0 ? Number(absStartSeq.value) || 3 : (lastSeq ?? 3) + 1;
-					lastSeq = await submitDataTransferTask(token, transfers[i], startSeq);
+					const resetSeq = i === 0 ? Boolean(reloadTableFlag.value) : false;
+					lastSeq = await submitDataTransferTask(token, transfers[i], startSeq, resetSeq);
 				}
 			}
 			if (taskSwitches.delete && satellite === "AS02") {

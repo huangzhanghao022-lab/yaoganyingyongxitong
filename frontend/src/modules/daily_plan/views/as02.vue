@@ -315,10 +315,18 @@ const Table = useTable({
 				"delete",
 				{
 					text: t("详情") || "详情",
-					label:"详情",
+					label: "详情",
 					type: "primary",
 					onClick({ scope }: { scope: { row: TelecontrolRecord } }) {
 						openTelemetryDetail(scope.row);
+					},
+				},
+				{
+					text: t("自动补齐数传信息") || "自动补齐数传信息",
+					label: t("自动补齐数传信息") || "自动补齐数传信息",
+					type: "success",
+					onClick({ scope }: { scope: { row: TelecontrolRecord } }) {
+						autoFillTransferInfo(scope.row);
 					},
 				},
 			],
@@ -860,6 +868,276 @@ function normalizeDateString(value: unknown): string | null {
 	if (typeof value === "string") return value.trim() || null;
 	if (value instanceof Date) return value.toISOString().slice(0, 10);
 	return String(value);
+}
+
+type FileRange = { start: number; end: number };
+type ImagingBlock = { start: number; end: number; time: number; text: string };
+
+const TRANSFER_TASK_KEYWORDS = ["监视数传任务", "上注数传任务", "数传任务"];
+const AS02_FILE_GROUP_SIZE = 8;
+
+async function autoFillTransferInfo(row: TelecontrolRecord) {
+	if (!row?.id) {
+		ElMessage.warning(t("请选择有效的记录"));
+		return;
+	}
+	let telemetryText = "";
+	let detailRecord: TelecontrolRecord | null = null;
+	try {
+		const detail = await service.daily_plan.as02.info({ id: row.id });
+		const record = (detail as any)?.data?.info ?? (detail as any)?.data ?? detail;
+		detailRecord = record as TelecontrolRecord;
+		telemetryText = typeof record?.telemetryInfo === "string" ? record.telemetryInfo : "";
+	} catch (err) {
+		console.error("[daily-plan] telemetry info load failed", err);
+		ElMessage.error(t("测控信息加载失败"));
+		return;
+	}
+	if (!telemetryText.trim()) {
+		ElMessage.warning(t("暂无测控信息"));
+		return;
+	}
+	let records: TelecontrolRecord[] = [];
+	try {
+		records = await fetchDailyPlanRecords();
+	} catch (err) {
+		console.error("[daily-plan] daily plan records fetch failed", err);
+		ElMessage.error(t("查询失败"));
+		return;
+	}
+	const imagingBlocks = collectImagingBlocks([detailRecord ?? row, ...records]);
+	if (!imagingBlocks.length) {
+		ElMessage.warning(t("未找到匹配的成像信息"));
+		return;
+	}
+	const result = applyTransferAutoFill(telemetryText, imagingBlocks, AS02_FILE_GROUP_SIZE);
+	if (result.updated === telemetryText) {
+		ElMessage.info(t("无需补齐"));
+		return;
+	}
+	try {
+		await service.daily_plan.as02.update({ id: row.id, telemetryInfo: result.updated });
+		row.telemetryInfo = result.updated;
+		ElMessage.success(t("补齐成功"));
+	} catch (err) {
+		console.error("[daily-plan] telemetry update failed", err);
+		ElMessage.error(t("信息更新失败"));
+	}
+}
+
+async function fetchDailyPlanRecords(): Promise<TelecontrolRecord[]> {
+	const pageSize = 400;
+	let page = 1;
+	const all: TelecontrolRecord[] = [];
+	for (;;) {
+	const res = await service.daily_plan.as02.page({ page, size: pageSize });
+		const list = Array.isArray(res) ? res : (res as any)?.list ?? (res as any)?.data?.list ?? (res as any)?.data ?? [];
+		if (Array.isArray(list) && list.length) {
+			all.push(...list);
+		}
+		const total = (res as any)?.pagination?.total ?? (res as any)?.total ?? all.length;
+		if (!Array.isArray(list) || list.length < pageSize || all.length >= total) {
+			break;
+		}
+		page += 1;
+		if (page > 10) break;
+	}
+	return sortTelecontrolList(all as TelecontrolRecord[]);
+}
+
+function collectImagingBlocks(records: TelecontrolRecord[]): ImagingBlock[] {
+	const blocks: ImagingBlock[] = [];
+	for (const record of records) {
+		const text = typeof record?.telemetryInfo === "string" ? record.telemetryInfo : "";
+		if (!text.trim()) continue;
+		blocks.push(...extractImagingBlocks(text));
+	}
+	return blocks;
+}
+
+function extractImagingBlocks(text: string): ImagingBlock[] {
+	const blocks: ImagingBlock[] = [];
+	const lines = text.split(/\r?\n/);
+	for (let i = 0; i < lines.length; i += 1) {
+		const current = lines[i]?.trim();
+		if (!current) continue;
+		if (!/经度/.test(current) || !/纬度/.test(current)) continue;
+		let detailLine = current;
+		let timeLine = "";
+		if (/记录文件号/.test(current)) {
+			timeLine = current;
+		} else {
+			for (let j = i + 1; j < lines.length; j += 1) {
+				const next = lines[j]?.trim();
+				if (!next) continue;
+				if (/^\d+[.:：]/.test(next) && /任务/.test(next)) break;
+				if (/记录文件号/.test(next)) {
+					timeLine = next;
+					break;
+				}
+			}
+		}
+		if (!timeLine) continue;
+		const range = parseRecordRange(timeLine);
+		if (!range) continue;
+		const imagingTime = parseImagingTime(timeLine);
+		const parts = [detailLine];
+		if (timeLine !== detailLine) {
+			parts.push(timeLine);
+		}
+		blocks.push({
+			start: range.start,
+			end: range.end,
+			time: imagingTime ?? 0,
+			text: parts.join("\n"),
+		});
+	}
+	return blocks;
+}
+
+function parseImagingTime(text: string): number | null {
+	const match = text.match(/成像时间[:：]?\s*([\d]{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
+	if (!match) return null;
+	return parseTimestamp(match[1]);
+}
+
+function parseRecordRange(text: string): FileRange | null {
+	const match = text.match(/记录文件号[:：]?\s*(\d+)(?:\s*[~\-—～]\s*(\d+))?/);
+	if (!match) return null;
+	const start = Number(match[1]);
+	const end = match[2] ? Number(match[2]) : start;
+	if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+	return { start, end };
+}
+
+function applyTransferAutoFill(text: string, imagingBlocks: ImagingBlock[], groupSize: number) {
+	const lines = text.split(/\r?\n/);
+	const output: string[] = [];
+	let appended = 0;
+	let missing = 0;
+	for (let i = 0; i < lines.length; i += 1) {
+		const line = lines[i];
+		output.push(line);
+		if (!isTransferLine(line)) continue;
+		if (hasAutoFillFollowing(lines, i + 1)) {
+			continue;
+		}
+		const ranges = parseTransferRanges(line);
+		if (!ranges.length) continue;
+		const segments = expandRanges(ranges, groupSize);
+		const matched: ImagingBlock[] = [];
+		for (const seg of segments) {
+			const block = imagingBlocks.find((item) => seg.start >= item.start && seg.end <= item.end);
+			if (block) {
+				matched.push(block);
+			} else {
+				missing += 1;
+			}
+		}
+		const unique = dedupeBlocks(matched);
+		if (!unique.length) continue;
+		const appendix = formatImagingAppendix(unique);
+		appended += unique.length;
+		output.push(...appendix);
+	}
+	return { updated: output.join("\n"), appended, missing };
+}
+
+function isTransferLine(line: string): boolean {
+	const trimmed = (line || "").replace(/\s/g, "");
+	if (!trimmed.includes("数传文件号")) return false;
+	return TRANSFER_TASK_KEYWORDS.some((keyword) => trimmed.includes(keyword));
+}
+
+function hasAutoFillFollowing(lines: string[], startIndex: number): boolean {
+	for (let i = startIndex; i < lines.length; i += 1) {
+		const current = lines[i]?.trim();
+		if (!current) continue;
+		if (/^[A-Z]\./.test(current)) return true;
+		if (isTaskHeader(current)) return false;
+	}
+	return false;
+}
+
+function isTaskHeader(line: string): boolean {
+	if (/^\d+[.:：]/.test(line)) return true;
+	if (line.includes("上注") && line.includes("任务")) return true;
+	if (line.includes("数传任务")) return true;
+	if (line.includes("固存删除任务")) return true;
+	return false;
+}
+
+function parseTransferRanges(line: string): FileRange[] {
+	const normalized = String(line)
+		.replace(/\s/g, "")
+		.replace(/[，、；;]/g, ",");
+	let payloadPart = normalized;
+	const payloadIndex = normalized.indexOf("载荷");
+	if (payloadIndex >= 0) {
+		payloadPart = normalized.slice(payloadIndex + 2);
+	}
+	const platformIndex = payloadPart.indexOf("平台");
+	if (platformIndex >= 0) {
+		payloadPart = payloadPart.slice(0, platformIndex);
+	}
+	const after = payloadPart.replace(/^[^0-9]*/, "");
+	if (!after) return [];
+	const tokens = after.split(",").map((item) => item.trim()).filter(Boolean);
+	const ranges: FileRange[] = [];
+	for (const token of tokens) {
+		const rangeMatch = token.match(/(\d+)\s*[~\-—～]\s*(\d+)/);
+		if (rangeMatch) {
+			ranges.push({ start: Number(rangeMatch[1]), end: Number(rangeMatch[2]) });
+			continue;
+		}
+		const singleMatch = token.match(/(\d+)/);
+		if (singleMatch) {
+			const val = Number(singleMatch[1]);
+			ranges.push({ start: val, end: val });
+		}
+	}
+	return ranges.filter((item) => Number.isFinite(item.start) && Number.isFinite(item.end));
+}
+
+function expandRanges(ranges: FileRange[], groupSize: number): FileRange[] {
+	const expanded: FileRange[] = [];
+	const size = Math.max(1, groupSize);
+	for (const range of ranges) {
+		let cursor = range.start;
+		while (cursor <= range.end) {
+			const end = Math.min(range.end, cursor + size - 1);
+			expanded.push({ start: cursor, end });
+			cursor += size;
+		}
+	}
+	return expanded;
+}
+
+function dedupeBlocks(blocks: ImagingBlock[]): ImagingBlock[] {
+	const seen = new Set<string>();
+	const result: ImagingBlock[] = [];
+	for (const block of blocks) {
+		const key = `${block.start}-${block.end}-${block.time}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		result.push(block);
+	}
+	return result;
+}
+
+function formatImagingAppendix(blocks: ImagingBlock[]): string[] {
+	const output: string[] = [];
+	for (let i = 0; i < blocks.length; i += 1) {
+		const label = String.fromCharCode(65 + (i % 26));
+		const lines = blocks[i].text.split(/\r?\n/);
+		if (!lines.length) continue;
+		const first = `${label}.${lines[0].trim()}`;
+		output.push(first);
+		for (let j = 1; j < lines.length; j += 1) {
+			if (lines[j]?.trim()) output.push(lines[j]);
+		}
+	}
+	return output;
 }
 </script>
 
