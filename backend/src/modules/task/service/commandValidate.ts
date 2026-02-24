@@ -572,6 +572,11 @@ export class CommandValidateService {
 
   /** 成功校验后写入任务记录表（不同类型/星分流） */
   private async saveTaskLog(sat: Sat, type: CommandType, params: any, time: Date, commandChainId?: any) {
+    const taskLogMeta = this.getTaskLogMeta(params);
+    const forecastMeta = taskLogMeta?.forecast || taskLogMeta?.imageForecast || taskLogMeta?.image || {};
+    const fileMeta = taskLogMeta?.file || taskLogMeta?.files || {};
+    const stationMeta = taskLogMeta?.station || taskLogMeta?.transferStation || {};
+    const deleteMeta = taskLogMeta?.delete || taskLogMeta?.deleteTask || {};
     switch (type) {
       case 'image':
         if (sat === 'AS02') {
@@ -586,16 +591,34 @@ export class CommandValidateService {
           const entity = new TaskLogImagingAs02Entity();
           entity.satelliteCode = sat;
           entity.imagingTargetName = this.stripTimeSuffix(
-            this.pickString(params, ['imagingTargetName', 'targetName', 'name'], '') || ''
+            this.pickStringFromSources([forecastMeta, taskLogMeta, params], ['imagingTargetName', 'targetName', 'name'], '') || ''
           );
           entity.imagingTime = time;
-          entity.cloudCoverage = this.pickNumber(params, ['cloudCoverage', 'cloud']);
-          entity.sideSwingAngle = this.pickNumber(params, ['rollAng', 'side_swipe_angle', 'sideSwipeAngle']);
-          entity.targetLongitude = this.pickNumber(params, ['longitude', 'long', 'lng']);
-          entity.targetLatitude = this.pickNumber(params, ['latitude', 'lat']);
+          entity.cloudCoverage = this.pickNumberFromSources([forecastMeta, taskLogMeta, params], ['cloudCoverage', 'cloud']);
+          entity.sideSwingAngle = this.pickNumberFromSources([forecastMeta, taskLogMeta, params], ['rollAng', 'side_swipe_angle', 'sideSwipeAngle']);
+          entity.targetLongitude = this.pickNumberFromSources([forecastMeta, taskLogMeta, params], [
+            'targetLongitude',
+            'targetLon',
+            'longitude',
+            'long',
+            'lng',
+          ]);
+          entity.targetLatitude = this.pickNumberFromSources([forecastMeta, taskLogMeta, params], [
+            'targetLatitude',
+            'targetLat',
+            'latitude',
+            'lat',
+          ]);
           entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
-          entity.startFileNo = this.pickNumber(params, ['fileStart', 'startFileNo', 'start_file', 'recordFileNo', 'recordFileNumber', 'fileNo']);
-          entity.endFileNo = this.pickNumber(params, ['endFileNo', 'end_file']);
+          entity.startFileNo = this.pickNumberFromSources([fileMeta, taskLogMeta, params], [
+            'startFileNo',
+            'fileStart',
+            'start_file',
+            'recordFileNo',
+            'recordFileNumber',
+            'fileNo',
+          ]);
+          entity.endFileNo = this.pickNumberFromSources([fileMeta, taskLogMeta, params], ['endFileNo', 'end_file']);
           // AS02 指令未传 endFile 时，按“start + 7”补全，确保任务管理保留完整文件段（8 个文件）
           if (entity.startFileNo != null && entity.endFileNo == null) {
             const start = Number(entity.startFileNo);
@@ -622,15 +645,33 @@ export class CommandValidateService {
           const entity = new TaskLogImagingAs03Entity();
           entity.satelliteCode = sat;
           const rawName =
-            this.pickString(params, ['imagingTargetName', 'targetName', 'name'], '') || '';
+            this.pickStringFromSources([forecastMeta, taskLogMeta, params], ['imagingTargetName', 'targetName', 'name'], '') || '';
           entity.imagingTargetName = this.sanitizeAs03TargetName(rawName);
           entity.imagingTime = time;
-          entity.cloudCoverage = this.pickNumber(params, ['cloudCoverage', 'cloud']);
-          entity.sideSwingAngle = this.pickNumber(params, ['side_swipe_angle', 'sideSwipeAngle', 'rollAng']);
-          entity.targetLongitude = this.pickNumber(params, ['longitude', 'long', 'lng']);
-          entity.targetLatitude = this.pickNumber(params, ['latitude', 'lat']);
+          entity.cloudCoverage = this.pickNumberFromSources([forecastMeta, taskLogMeta, params], ['cloudCoverage', 'cloud']);
+          entity.sideSwingAngle = this.pickNumberFromSources([forecastMeta, taskLogMeta, params], ['side_swipe_angle', 'sideSwipeAngle', 'rollAng']);
+          entity.targetLongitude = this.pickNumberFromSources([forecastMeta, taskLogMeta, params], [
+            'targetLongitude',
+            'targetLon',
+            'longitude',
+            'long',
+            'lng',
+          ]);
+          entity.targetLatitude = this.pickNumberFromSources([forecastMeta, taskLogMeta, params], [
+            'targetLatitude',
+            'targetLat',
+            'latitude',
+            'lat',
+          ]);
           entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
-          entity.startFileNo = this.pickNumber(params, ['fileStart', 'startFileNo', 'start_file', 'recordFileNo', 'recordFileNumber', 'fileNo']);
+          entity.startFileNo = this.pickNumberFromSources([fileMeta, taskLogMeta, params], [
+            'startFileNo',
+            'fileStart',
+            'start_file',
+            'recordFileNo',
+            'recordFileNumber',
+            'fileNo',
+          ]);
           if (entity.startFileNo != null && (entity as any).endFileNo == null) {
             (entity as any).endFileNo = entity.startFileNo;
           }
@@ -659,13 +700,30 @@ export class CommandValidateService {
           const entity = new TaskLogTransmitAs02Entity();
           entity.satelliteCode = sat;
           entity.transmitStationName = this.stripTimeSuffix(
-            this.pickString(params, ['station', 'stationName', 'transferName', 'name'], '') || ''
+            this.pickStringFromSources([stationMeta, taskLogMeta, params], ['station', 'stationName', 'transferName', 'name'], '') || ''
           );
           entity.transmitTime = time;
-          entity.transmitStationLongitude = this.pickNumber(params, ['long', 'longitude', 'transmitStationLongitude']);
-          entity.transmitStationLatitude = this.pickNumber(params, ['lat', 'latitude', 'transmitStationLatitude']);
-          entity.transmitStationHeight = this.pickNumber(params, ['alt', 'height', 'transmitStationHeight']);
-          entity.transmitFileNumber = this.buildTransferFileNumberWithType(sat, params);
+          entity.transmitStationLongitude = this.pickNumberFromSources([stationMeta, taskLogMeta, params], [
+            'transmitStationLongitude',
+            'stationLongitude',
+            'long',
+            'longitude',
+            'lng',
+          ]);
+          entity.transmitStationLatitude = this.pickNumberFromSources([stationMeta, taskLogMeta, params], [
+            'transmitStationLatitude',
+            'stationLatitude',
+            'lat',
+            'latitude',
+          ]);
+          entity.transmitStationHeight = this.pickNumberFromSources([stationMeta, taskLogMeta, params], [
+            'transmitStationHeight',
+            'stationHeight',
+            'alt',
+            'height',
+          ]);
+          entity.transmitFileNumber =
+            this.pickStringFromSources([fileMeta, taskLogMeta], ['transmitFileNumber']) || this.buildTransferFileNumberWithType(sat, params);
           entity.transmitExecutionTime = params?.duration ? new Date(time.getTime() + Number(params.duration) * 1000) : null;
           entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
           entity.status = 0;
@@ -682,13 +740,30 @@ export class CommandValidateService {
           const entity = new TaskLogTransmitAs03Entity();
           entity.satelliteCode = sat;
           entity.transmitStationName = this.stripTimeSuffix(
-            this.pickString(params, ['station', 'stationName', 'transferName', 'name'], '') || ''
+            this.pickStringFromSources([stationMeta, taskLogMeta, params], ['station', 'stationName', 'transferName', 'name'], '') || ''
           );
           entity.transmitTime = time;
-          entity.transmitStationLongitude = this.pickNumber(params, ['long', 'longitude', 'transmitStationLongitude']);
-          entity.transmitStationLatitude = this.pickNumber(params, ['lat', 'latitude', 'transmitStationLatitude']);
-          entity.transmitStationHeight = this.pickNumber(params, ['alt', 'height', 'transmitStationHeight']);
-          entity.transmitFileNumber = this.buildTransferFileNumberWithType(sat, params);
+          entity.transmitStationLongitude = this.pickNumberFromSources([stationMeta, taskLogMeta, params], [
+            'transmitStationLongitude',
+            'stationLongitude',
+            'long',
+            'longitude',
+            'lng',
+          ]);
+          entity.transmitStationLatitude = this.pickNumberFromSources([stationMeta, taskLogMeta, params], [
+            'transmitStationLatitude',
+            'stationLatitude',
+            'lat',
+            'latitude',
+          ]);
+          entity.transmitStationHeight = this.pickNumberFromSources([stationMeta, taskLogMeta, params], [
+            'transmitStationHeight',
+            'stationHeight',
+            'alt',
+            'height',
+          ]);
+          entity.transmitFileNumber =
+            this.pickStringFromSources([fileMeta, taskLogMeta], ['transmitFileNumber']) || this.buildTransferFileNumberWithType(sat, params);
           entity.transmitExecutionTime = params?.duration ? new Date(time.getTime() + Number(params.duration) * 1000) : null;
           entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
           entity.status = 0;
@@ -708,7 +783,8 @@ export class CommandValidateService {
           const entity = new TaskLogDeleteAs02Entity();
           entity.satelliteCode = sat;
           entity.taskExecutionTime = time;
-          entity.deleteFileNumber = this.buildDeleteWithType(sat, params);
+          entity.deleteFileNumber =
+            this.pickStringFromSources([fileMeta, deleteMeta, taskLogMeta], ['deleteFileNumber']) || this.buildDeleteWithType(sat, params);
           entity.deleteCommandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId', 'deleteCommandChainId']);
           entity.status = 0;
           await this.deleteLogAs02Repo.save(entity);
@@ -724,7 +800,8 @@ export class CommandValidateService {
           const entity = new TaskLogDeleteAs03Entity();
           entity.satelliteCode = sat;
           entity.taskExecutionTime = time;
-          entity.deleteFileNumber = this.buildDeleteWithType(sat, params);
+          entity.deleteFileNumber =
+            this.pickStringFromSources([fileMeta, deleteMeta, taskLogMeta], ['deleteFileNumber']) || this.buildDeleteWithType(sat, params);
           entity.deleteCommandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId', 'deleteCommandChainId']);
           entity.status = 0;
           await this.deleteLogAs03Repo.save(entity);
@@ -740,11 +817,56 @@ export class CommandValidateService {
     return fallback;
   }
 
+  private getTaskLogMeta(params: any): any {
+    const meta = params?.taskLogMeta;
+    if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+      return meta;
+    }
+    return {};
+  }
+
+  private pickStringFromSources(sources: any[], keys: string[], fallback?: string): string | undefined {
+    for (const source of sources) {
+      const value = this.pickString(source, keys);
+      if (value != null && value !== '') return value;
+    }
+    return fallback;
+  }
+
+  private parseLooseNumber(value: any): number | undefined {
+    if (value == null || value === '') return undefined;
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : undefined;
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return undefined;
+
+    const direct = Number(raw);
+    if (Number.isFinite(direct)) return direct;
+
+    const normalized = raw.replace(/,/g, '').replace(/%/g, '').trim();
+    const normalizedDirect = Number(normalized);
+    if (Number.isFinite(normalizedDirect)) return normalizedDirect;
+
+    const matched = normalized.match(/-?\d+(?:\.\d+)?/);
+    if (!matched) return undefined;
+    const parsed = Number(matched[0]);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private pickNumberFromSources(sources: any[], keys: string[]): number | undefined {
+    for (const source of sources) {
+      const value = this.pickNumber(source, keys);
+      if (value != null) return value;
+    }
+    return undefined;
+  }
+
   private pickNumber(obj: any, keys: string[]): number | undefined {
     for (const k of keys) {
-      const v = obj?.[k];
-      const n = Number(v);
-      if (Number.isFinite(n)) return n;
+      const n = this.parseLooseNumber(obj?.[k]);
+      if (n != null) return n;
     }
     return undefined;
   }

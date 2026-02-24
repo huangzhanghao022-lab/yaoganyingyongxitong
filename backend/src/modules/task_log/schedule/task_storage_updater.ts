@@ -58,10 +58,10 @@ export class TaskStorageUpdater implements IJob {
 
   private async handleImaging(now: Date) {
     const tasks = await this.imagingAs02Repo.find({
-      where: { status: In([0, 1, 2]), imagingTime: LessThanOrEqual(now), storageAppliedAt: IsNull() },
+      where: { status: In([0, 1, 2]), imagingTime: LessThanOrEqual(now) },
     });
     const tasks03 = await this.imagingAs03Repo.find({
-      where: { status: In([0, 1, 2]), imagingTime: LessThanOrEqual(now), storageAppliedAt: IsNull() },
+      where: { status: In([0, 1, 2]), imagingTime: LessThanOrEqual(now) },
     });
     await Promise.all([
       ...tasks.map((t) => this.markImagingDone(t, 'AS02')),
@@ -100,89 +100,115 @@ export class TaskStorageUpdater implements IJob {
     const endFileNo = endFileNoRaw ?? startFileNo;
     if (startFileNo == null || endFileNo == null) {
       this.logger.warn(
-        '[task-storage-updater] imaging task 无文件号，跳过 id=%s, 表=%s, 目标=%s',
+        '[task-storage-updater] imaging task missing file range, skip id=%s, table=%s, target=%s',
         task.id,
         this.getStorageRepo(sat).metadata.tableName,
         (task as any).imagingTargetName ?? '-'
       );
+      task.status = 3; // imaging completed (task-log only)
+      (task as any).storageAppliedAt = new Date();
+      await (sat === 'AS02' ? this.imagingAs02Repo : this.imagingAs03Repo).save(task);
       return;
     }
+
     const repo = this.getStorageRepo(sat);
+    const imagingPatch = {
+      targetName: (task as any).imagingTargetName,
+      imagingUid: (task as any).imagingUid,
+      imagingTime: task.imagingTime,
+    };
+    const imagingReadyStatuses = [
+      STATUS.PENDING_WRITE,
+      STATUS.WRITTEN_WAIT_TX,
+      STATUS.TX_WAIT_FEEDBACK,
+      STATUS.TX_WAIT_DELETE,
+      STATUS.TX_SCHEDULED,
+      4, // compatibility for legacy intermediate status
+    ];
+
     if (sat === 'AS03') {
-      const ready = await repo.count({ where: { startFileNo, status: STATUS.PENDING_WRITE } });
-      if (!ready) {
+      const exists = await repo.count({ where: { startFileNo, status: In(imagingReadyStatuses) } });
+      if (!exists) {
         this.logger.warn(
-          '[task-storage-updater] imaging task 文件段状态未就绪(非待写入)，跳过 id=%s, start=%s',
+          '[task-storage-updater] imaging task storage status not allowed for storage update, complete task-log only id=%s, start=%s',
           task.id,
           startFileNo
         );
-        return;
-      }
-      const affected = await this.updateRangeStatus(
-        repo,
-        startFileNo,
-        startFileNo,
-        STATUS.WRITTEN_WAIT_TX,
-        {
-          targetName: (task as any).imagingTargetName,
-          imagingUid: (task as any).imagingUid,
-          imagingTime: task.imagingTime,
-        },
-        [STATUS.PENDING_WRITE]
-      );
-      if (affected) {
-        await this.logStorageUpdate({
-          tableName: repo.metadata.tableName,
-          action: 'task_storage_updater.imaging',
-          target: { startFileNo, endFileNo: startFileNo },
-          change: {
-            status: STATUS.WRITTEN_WAIT_TX,
-            targetName: (task as any).imagingTargetName,
-            imagingUid: (task as any).imagingUid,
-            imagingTime: task.imagingTime,
-          },
-          dataSource: { taskLogId: task.id, satellite: sat },
-        });
+      } else {
+        const pendingReady = await repo.count({ where: { startFileNo, status: STATUS.PENDING_WRITE } });
+        if (pendingReady) {
+          const promotedToWritten = await this.updateRangeStatus(
+            repo,
+            startFileNo,
+            startFileNo,
+            STATUS.WRITTEN_WAIT_TX,
+            imagingPatch,
+            [STATUS.PENDING_WRITE]
+          );
+          await this.logStorageUpdate({
+            tableName: repo.metadata.tableName,
+            action: 'task_storage_updater.imaging',
+            target: { startFileNo, endFileNo: startFileNo },
+            change: {
+              targetName: imagingPatch.targetName,
+              imagingUid: imagingPatch.imagingUid,
+              imagingTime: imagingPatch.imagingTime,
+              promotedToWrittenWaitTx: promotedToWritten,
+            },
+            dataSource: { taskLogId: task.id, satellite: sat },
+          });
+        } else {
+          this.logger.info(
+            '[task-storage-updater] imaging task skip storage update (non-pending status), only complete task log id=%s, start=%s',
+            task.id,
+            startFileNo
+          );
+        }
       }
     } else {
-      const ok = await this.checkRangeStatus(repo, startFileNo, endFileNo, [STATUS.PENDING_WRITE]);
-      if (!ok) {
+      const exists = await this.checkRangeStatus(repo, startFileNo, endFileNo, imagingReadyStatuses);
+      if (!exists) {
         this.logger.warn(
-          '[task-storage-updater] imaging task 文件段状态未就绪(非待写入)，跳过 id=%s, start=%s end=%s',
+          '[task-storage-updater] imaging task storage status not allowed for storage update, complete task-log only id=%s, start=%s end=%s',
           task.id,
           startFileNo,
           endFileNo
         );
-        return;
-      }
-      const affected = await this.updateRangeStatus(
-        repo,
-        startFileNo,
-        endFileNo,
-        STATUS.WRITTEN_WAIT_TX,
-        {
-          targetName: (task as any).imagingTargetName,
-          imagingUid: (task as any).imagingUid,
-          imagingTime: task.imagingTime,
-        },
-        [STATUS.PENDING_WRITE]
-      );
-      if (affected) {
-        await this.logStorageUpdate({
-          tableName: repo.metadata.tableName,
-          action: 'task_storage_updater.imaging',
-          target: { startFileNo, endFileNo },
-          change: {
-            status: STATUS.WRITTEN_WAIT_TX,
-            targetName: (task as any).imagingTargetName,
-            imagingUid: (task as any).imagingUid,
-            imagingTime: task.imagingTime,
-          },
-          dataSource: { taskLogId: task.id, satellite: sat },
-        });
+      } else {
+        const pendingReady = await this.checkRangeStatus(repo, startFileNo, endFileNo, [STATUS.PENDING_WRITE]);
+        if (pendingReady) {
+          const promotedToWritten = await this.updateRangeStatus(
+            repo,
+            startFileNo,
+            endFileNo,
+            STATUS.WRITTEN_WAIT_TX,
+            imagingPatch,
+            [STATUS.PENDING_WRITE]
+          );
+          await this.logStorageUpdate({
+            tableName: repo.metadata.tableName,
+            action: 'task_storage_updater.imaging',
+            target: { startFileNo, endFileNo },
+            change: {
+              targetName: imagingPatch.targetName,
+              imagingUid: imagingPatch.imagingUid,
+              imagingTime: imagingPatch.imagingTime,
+              promotedToWrittenWaitTx: promotedToWritten,
+            },
+            dataSource: { taskLogId: task.id, satellite: sat },
+          });
+        } else {
+          this.logger.info(
+            '[task-storage-updater] imaging task skip storage update (non-pending status), only complete task log id=%s, start=%s end=%s',
+            task.id,
+            startFileNo,
+            endFileNo
+          );
+        }
       }
     }
-    task.status = 3; // 成像执行完成
+
+    task.status = 3; // imaging completed
     (task as any).storageAppliedAt = new Date();
     await (sat === 'AS02' ? this.imagingAs02Repo : this.imagingAs03Repo).save(task);
   }
@@ -397,62 +423,76 @@ export class TaskStorageUpdater implements IJob {
     const platform: Array<{ start: number; end: number }> = [];
     if (!text) return { payload, platform };
 
-    // 规范格式：
-    // 仅载荷：载荷:65-96
-    // 仅平台：平台:1-8
-    // 同时：载荷:65-96,平台:1-8
-    // 若无前缀，默认按载荷处理（兼容旧数据）
-    const segments = String(text)
-      .split(/[，,；;]+/)
+    const normalized = String(text)
+      .replace(/[，；]/g, ',')
+      .replace(/\uFF1A/g, ':');
+    const segments = normalized
+      .split(/[,\s]+/)
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const payloadLabel = '载荷';
+    const platformLabel = '平台';
+    let current: 'payload' | 'platform' = 'payload';
     for (const seg of segments) {
-      let target = payload;
       let content = seg;
-      if (seg.includes('平台')) {
-        target = platform;
-        content = seg.split(/[:：]/)[1] ?? '';
-      } else if (seg.includes('载荷')) {
-        target = payload;
-        content = seg.split(/[:：]/)[1] ?? '';
-      } else if (seg.includes(':') || seg.includes('：')) {
-        // 其他前缀，跳过
+      if (seg.includes(platformLabel)) {
+        current = 'platform';
+        content = seg.split(':')[1] ?? '';
+      } else if (seg.includes(payloadLabel)) {
+        current = 'payload';
+        content = seg.split(':')[1] ?? '';
+      } else if (seg.includes(':')) {
         continue;
       }
       const ranges = this.parseFileNumbers(content || seg);
-      target.push(...ranges);
+      if (current === 'platform') {
+        platform.push(...ranges);
+      } else {
+        payload.push(...ranges);
+      }
     }
 
     return { payload, platform };
   }
+
 
   private parseDeleteWithType(text: string | null | undefined): { payload: Array<{ start: number; end: number }>; platform: Array<{ start: number; end: number }> } {
     const payload: Array<{ start: number; end: number }> = [];
     const platform: Array<{ start: number; end: number }> = [];
     if (!text) return { payload, platform };
 
-    const segments = String(text)
-      .split(/[，,；;]+/)
+    const normalized = String(text)
+      .replace(/[，；]/g, ',')
+      .replace(/\uFF1A/g, ':');
+    const segments = normalized
+      .split(/[,\s]+/)
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const payloadLabel = '载荷';
+    const platformLabel = '平台';
+    let current: 'payload' | 'platform' = 'payload';
     for (const seg of segments) {
-      let target = payload;
       let content = seg;
-      if (seg.includes('平台')) {
-        target = platform;
-        content = seg.split(/[:：]/)[1] ?? '';
-      } else if (seg.includes('载荷')) {
-        target = payload;
-        content = seg.split(/[:：]/)[1] ?? '';
-      } else if (seg.includes(':') || seg.includes('：')) {
+      if (seg.includes(platformLabel)) {
+        current = 'platform';
+        content = seg.split(':')[1] ?? '';
+      } else if (seg.includes(payloadLabel)) {
+        current = 'payload';
+        content = seg.split(':')[1] ?? '';
+      } else if (seg.includes(':')) {
         continue;
       }
       const ranges = this.parseFileNumbers(content || seg);
-      target.push(...ranges);
+      if (current === 'platform') {
+        platform.push(...ranges);
+      } else {
+        payload.push(...ranges);
+      }
     }
 
     return { payload, platform };
   }
+
 }
