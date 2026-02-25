@@ -445,7 +445,7 @@ function buildPlanPayload(row: TelecontrolRecord, date: string): DailyPlanPayloa
 		telemetryStation: station === "-" ? "" : station,
 		transitTime,
 		elevationAngle: resolveElevation(row),
-		telemetryInfo: "",
+		telemetryInfo: "1.卫星状态监视\n2.下传GNSS和延遥",
 	};
 }
 

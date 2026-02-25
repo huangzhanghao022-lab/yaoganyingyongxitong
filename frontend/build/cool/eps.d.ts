@@ -596,6 +596,63 @@ declare namespace Eps {
 		[key: string]: any;
 	}
 
+	interface TransferTaskEntity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: number;
+
+		/**
+		 * 指令链分割条数
+		 */
+		splitCount?: number;
+
+		/**
+		 * 指令链间隔
+		 */
+		interval?: number;
+
+		/**
+		 * 开始指令号
+		 */
+		startCommandNo?: string;
+
+		/**
+		 * 任务开始时间
+		 */
+		taskStartTime?: Date;
+
+		/**
+		 * 转存开始时间
+		 */
+		transferStartTime?: Date;
+
+		/**
+		 * 转存结束时间
+		 */
+		transferEndTime?: Date;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
 	interface PluginInfoEntity {
 		/**
 		 * ID
@@ -1456,6 +1513,185 @@ declare namespace Eps {
 
 		/**
 		 * 固存回填时间
+		 */
+		storageAppliedAt?: Date;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
+	interface TaskLogHistoryTransferAs02Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 任务执行时间
+		 */
+		taskExecutionTime?: Date;
+
+		/**
+		 * 开始指令号
+		 */
+		startCommandNo?: number;
+
+		/**
+		 * 记录文件号
+		 */
+		recordFileNo?: number;
+
+		/**
+		 * 开始日期
+		 */
+		startDate?: string;
+
+		/**
+		 * 结束日期
+		 */
+		endDate?: string;
+
+		/**
+		 * 模板Id
+		 */
+		templateId?: string;
+
+		/**
+		 * 目录Id
+		 */
+		folderId?: string;
+
+		/**
+		 * 任务名称
+		 */
+		taskName?: string;
+
+		/**
+		 * 指令链id
+		 */
+		commandChainId?: string;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 执行回填时间
+		 */
+		storageAppliedAt?: Date;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
+	interface TaskLogHistoryTransferAs03Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 任务执行时间
+		 */
+		taskExecutionTime?: Date;
+
+		/**
+		 * 开始指令号
+		 */
+		startCommandNo?: number;
+
+		/**
+		 * 开始日期
+		 */
+		startDate?: string;
+
+		/**
+		 * 结束日期
+		 */
+		endDate?: string;
+
+		/**
+		 * 页数
+		 */
+		page?: number;
+
+		/**
+		 * 间隔(s)
+		 */
+		interval?: number;
+
+		/**
+		 * 平台选择(0:A,1:B)
+		 */
+		platform?: number;
+
+		/**
+		 * 目标名称
+		 */
+		targetName?: string;
+
+		/**
+		 * 模板Id
+		 */
+		templateId?: string;
+
+		/**
+		 * 目录Id
+		 */
+		folderId?: string;
+
+		/**
+		 * 任务名称
+		 */
+		taskName?: string;
+
+		/**
+		 * 指令链id
+		 */
+		commandChainId?: string;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 执行回填时间
 		 */
 		storageAppliedAt?: Date;
 
@@ -2631,6 +2867,130 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface Task_logHistory_transfer_as02 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogHistoryTransferAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogHistoryTransferAs02Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogHistoryTransferAs02Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logHistory_transfer_as03 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogHistoryTransferAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogHistoryTransferAs03Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogHistoryTransferAs03Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
 	interface BaseCoding {
 		/**
 		 * 获取模块目录结构
@@ -3490,6 +3850,68 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface HistoryTask {
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TransferTaskEntity>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TransferTaskEntity[]>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TransferTaskEntity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			delete: string;
+			update: string;
+			info: string;
+			list: string;
+			page: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			delete: boolean;
+			update: boolean;
+			info: boolean;
+			list: boolean;
+			page: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
 	interface PluginInfo {
 		/**
 		 * 安装插件
@@ -4056,6 +4478,8 @@ declare namespace Eps {
 			imaging_as03: Task_logImaging_as03;
 			transmit_as02: Task_logTransmit_as02;
 			transmit_as03: Task_logTransmit_as03;
+			history_transfer_as02: Task_logHistory_transfer_as02;
+			history_transfer_as03: Task_logHistory_transfer_as03;
 		};
 		base: {
 			coding: BaseCoding;
@@ -4073,6 +4497,7 @@ declare namespace Eps {
 		daily_plan: { as02: Daily_planAs02; as03: Daily_planAs03 };
 		demo: { goods: DemoGoods; tenant: DemoTenant };
 		dict: { info: DictInfo; type: DictType };
+		history: { task: HistoryTask };
 		plugin: { info: PluginInfo };
 		recycle: { data: RecycleData };
 		rs_image_products: { product: Rs_image_productsProduct };

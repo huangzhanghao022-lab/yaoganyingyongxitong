@@ -455,6 +455,10 @@ const TELECONTROL_SEARCH_URLS = [
 	"http://ttnonc-webui.cyk3.yhroot.com/v2/api/tasks/telecontrol/search",
 	"https://ttnonc-webui.cyk3.yhroot.com/v2/api/tasks/telecontrol/search",
 ];
+const DUTY_ROSTER_URLS = [
+	"http://ttnonc-webui.cyk3.yhroot.com/v2/api/duty-rotas/search",
+	"https://ttnonc-webui.cyk3.yhroot.com/v2/api/duty-rotas/search",
+];
 const TELECONTROL_STATES = [1, 2, 6];
 const TRANSFER_API_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/chains/create-with-template";
 const TOKEN_URL = "http://ttnonc-webui.cyk3.yhroot.com/v2/api/openapi/get-token";
@@ -2613,6 +2617,49 @@ function buildUtcRange(date: string) {
 	return { begin: base, end: base + day };
 }
 
+function buildBeijingRange(date: string) {
+	const base = new Date(`${date}T00:00:00+08:00`).getTime();
+	const day = 24 * 60 * 60 * 1000;
+	return { begin: base, end: base + day };
+}
+
+async function fetchDutyRoster(token: string, date: string, spacecraftId: string): Promise<string[]> {
+	const { begin, end } = buildBeijingRange(date);
+	let lastError: any = null;
+	for (const url of DUTY_ROSTER_URLS) {
+		try {
+			const resp = await fetch(url, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"x-web-token": token,
+				},
+				body: JSON.stringify({
+					keyword: "",
+					spacecraftIds: [spacecraftId],
+					page: 1,
+					pageSize: 20,
+					beginTime: begin,
+					endTime: end,
+				}),
+			});
+			if (!resp.ok) throw new Error(String(resp.status));
+			const result = await resp.json();
+			const list = result?.data?.list ?? result?.data ?? result?.records ?? [];
+			if (!Array.isArray(list)) return [];
+			return list
+				.map((item) => {
+					const name = (item?.name ?? item?.dutyName ?? item?.dutyOfficer) as string | undefined;
+					return name ? String(name).trim() : "";
+				})
+				.filter(Boolean);
+		} catch (err) {
+			lastError = err;
+		}
+	}
+	throw lastError || new Error("duty roster failed");
+}
+
 type PendingFile = { start: number; end: number };
 type TransferSelectionSource = "payload" | "platform";
 type TransferGroup = {
@@ -3894,6 +3941,11 @@ async function submitPlannedTasks() {
 		}
 		await recordImagingUids();
 		await recordImagingTasks();
+		try {
+			await appendSummaryToDailyPlan(token);
+		} catch (err) {
+			console.warn("[one-click-plan] append daily plan summary failed", err);
+		}
 		ElMessage.success("提交成功");
 	} catch (err: any) {
 		ElMessage.error(err?.message || String(err) || "提交失败");
@@ -4002,6 +4054,261 @@ function buildSubmissionSummaryText(): string {
 	}
 
 	return lines.join("\n\n");
+}
+
+function buildSubmissionSummaryForTasks(tasks: TimelineItem[], orbitText: string): string {
+	const lines: string[] = [];
+	const imaging = tasks
+		.filter((item) => item.type !== "data" && item.type !== "delete")
+		.sort((a, b) => a.startTs - b.startTs);
+	if (imaging.length) {
+		imaging.forEach((it, idx) => {
+			const monthDay = formatMonthDay(it.startTs);
+			const priorityText = formatNumberText(it.raw?.priority ?? it.priority, 0);
+			const priority = priorityText && priorityText !== "--" ? priorityText : "1";
+			const scanMode = "直通";
+			const cameraState = "双相机";
+			const lonText = formatNumberText(
+				it.raw?.long ?? it.raw?.longitude ?? it.raw?.lon ?? it.raw?.area_lon ?? it.raw?.areaLon,
+				4
+			);
+			const lon = lonText && lonText !== "--" ? lonText : "-";
+			const latText = formatNumberText(
+				it.raw?.lat ?? it.raw?.latitude ?? it.raw?.area_lat ?? it.raw?.areaLat,
+				4
+			);
+			const lat = latText && latText !== "--" ? latText : "-";
+			const cloud = formatPercentText(it.raw?.cloud ?? it.cloud);
+			const roll = it.rollText ?? "-";
+			const sun = it.solarText ?? "-";
+			const startTime = formatDisplay(new Date(it.startTs));
+			const slot = it.storageSlot || "-";
+			const satellite = String(it.raw?.satellite || form.value.satellite || "").toUpperCase();
+			if (satellite === "AS03") {
+				const altText = formatNumberText(
+					it.raw?.alt ?? it.raw?.altitude ?? it.raw?.area_alt ?? it.raw?.areaAlt ?? 0,
+					0
+				);
+				const alt = altText && altText !== "--" ? altText : "0";
+				const tf = formatDisplay(new Date(it.endTs ?? it.startTs));
+				const imageKind = "推扫成像";
+				const fileRef = slot ? `记录文件号${slot}。` : "记录文件号未知。";
+				lines.push(
+					`${idx + 1}.上注${monthDay} ${it.name}目标点任务：\n` +
+						`${priority}级目标，目标点为\n` +
+						`${it.name}，经度${lon}，纬度${lat}，高度${alt}m，云量${cloud}，侧摆角${roll}，\n` +
+						`太阳高度角${sun}，${imageKind}成像时间${startTime}~${tf}，${fileRef}\n` +
+						`预报星历：${orbitText}\n` +
+						`预报方法：姿轨控新方法`
+				);
+			} else {
+				const startNum = Number(slot);
+				const fileRange =
+					Number.isFinite(startNum) && satellite === "AS02"
+						? `${startNum}~${startNum + 7}(${scanMode})`
+						: `${slot}`;
+				lines.push(
+					`${idx + 1}.上注${monthDay} ${it.name}目标点任务：\n` +
+						`${priority}级目标 ${scanMode}推扫成像任务，${cameraState}成像，目标点为\n` +
+						`${it.name}，经度${lon}，纬度${lat}，云量${cloud}，侧摆角${roll}，\n` +
+						`太阳高度角${sun}，成像时间${startTime}，记录文件号${fileRange}。\n` +
+						`预报星历：${orbitText}\n` +
+						`预报方法：姿轨控新方法`
+				);
+			}
+		});
+	}
+
+	const dataTasks = tasks.filter((item) => item.type === "data").sort((a, b) => a.startTs - b.startTs);
+	if (dataTasks.length) {
+		dataTasks.forEach((task) => {
+			const time = formatDisplay(new Date(task.startTs));
+			const ranges =
+				task.raw?.groups?.length
+					? task.raw.groups.map((g: any) => `${g.start}-${g.end}`).join("，")
+					: task.files?.join(",") || "-";
+			const station =
+				task.raw?.stationName ||
+				task.raw?.station ||
+				(task.antennaId ? TELECONTROL_ANTENNA_MAP.get(String(task.antennaId)) : "-") ||
+				"-";
+			lines.push(
+				`${lines.length + 1}.上注数传任务，数传站：${station}，开始下数时间：${time}，数传文件号：载荷${ranges}`
+			);
+		});
+	}
+
+	const deletes = tasks.filter((item) => item.type === "delete").sort((a, b) => a.startTs - b.startTs);
+	if (deletes.length) {
+		deletes.forEach((it) => {
+			const time = formatDisplay(new Date(it.startTs));
+			const start = it.raw?.startFile ?? "-";
+			const end = it.raw?.endFile ?? "-";
+			lines.push(
+				`${lines.length + 1}.上注载荷固存删除任务，删除文件号${start}~${end}，任务执行时间：${time}`
+			);
+		});
+	}
+
+	return lines.join("\n\n");
+}
+
+function taskDateKey(ts: number): string {
+	if (!Number.isFinite(ts)) return "";
+	return formatDateYMD(new Date(ts));
+}
+
+function resolveTransitStart(row: any): number {
+	const raw = row?.transitTime ?? row?.transit_time ?? row?.transit_time_text ?? row?.transit_time_texts;
+	if (typeof raw === "string") {
+		const idx = raw.indexOf("-", 19);
+		const startText = idx === -1 ? raw.trim() : raw.slice(0, idx).trim();
+		const parsed = Date.parse(startText.replace(" ", "T"));
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	const beginTime = Number(row?.beginTime ?? row?.planBeginTime ?? row?.begin_time);
+	return Number.isFinite(beginTime) ? beginTime : 0;
+}
+
+function resolveAngleMax(record: any): number | null {
+	const raw = record?.tracking?.angleMax?.el ?? record?.angleMax ?? record?.angle_max ?? record?.maxAngle;
+	const num = Number(raw);
+	return Number.isFinite(num) ? num : null;
+}
+
+function buildTransitText(begin: number, end: number | null | undefined): string {
+	if (!Number.isFinite(begin)) return "";
+	const startText = formatDisplay(new Date(begin));
+	if (Number.isFinite(Number(end))) {
+		return `${startText}-${formatDisplay(new Date(Number(end)))}`;
+	}
+	return `${startText}-`;
+}
+
+async function ensureDailyPlanByDate(token: string, satellite: "AS02" | "AS03", dateStr: string) {
+	const svc = satellite === "AS03" ? (service as any)?.daily_plan?.as03 : (service as any)?.daily_plan?.as02;
+	if (!svc?.page) return [];
+	const res = await svc.page({ page: 1, size: 200, date: dateStr });
+	const list = res?.list || res?.data?.list || [];
+	const normalized = Array.isArray(list) ? list : [];
+	const dateMatches = normalized.filter((row: any) => normalizeDateOnly(row?.date) === dateStr);
+	if (dateMatches.length) {
+		return dateMatches;
+	}
+	const spacecraftId = getSpacecraftIdBySatellite(satellite);
+	if (!spacecraftId) return [];
+	let records: any[] = [];
+	let dutyOfficers: string[] = [];
+	try {
+		[records, dutyOfficers] = await Promise.all([
+			fetchTelecontrolRecords(token, dateStr, spacecraftId),
+			fetchDutyRoster(token, dateStr, spacecraftId).catch(() => []),
+		]);
+	} catch (err) {
+		console.warn("[one-click-plan] telecontrol fetch for daily plan failed", err);
+		return [];
+	}
+	if (!records.length) return [];
+	const defaultInfo = "1.卫星状态监视\n2.下传GNSS和延遥";
+	const dutyOfficerRaw = dutyOfficers.length ? dutyOfficers.join("。") : "-";
+	const dutyOfficer = dutyOfficerRaw.length > 50 ? dutyOfficerRaw.slice(0, 50) : dutyOfficerRaw;
+	const payloads = records
+		.map((r: any) => {
+			const begin = Number(r.beginTime ?? r.planBeginTime ?? r.begin_time ?? r.dataTrans?.beginTime);
+			const end = Number(r.endTime ?? r.planEndTime ?? r.end_time ?? r.dataTrans?.endTime);
+			const transitTime = buildTransitText(begin, Number.isFinite(end) ? end : null);
+			if (!transitTime) return null;
+			const antennaId = r.antennaId ?? r.antenna_id;
+			const stationRaw =
+				(antennaId ? TELECONTROL_ANTENNA_MAP.get(String(antennaId)) : "") ||
+				r.stationName ||
+				r.antennaName ||
+				r.station ||
+				"-";
+			const station = stationRaw.length > 50 ? stationRaw.slice(0, 50) : stationRaw;
+			const elevationAngle = resolveAngleMax(r);
+			return {
+				date: dateStr,
+				dutyOfficer,
+				telemetryStation: station === "-" ? "" : station,
+				transitTime,
+				elevationAngle: elevationAngle == null ? 0 : elevationAngle,
+				telemetryInfo: defaultInfo,
+			};
+		})
+		.filter(Boolean);
+	if (!payloads.length) return [];
+	const results = await Promise.allSettled(payloads.map((item: any) => svc.add(item)));
+	const failed = results.filter((r) => r.status === "rejected");
+	if (failed.length) {
+		console.warn("[one-click-plan] daily plan add failed", failed);
+	}
+	const refresh = await svc.page({ page: 1, size: 200, date: dateStr });
+	const refreshed = refresh?.list || refresh?.data?.list || [];
+	const refreshedList = Array.isArray(refreshed) ? refreshed : [];
+	const refreshedMatches = refreshedList.filter((row: any) => normalizeDateOnly(row?.date) === dateStr);
+	return refreshedMatches;
+}
+
+function normalizeDateOnly(value: any): string {
+	if (!value) return "";
+	if (typeof value === "string") {
+		if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+		const parsed = Date.parse(value.replace(" ", "T"));
+		if (Number.isFinite(parsed)) return formatDateYMD(new Date(parsed));
+		return value.slice(0, 10);
+	}
+	if (value instanceof Date) return formatDateYMD(value);
+	if (typeof value === "number" && Number.isFinite(value)) return formatDateYMD(new Date(value));
+	return "";
+}
+
+async function appendSummaryToDailyPlan(token: string) {
+	const satellite = form.value.satellite as "AS02" | "AS03";
+	const orbitText = orbitElements.value ? JSON.stringify(orbitElements.value) : "";
+	const submitted = timeline.value.filter((item) => {
+		if (item.type === "data") return taskSwitches.transfer;
+		if (item.type === "delete") return taskSwitches.delete;
+		return taskSwitches.imaging;
+	});
+	const tasksByDate = new Map<string, TimelineItem[]>();
+	for (const item of submitted) {
+		const ts = resolveTaskStartTs(item);
+		if (!Number.isFinite(ts)) continue;
+		const key = taskDateKey(ts);
+		if (!key) continue;
+		if (!tasksByDate.has(key)) tasksByDate.set(key, []);
+		tasksByDate.get(key)!.push({ ...item, startTs: ts });
+	}
+	if (!tasksByDate.size) return;
+	for (const [dateStr, items] of tasksByDate.entries()) {
+		const summary = buildSubmissionSummaryForTasks(items, orbitText);
+		if (!summary.trim()) continue;
+		let list: any[] = [];
+		try {
+			list = await ensureDailyPlanByDate(token, satellite, dateStr);
+		} catch (err) {
+			console.warn("[one-click-plan] ensure daily plan failed", err);
+			continue;
+		}
+		if (!Array.isArray(list) || !list.length) continue;
+		const first = list
+			.slice()
+			.sort((a, b) => resolveTransitStart(a) - resolveTransitStart(b))[0];
+		if (!first?.id) continue;
+		const exist = typeof first.telemetryInfo === "string" ? first.telemetryInfo.trim() : "";
+		if (exist && exist.includes(summary)) {
+			continue;
+		}
+		const updated = exist ? `${exist}\n${summary}` : summary;
+		const svc = satellite === "AS03" ? (service as any)?.daily_plan?.as03 : (service as any)?.daily_plan?.as02;
+		if (!svc?.update) continue;
+		try {
+			await svc.update({ id: first.id, telemetryInfo: updated });
+		} catch (err) {
+			console.warn("[one-click-plan] daily plan update failed", err);
+		}
+	}
 }
 
 // 生成 imaging UID 并推送

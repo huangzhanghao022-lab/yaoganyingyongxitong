@@ -428,6 +428,7 @@
 	  },
 	},
 	(app) => {
+	  app.setParams({ size: 100 });
 	  app.refresh();
 	}
   );
