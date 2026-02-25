@@ -1,13 +1,15 @@
 import { Provide, Inject } from '@midwayjs/core';
 import { Job, IJob } from '@midwayjs/cron';
 import { InjectEntityModel, InjectDataSource } from '@midwayjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThanOrEqual, In, IsNull } from 'typeorm';
+import { Repository, LessThanOrEqual, MoreThanOrEqual, In, IsNull, Between } from 'typeorm';
 import { TaskLogImagingAs02Entity } from '../entity/imaging_as02';
 import { TaskLogImagingAs03Entity } from '../entity/imaging_as03';
 import { TaskLogTransmitAs02Entity } from '../entity/transmit_as02';
 import { TaskLogTransmitAs03Entity } from '../entity/transmit_as03';
 import { TaskLogDeleteAs02Entity } from '../entity/delete_as02';
 import { TaskLogDeleteAs03Entity } from '../entity/delete_as03';
+import { TaskLogHistoryTransferAs02Entity } from '../entity/history_transfer_as02';
+import { TaskLogHistoryTransferAs03Entity } from '../entity/history_transfer_as03';
 import { as02payloadtableEntity } from '../../star/entity/as02_payload_table/as02_payload_table';
 import { as03payloadtableEntity } from '../../star/entity/as03_payload_table/as03_payload_table';
 import { as02platformtableEntity } from '../../star/entity/as02_platform_table/as02_platform_table';
@@ -42,6 +44,8 @@ export class TaskStorageUpdater implements IJob {
   @InjectEntityModel(TaskLogTransmitAs03Entity) transmitAs03Repo: Repository<TaskLogTransmitAs03Entity>;
   @InjectEntityModel(TaskLogDeleteAs02Entity) deleteAs02Repo: Repository<TaskLogDeleteAs02Entity>;
   @InjectEntityModel(TaskLogDeleteAs03Entity) deleteAs03Repo: Repository<TaskLogDeleteAs03Entity>;
+  @InjectEntityModel(TaskLogHistoryTransferAs02Entity) historyTransferAs02Repo: Repository<TaskLogHistoryTransferAs02Entity>;
+  @InjectEntityModel(TaskLogHistoryTransferAs03Entity) historyTransferAs03Repo: Repository<TaskLogHistoryTransferAs03Entity>;
 
   async onTick() {
     this.logger.info('[task-storage-updater] tick at %s', new Date().toISOString());
@@ -50,6 +54,7 @@ export class TaskStorageUpdater implements IJob {
       await this.handleImaging(now);
       await this.handleTransmit(now);
       await this.handleDelete(now);
+      await this.handleHistoryTransfer(now);
       await this.handlePlatform(now);
     } catch (err) {
       this.logger.error('[task-storage-updater] 定时执行失败: %s', err?.message, { stack: err?.stack });
@@ -285,6 +290,19 @@ export class TaskStorageUpdater implements IJob {
     ]);
   }
 
+  private async handleHistoryTransfer(now: Date) {
+    const tasks = await this.historyTransferAs02Repo.find({
+      where: { status: In([0, 1, 2]), taskExecutionTime: LessThanOrEqual(now) } as any,
+    });
+    const tasks03 = await this.historyTransferAs03Repo.find({
+      where: { status: In([0, 1, 2]), taskExecutionTime: LessThanOrEqual(now) } as any,
+    });
+    await Promise.all([
+      ...tasks.map((t) => this.markHistoryTransferDone(t, 'AS02')),
+      ...tasks03.map((t) => this.markHistoryTransferDone(t, 'AS03')),
+    ]);
+  }
+
   private async markDeleteDone(task: TaskLogDeleteAs02Entity | TaskLogDeleteAs03Entity, sat: 'AS02' | 'AS03') {
     const { payload, platform } = this.parseDeleteWithType(task.deleteFileNumber);
     if (!payload.length && !platform.length) {
@@ -336,6 +354,55 @@ export class TaskStorageUpdater implements IJob {
     task.status = 3; // 删除执行完成
     (task as any).storageAppliedAt = new Date();
     await (sat === 'AS02' ? this.deleteAs02Repo : this.deleteAs03Repo).save(task);
+  }
+
+  private async markHistoryTransferDone(
+    task: TaskLogHistoryTransferAs02Entity | TaskLogHistoryTransferAs03Entity,
+    sat: 'AS02' | 'AS03'
+  ) {
+    const platformRepo = this.getPlatformRepo(sat);
+    let matchedRows: any[] = [];
+    if (sat === 'AS02') {
+      const fileNo = Number((task as any).recordFileNo);
+      if (Number.isFinite(fileNo)) {
+        matchedRows = await platformRepo.find({ where: { startFileNo: fileNo } as any });
+      }
+    } else {
+      const targetName = String((task as any).targetName || '').trim();
+      const taskTs = new Date((task as any).taskExecutionTime as any).getTime();
+      const start = new Date(taskTs - 5 * 60 * 1000);
+      const end = new Date(taskTs + 5 * 60 * 1000);
+      matchedRows = await platformRepo.find({ where: { executingTime: Between(start, end) } as any });
+      if (targetName) {
+        matchedRows = matchedRows.filter(
+          (r: any) => String(r?.fileName || '').trim() === targetName || !String(r?.fileName || '').trim()
+        );
+      }
+    }
+
+    if (!matchedRows.length) {
+      this.logger.warn(
+        '[task-storage-updater] history_transfer storage row not found, complete task-log only id=%s sat=%s',
+        task.id,
+        sat
+      );
+    } else {
+      await this.logStorageUpdate({
+        tableName: platformRepo.metadata.tableName,
+        action: 'task_storage_updater.history_transfer',
+        target: { ids: matchedRows.map((r: any) => r?.id).filter(Boolean) },
+        change: { taskStatus: 3 },
+        dataSource: { taskLogId: task.id, satellite: sat },
+      });
+    }
+
+    (task as any).status = 3;
+    (task as any).storageAppliedAt = new Date();
+    if (sat === 'AS02') {
+      await this.historyTransferAs02Repo.save(task as any);
+    } else {
+      await this.historyTransferAs03Repo.save(task as any);
+    }
   }
 
   private async logStorageUpdate(input: {

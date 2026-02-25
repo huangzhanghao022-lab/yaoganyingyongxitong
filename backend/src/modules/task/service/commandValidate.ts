@@ -2,12 +2,16 @@ import { Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Repository, Between, In } from 'typeorm';
 import { as02payloadtableEntity } from '../../star/entity/as02_payload_table/as02_payload_table';
+import { as02platformtableEntity } from '../../star/entity/as02_platform_table/as02_platform_table';
+import { as03platformtableEntity } from '../../star/entity/as03_platform_table/as03_platform_table';
 import { TaskLogImagingAs02Entity } from '../../task_log/entity/imaging_as02';
 import { TaskLogImagingAs03Entity } from '../../task_log/entity/imaging_as03';
 import { TaskLogTransmitAs02Entity } from '../../task_log/entity/transmit_as02';
 import { TaskLogTransmitAs03Entity } from '../../task_log/entity/transmit_as03';
 import { TaskLogDeleteAs02Entity } from '../../task_log/entity/delete_as02';
 import { TaskLogDeleteAs03Entity } from '../../task_log/entity/delete_as03';
+import { TaskLogHistoryTransferAs02Entity } from '../../task_log/entity/history_transfer_as02';
+import { TaskLogHistoryTransferAs03Entity } from '../../task_log/entity/history_transfer_as03';
 import { TaskConflictService } from './taskConflict';
 import { ILogger } from '@midwayjs/logger';
 import { AntennaShuchuanService } from '../../antenna_shuchuan/service/antenna_shuchuan';
@@ -15,7 +19,7 @@ import axios from 'axios';
 
 type ValidationResult = { ok: true } | { ok: false; errors: Array<{ field: string; message: string }> };
 
-type CommandType = 'image' | 'transfer' | 'delete';
+type CommandType = 'image' | 'transfer' | 'delete' | 'history_transfer';
 type Sat = 'AS02' | 'AS03';
 
 const TELECONTROL_TOKEN_URL =
@@ -32,6 +36,12 @@ const TELECONTROL_CREDENTIALS = {
 export class CommandValidateService {
   @InjectEntityModel(as02payloadtableEntity)
   as02PayloadRepo: Repository<as02payloadtableEntity>;
+
+  @InjectEntityModel(as02platformtableEntity)
+  as02PlatformRepo: Repository<as02platformtableEntity>;
+
+  @InjectEntityModel(as03platformtableEntity)
+  as03PlatformRepo: Repository<as03platformtableEntity>;
 
   @Inject()
   taskConflictService: TaskConflictService;
@@ -60,6 +70,12 @@ export class CommandValidateService {
   @InjectEntityModel(TaskLogDeleteAs03Entity)
   deleteLogAs03Repo: Repository<TaskLogDeleteAs03Entity>;
 
+  @InjectEntityModel(TaskLogHistoryTransferAs02Entity)
+  historyTransferLogAs02Repo: Repository<TaskLogHistoryTransferAs02Entity>;
+
+  @InjectEntityModel(TaskLogHistoryTransferAs03Entity)
+  historyTransferLogAs03Repo: Repository<TaskLogHistoryTransferAs03Entity>;
+
   private stationCache: { ts: number; names: string[] } | null = null;
   private tokenCache: { ts: number; token: string } | null = null;
 
@@ -69,7 +85,7 @@ export class CommandValidateService {
     const satellite: Sat = body?.satellite;
     const params = body?.params || {};
 
-    if (!type || !['image', 'transfer', 'delete'].includes(type)) {
+    if (!type || !['image', 'transfer', 'delete', 'history_transfer'].includes(type)) {
       errors.push({ field: 'type', message: 'type 必须为 image/transfer/delete' });
     }
     if (!satellite || !['AS02', 'AS03'].includes(satellite)) {
@@ -86,6 +102,9 @@ export class CommandValidateService {
         break;
       case 'delete':
         this.validateDelete(satellite, params, errors);
+        break;
+      case 'history_transfer':
+        await this.validateHistoryTransfer(satellite, params, errors);
         break;
     }
 
@@ -172,11 +191,61 @@ export class CommandValidateService {
 
     try {
       const respData = await this.createCommandChain(params);
+      const telecontrolCode = respData?.code;
+      const telecontrolMsg = respData?.msg || respData?.message || '';
+      this.logger?.info?.('[command-validate] telecontrol submit response', {
+        type,
+        satellite,
+        code: telecontrolCode,
+        msg: telecontrolMsg,
+        data: respData?.data ?? respData,
+      });
+
+      if (telecontrolCode !== undefined && Number(telecontrolCode) !== 0) {
+        throw new Error(
+          `测运控提交失败(code=${telecontrolCode})${telecontrolMsg ? `: ${telecontrolMsg}` : ''}`
+        );
+      }
+
       const ids = respData?.data?.ids || respData?.ids || [];
       const idList = Array.isArray(ids) ? ids : ids ? [ids] : [];
+      if (!idList.length) {
+        throw new Error(
+          `测运控未返回指令链ID${telecontrolMsg ? `: ${telecontrolMsg}` : ''}`
+        );
+      }
       const commandChainId = idList.length ? String(idList[0]) : undefined;
-      if (idList.length) {
+      let reservedHistoryStorage:
+        | { satellite: Sat; rowId: number; recordFileNo?: number }
+        | undefined;
+      if (type === 'history_transfer') {
+        reservedHistoryStorage = await this.applyHistoryTransferStorageReservation(
+          satellite,
+          params,
+          taskTime
+        );
+        if (reservedHistoryStorage?.recordFileNo != null) {
+          params.taskLogMeta = params.taskLogMeta && typeof params.taskLogMeta === 'object' ? params.taskLogMeta : {};
+          params.taskLogMeta.historyTransfer =
+            params.taskLogMeta.historyTransfer && typeof params.taskLogMeta.historyTransfer === 'object'
+              ? params.taskLogMeta.historyTransfer
+              : {};
+          params.taskLogMeta.historyTransfer.recordFileNo = reservedHistoryStorage.recordFileNo;
+          params.taskLogMeta.historyTransfer.recordFile = reservedHistoryStorage.recordFileNo;
+        }
+      }
+      try {
         await this.saveTaskLog(satellite, type, params, taskTime, idList);
+      } catch (saveErr) {
+        if (reservedHistoryStorage) {
+          await this.rollbackHistoryTransferStorageReservation(reservedHistoryStorage).catch((rollbackErr) => {
+            this.logger?.warn?.(
+              '[command-validate] rollback history_transfer storage reservation failed',
+              rollbackErr as any
+            );
+          });
+        }
+        throw saveErr;
       }
       return { ok: true, data: respData?.data ?? respData, commandChainId };
     } catch (err: any) {
@@ -368,6 +437,62 @@ export class CommandValidateService {
         errors.push({ field: 'end_file', message: 'end_file 必须大于 start_file' });
       }
       this.ensureIntEnum(p.module, [0, 1], 'module', errors);
+    }
+  }
+
+  private async validateHistoryTransfer(sat: Sat, p: any, errors: Array<{ field: string; message: string }>) {
+    if (!['AS02', 'AS03'].includes(sat)) {
+      errors.push({ field: 'satellite', message: 'history_transfer ???? AS02/AS03' });
+      return;
+    }
+
+    const spacecraftCode = String(p?.spacecraftCode || '').toUpperCase();
+    if (spacecraftCode !== sat) {
+      errors.push({ field: 'spacecraftCode', message: 'spacecraftCode ? satellite ???' });
+    }
+
+    if (!this.pickString(p, ['templateId'])) {
+      errors.push({ field: 'templateId', message: 'templateId ????' });
+    }
+    if (!this.pickString(p, ['folderId'])) {
+      errors.push({ field: 'folderId', message: 'folderId ????' });
+    }
+
+    const now = Date.now();
+    const startTime = this.parseDate(p.start_time);
+    this.ensureIntRange(p.start_seq, 3, Infinity, 'start_seq', errors);
+    this.ensureFuture(startTime, now, 'start_time', errors);
+
+    const startDateRaw = this.pickString(p, ['start_date'], '') || '';
+    const endDateRaw = this.pickString(p, ['end_date'], '') || '';
+    if (!startDateRaw) errors.push({ field: 'start_date', message: 'start_date ????' });
+    if (!endDateRaw) errors.push({ field: 'end_date', message: 'end_date ????' });
+    if (startDateRaw && endDateRaw) {
+      const sDate = new Date(startDateRaw);
+      const eDate = new Date(endDateRaw);
+      if (Number.isNaN(sDate.getTime()) || Number.isNaN(eDate.getTime())) {
+        errors.push({ field: 'date', message: 'start_date/end_date ??????' });
+      } else if (sDate.getTime() > eDate.getTime()) {
+        errors.push({ field: 'date', message: 'start_date ???? end_date' });
+      }
+    }
+
+    if (sat === 'AS02') {
+      this.ensureIntRange(p.record_file, 1, Infinity, 'record_file', errors);
+      if (!errors.length) {
+        await this.ensureAs02PlatformRecordSlotEmpty(p.record_file, errors);
+      }
+      return;
+    }
+
+    this.ensureIntRange(p.page, 1, Infinity, 'page', errors);
+    this.ensureIntRange(p.interval, 1, Infinity, 'interval', errors);
+    this.ensureIntEnum(p.platform, [0, 1], 'platform', errors);
+    if (!this.pickString(p, ['target_name'])) {
+      p.target_name = '??????';
+    }
+    if (!errors.length) {
+      await this.ensureAs03PlatformHasEmptySlot(errors);
     }
   }
 
@@ -807,6 +932,74 @@ export class CommandValidateService {
           await this.deleteLogAs03Repo.save(entity);
         }
         break;
+      case 'history_transfer':
+        {
+          const historyMeta = taskLogMeta?.historyTransfer || {};
+          if (sat === 'AS02') {
+          const exist = await this.findExistingLog(this.historyTransferLogAs02Repo, 'taskExecutionTime', sat, time, 1000);
+          if (exist) {
+            if (commandChainId) {
+              const merged = this.mergeCommandChainIds((exist as any).commandChainId, commandChainId);
+              await this.historyTransferLogAs02Repo.update({ id: (exist as any).id } as any, { commandChainId: merged } as any);
+            }
+            return;
+          }
+
+          const entity = new TaskLogHistoryTransferAs02Entity();
+          entity.satelliteCode = sat;
+          entity.taskExecutionTime = time;
+          entity.startCommandNo = Number(
+            this.pickNumberFromSources([historyMeta, taskLogMeta, params], ['startCommandNo', 'startSeq', 'start_seq']) ?? 0
+          );
+          entity.recordFileNo = Number(
+            this.pickNumberFromSources([historyMeta, fileMeta, taskLogMeta, params], ['recordFileNo', 'recordFile', 'record_file']) ?? 0
+          );
+          entity.startDate =
+            this.pickStringFromSources([historyMeta, taskLogMeta, params], ['startDate', 'start_date'], '') || '';
+          entity.endDate =
+            this.pickStringFromSources([historyMeta, taskLogMeta, params], ['endDate', 'end_date'], '') || '';
+          entity.templateId = this.pickString(params, ['templateId']);
+          entity.folderId = this.pickString(params, ['folderId']);
+          entity.taskName = this.pickString(params, ['name']);
+          entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
+          entity.status = 0;
+          await this.historyTransferLogAs02Repo.save(entity);
+          return;
+        }
+          if (sat === 'AS03') {
+            const exist = await this.findExistingLog(this.historyTransferLogAs03Repo, 'taskExecutionTime', sat, time, 1000);
+            if (exist) {
+              if (commandChainId) {
+                const merged = this.mergeCommandChainIds((exist as any).commandChainId, commandChainId);
+                await this.historyTransferLogAs03Repo.update({ id: (exist as any).id } as any, { commandChainId: merged } as any);
+              }
+              return;
+            }
+
+            const entity = new TaskLogHistoryTransferAs03Entity();
+            entity.satelliteCode = sat;
+            entity.taskExecutionTime = time;
+            entity.startCommandNo = Number(
+              this.pickNumberFromSources([historyMeta, taskLogMeta, params], ['startCommandNo', 'startSeq', 'start_seq']) ?? 0
+            );
+            entity.startDate =
+              this.pickStringFromSources([historyMeta, taskLogMeta, params], ['startDate', 'start_date'], '') || '';
+            entity.endDate =
+              this.pickStringFromSources([historyMeta, taskLogMeta, params], ['endDate', 'end_date'], '') || '';
+            entity.page = this.pickNumberFromSources([historyMeta, taskLogMeta, params], ['page']) as any;
+            entity.interval = this.pickNumberFromSources([historyMeta, taskLogMeta, params], ['interval']) as any;
+            entity.platform = this.pickNumberFromSources([historyMeta, taskLogMeta, params], ['platform']) as any;
+            entity.targetName =
+              this.pickStringFromSources([historyMeta, taskLogMeta, params], ['targetName', 'target_name'], '') || '';
+            entity.templateId = this.pickString(params, ['templateId']);
+            entity.folderId = this.pickString(params, ['folderId']);
+            entity.taskName = this.pickString(params, ['name']);
+            entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
+            entity.status = 0;
+            await this.historyTransferLogAs03Repo.save(entity);
+          }
+        }
+        break;
     }
   }
 
@@ -815,6 +1008,128 @@ export class CommandValidateService {
       if (obj && obj[k] != null && obj[k] !== '') return String(obj[k]);
     }
     return fallback;
+  }
+
+  private async ensureAs02PlatformRecordSlotEmpty(val: any, errors: Array<{ field: string; message: string }>) {
+    const num = Number(val);
+    if (!Number.isInteger(num) || num < 1) return;
+    if (!this.as02PlatformRepo) return;
+    try {
+      const exist = await this.as02PlatformRepo.findOne({
+        where: { startFileNo: num } as any,
+      });
+      if (!exist) {
+        errors.push({ field: 'record_file', message: `记录文件号 ${num} 在平台固存表中不存在` });
+        return;
+      }
+      if (typeof (exist as any).status === 'number' && Number((exist as any).status) !== 0) {
+        errors.push({ field: 'record_file', message: `记录文件号 ${num} 已被占用，状态：${(exist as any).status}` });
+        return;
+      }
+      if ((exist as any).fileName) {
+        this.logger?.warn?.('[command-validate] history_transfer record_file status=0 but fileName exists', {
+          recordFile: num,
+          fileName: (exist as any).fileName,
+        });
+      }
+    } catch (err) {
+      errors.push({ field: 'record_file', message: '平台固存槽位校验失败' });
+    }
+  }
+
+  private async ensureAs03PlatformHasEmptySlot(errors: Array<{ field: string; message: string }>) {
+    if (!this.as03PlatformRepo) return;
+    try {
+      const count = await this.as03PlatformRepo.count({ where: { status: 0 } as any });
+      if (!count) {
+        errors.push({ field: 'platform', message: 'AS03 平台固存表无空闲槽位' });
+      }
+    } catch (err) {
+      errors.push({ field: 'platform', message: 'AS03 平台固存空闲槽位校验失败' });
+    }
+  }
+
+  private buildHistoryTransferStorageFileName(sat: Sat, params: any): string {
+    const meta = this.getTaskLogMeta(params)?.historyTransfer || {};
+    const startDate = this.pickString(meta, ['startDate']) || this.pickString(params, ['start_date']) || '';
+    const endDate = this.pickString(meta, ['endDate']) || this.pickString(params, ['end_date']) || '';
+    if (startDate && endDate) {
+      return `${startDate}~${endDate}平台历史文件`;
+    }
+    return '平台历史文件';
+  }
+
+  private async applyHistoryTransferStorageReservation(
+    sat: Sat,
+    params: any,
+    taskTime: Date
+  ): Promise<{ satellite: Sat; rowId: number; recordFileNo?: number }> {
+    const fileName = this.buildHistoryTransferStorageFileName(sat, params);
+    const updateTime = new Date();
+    if (sat === 'AS02') {
+      const recordFileNo = Number(this.pickNumber(params, ['record_file']));
+      if (!Number.isInteger(recordFileNo) || recordFileNo < 1) {
+        throw new Error('AS02 平台转存缺少有效 record_file');
+      }
+      const row = await this.as02PlatformRepo.findOne({ where: { startFileNo: recordFileNo } as any });
+      if (!row) {
+        throw new Error(`AS02 平台固存表未找到文件号 ${recordFileNo}`);
+      }
+      if (Number((row as any).status) !== 0) {
+        throw new Error(`AS02 平台固存文件号 ${recordFileNo} 已被占用，状态=${(row as any).status}`);
+      }
+      await this.as02PlatformRepo.update(
+        { id: (row as any).id } as any,
+        {
+          status: 1,
+          executingTime: taskTime,
+          fileName,
+          imagingUid: null,
+          updateTime,
+        } as any
+      );
+      return { satellite: sat, rowId: Number((row as any).id), recordFileNo };
+    }
+
+    const row = await this.as03PlatformRepo
+      .createQueryBuilder('t')
+      .where('t.status = :status', { status: 0 })
+      .orderBy('t.startFileNo', 'ASC')
+      .addOrderBy('t.id', 'ASC')
+      .getOne();
+    if (!row) {
+      throw new Error('AS03 平台固存表无空闲槽位');
+    }
+    await this.as03PlatformRepo.update(
+      { id: (row as any).id } as any,
+      {
+        status: 1,
+        executingTime: taskTime,
+        fileName,
+        imagingUid: null,
+        updateTime,
+      } as any
+    );
+    const recordFileNo = Number((row as any).startFileNo);
+    return {
+      satellite: sat,
+      rowId: Number((row as any).id),
+      recordFileNo: Number.isFinite(recordFileNo) ? recordFileNo : undefined,
+    };
+  }
+
+  private async rollbackHistoryTransferStorageReservation(input: { satellite: Sat; rowId: number }) {
+    const repo = input.satellite === 'AS03' ? this.as03PlatformRepo : this.as02PlatformRepo;
+    await repo.update(
+      { id: input.rowId } as any,
+      {
+        status: 0,
+        executingTime: null,
+        fileName: null,
+        imagingUid: null,
+        updateTime: new Date(),
+      } as any
+    );
   }
 
   private getTaskLogMeta(params: any): any {

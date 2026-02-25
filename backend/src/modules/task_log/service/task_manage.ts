@@ -10,6 +10,8 @@ import { TaskLogTransmitAs02Entity } from '../entity/transmit_as02';
 import { TaskLogTransmitAs03Entity } from '../entity/transmit_as03';
 import { TaskLogDeleteAs02Entity } from '../entity/delete_as02';
 import { TaskLogDeleteAs03Entity } from '../entity/delete_as03';
+import { TaskLogHistoryTransferAs02Entity } from '../entity/history_transfer_as02';
+import { TaskLogHistoryTransferAs03Entity } from '../entity/history_transfer_as03';
 import { as02payloadtableEntity } from '../../star/entity/as02_payload_table/as02_payload_table';
 import { as02platformtableEntity } from '../../star/entity/as02_platform_table/as02_platform_table';
 import { as03payloadtableEntity } from '../../star/entity/as03_payload_table/as03_payload_table';
@@ -68,6 +70,12 @@ export class TaskLogTaskManageService extends BaseService {
   @InjectEntityModel(TaskLogDeleteAs03Entity)
   taskLogDeleteAs03Entity: Repository<TaskLogDeleteAs03Entity>;
 
+  @InjectEntityModel(TaskLogHistoryTransferAs02Entity)
+  taskLogHistoryTransferAs02Entity: Repository<TaskLogHistoryTransferAs02Entity>;
+
+  @InjectEntityModel(TaskLogHistoryTransferAs03Entity)
+  taskLogHistoryTransferAs03Entity: Repository<TaskLogHistoryTransferAs03Entity>;
+
   @InjectEntityModel(as02payloadtableEntity)
   as02PayloadEntity: Repository<as02payloadtableEntity>;
 
@@ -104,8 +112,15 @@ export class TaskLogTaskManageService extends BaseService {
         .map((t) => (t instanceof Date ? t : new Date(t as any)))
         .filter((d) => Number.isFinite(d.getTime()));
       const type = String(param?.type || '').toLowerCase();
-      if (parsedTimes.length && (type === 'imaging' || type === 'transfer' || type === 'delete')) {
-        return this.deleteByTimes(satellite, type as 'imaging' | 'transfer' | 'delete', parsedTimes);
+      if (
+        parsedTimes.length &&
+        (type === 'imaging' || type === 'transfer' || type === 'delete' || type === 'history_transfer')
+      ) {
+        return this.deleteByTimes(
+          satellite,
+          type as 'imaging' | 'transfer' | 'delete' | 'history_transfer',
+          parsedTimes
+        );
       }
       return { count: 0 };
     }
@@ -126,7 +141,7 @@ export class TaskLogTaskManageService extends BaseService {
 
   private async deleteByTimes(
     satellite: string,
-    type: 'imaging' | 'transfer' | 'delete',
+    type: 'imaging' | 'transfer' | 'delete' | 'history_transfer',
     times: Date[]
   ): Promise<{ count: number; warnings?: string[]; telecontrolDeletes?: TelecontrolDeleteResult[] }> {
     const repo = satellite === 'AS03' ? this.taskAs03Entity : this.taskAs02Entity;
@@ -245,7 +260,7 @@ export class TaskLogTaskManageService extends BaseService {
           }
         );
         deleted += res?.affected || 0;
-      } else {
+      } else if (type === 'delete') {
         if (satellite === 'AS03') {
           try {
             telecontrolDeletes.push(
@@ -283,6 +298,56 @@ export class TaskLogTaskManageService extends BaseService {
             warnings.push(`AS02 删除日志未找到，仍继续删除任务记录：${time.toISOString?.() ?? String(time)}`);
           }
           deleted += logCount;
+        }
+      } else {
+        if (satellite === 'AS03') {
+          try {
+            telecontrolDeletes.push(
+              ...(await this.deleteTelecontrolChainsByTime(
+                this.taskLogHistoryTransferAs03Entity,
+                'taskExecutionTime',
+                time,
+                'commandChainId'
+              ))
+            );
+          } catch (err: any) {
+            warnings.push(`AS03 平台转存链删除异常（已忽略）：${err?.message || err}`);
+          }
+          const rows = await this.deleteHistoryTransferLogsAs03(time);
+          if (!rows.length) {
+            warnings.push(`AS03 平台转存日志未找到，仍继续删除任务记录：${time.toISOString?.() ?? String(time)}`);
+          } else {
+            try {
+              await this.rollbackHistoryTransferStorageAs03(rows, time);
+            } catch (err: any) {
+              warnings.push(`AS03 平台转存固存回退失败，已继续删除任务记录：${err?.message || err}`);
+            }
+          }
+          deleted += rows.length;
+        } else {
+          try {
+            telecontrolDeletes.push(
+              ...(await this.deleteTelecontrolChainsByTime(
+                this.taskLogHistoryTransferAs02Entity,
+                'taskExecutionTime',
+                time,
+                'commandChainId'
+              ))
+            );
+          } catch (err: any) {
+            warnings.push(`AS02 平台转存链删除异常（已忽略）：${err?.message || err}`);
+          }
+          const rows = await this.deleteHistoryTransferLogsAs02(time);
+          if (!rows.length) {
+            warnings.push(`AS02 平台转存日志未找到，仍继续删除任务记录：${time.toISOString?.() ?? String(time)}`);
+          } else {
+            try {
+              await this.rollbackHistoryTransferStorageAs02(rows, time);
+            } catch (err: any) {
+              warnings.push(`AS02 平台转存固存回退失败，已继续删除任务记录：${err?.message || err}`);
+            }
+          }
+          deleted += rows.length;
         }
       }
     }
@@ -626,6 +691,28 @@ export class TaskLogTaskManageService extends BaseService {
     return rows.length;
   }
 
+  private async deleteHistoryTransferLogsAs02(taskTime: Date): Promise<TaskLogHistoryTransferAs02Entity[]> {
+    const { start, end } = this.buildTimeRange(taskTime);
+    const rows = await this.taskLogHistoryTransferAs02Entity.find({
+      where: { taskExecutionTime: Between(start, end) } as any,
+    });
+    if (!rows.length) return [];
+    this.assertDeletableLogStatus(rows as any, 'delete');
+    await this.taskLogHistoryTransferAs02Entity.delete({ taskExecutionTime: Between(start, end) } as any);
+    return rows;
+  }
+
+  private async deleteHistoryTransferLogsAs03(taskTime: Date): Promise<TaskLogHistoryTransferAs03Entity[]> {
+    const { start, end } = this.buildTimeRange(taskTime);
+    const rows = await this.taskLogHistoryTransferAs03Entity.find({
+      where: { taskExecutionTime: Between(start, end) } as any,
+    });
+    if (!rows.length) return [];
+    this.assertDeletableLogStatus(rows as any, 'delete');
+    await this.taskLogHistoryTransferAs03Entity.delete({ taskExecutionTime: Between(start, end) } as any);
+    return rows;
+  }
+
   private async deleteTransferLogsAs02(
     transferTime: Date
   ): Promise<{ count: number; ranges: TransferFileRanges }> {
@@ -754,6 +841,77 @@ export class TaskLogTaskManageService extends BaseService {
         dataSource: { imagingTime, imagingUid },
       });
     }
+  }
+
+  private async rollbackHistoryTransferStorageAs02(rows: TaskLogHistoryTransferAs02Entity[], taskTime: Date) {
+    const fileNos = rows
+      .map((row: any) => Number(row?.recordFileNo))
+      .filter((n) => Number.isFinite(n));
+    let matched: any[] = [];
+    if (fileNos.length) {
+      matched = await this.as02PlatformEntity.find({ where: { startFileNo: In(fileNos) } as any });
+    }
+    if (!matched.length) {
+      const { start, end } = this.buildTimeRange(taskTime);
+      matched = await this.as02PlatformEntity.find({ where: { executingTime: Between(start, end) } as any });
+    }
+    if (!matched.length) return;
+    const ids = matched.map((r: any) => Number(r?.id)).filter((id) => Number.isFinite(id));
+    if (!ids.length) return;
+    await this.as02PlatformEntity.update(
+      { id: In(ids) } as any,
+      {
+        status: 0,
+        fileName: null,
+        executingTime: null,
+        imagingUid: null,
+        updateTime: new Date(),
+      } as any
+    );
+    await this.logStorageUpdate({
+      tableName: this.as02PlatformEntity.metadata.tableName,
+      action: 'task_manage.rollback.history_transfer',
+      target: { ids },
+      change: { status: 0, cleared: true },
+      dataSource: {
+        taskExecutionTime: taskTime,
+        recordFileNos: fileNos,
+      },
+    });
+  }
+
+  private async rollbackHistoryTransferStorageAs03(rows: TaskLogHistoryTransferAs03Entity[], taskTime: Date) {
+    const { start, end } = this.buildTimeRange(taskTime);
+    let matched = await this.as03PlatformEntity.find({ where: { executingTime: Between(start, end) } as any });
+    if (!matched.length) {
+      const names = rows.map((r: any) => String(r?.targetName || '').trim()).filter(Boolean);
+      if (names.length) {
+        matched = await this.as03PlatformEntity.find({ where: { fileName: In(names) } as any });
+      }
+    }
+    if (!matched.length) return;
+    const ids = matched.map((r: any) => Number(r?.id)).filter((id) => Number.isFinite(id));
+    if (!ids.length) return;
+    await this.as03PlatformEntity.update(
+      { id: In(ids) } as any,
+      {
+        status: 0,
+        fileName: null,
+        executingTime: null,
+        imagingUid: null,
+        updateTime: new Date(),
+      } as any
+    );
+    await this.logStorageUpdate({
+      tableName: this.as03PlatformEntity.metadata.tableName,
+      action: 'task_manage.rollback.history_transfer',
+      target: { ids },
+      change: { status: 0, cleared: true },
+      dataSource: {
+        taskExecutionTime: taskTime,
+        targetNames: rows.map((r: any) => r?.targetName).filter(Boolean),
+      },
+    });
   }
 
   private assertDeletableLogStatus(rows: Array<{ status?: number }>, type: 'imaging' | 'transfer' | 'delete') {
