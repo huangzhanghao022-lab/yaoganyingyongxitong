@@ -1875,6 +1875,93 @@ declare namespace Eps {
 		[key: string]: any;
 	}
 
+	interface TaskLogOrbitControlAs02Entity {
+		/**
+		 * ID
+		 */
+		id?: number;
+
+		/**
+		 * 卫星代号
+		 */
+		satelliteCode?: string;
+
+		/**
+		 * 任务执行时间
+		 */
+		taskExecutionTime?: Date;
+
+		/**
+		 * 轨控开始时间
+		 */
+		orbitStartTime?: Date;
+
+		/**
+		 * 轨控结束时间
+		 */
+		orbitEndTime?: Date;
+
+		/**
+		 * 持续时间(s)
+		 */
+		durationSeconds?: number;
+
+		/**
+		 * 模板Id
+		 */
+		templateId?: string;
+
+		/**
+		 * 目录Id
+		 */
+		folderId?: string;
+
+		/**
+		 * 任务名称
+		 */
+		taskName?: string;
+
+		/**
+		 * 来源文件名
+		 */
+		sourceFileName?: string;
+
+		/**
+		 * 批次ID
+		 */
+		batchId?: string;
+
+		/**
+		 * 指令链id
+		 */
+		commandChainId?: string;
+
+		/**
+		 * 状态
+		 */
+		status?: number;
+
+		/**
+		 * 执行回填时间
+		 */
+		storageAppliedAt?: Date;
+
+		/**
+		 * 创建时间
+		 */
+		createTime?: string;
+
+		/**
+		 * 更新时间
+		 */
+		updateTime?: string;
+
+		/**
+		 * 任意键值
+		 */
+		[key: string]: any;
+	}
+
 	interface TaskLogTransmitAs02Entity {
 		/**
 		 * ID
@@ -2619,6 +2706,130 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface Task_logHistory_transfer_as02 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogHistoryTransferAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogHistoryTransferAs02Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogHistoryTransferAs02Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
+	interface Task_logHistory_transfer_as03 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogHistoryTransferAs03Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogHistoryTransferAs03Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogHistoryTransferAs03Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
 	interface Task_logImaging_as02 {
 		/**
 		 * 修改
@@ -2743,6 +2954,68 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface Task_logOrbit_control_as02 {
+		/**
+		 * 修改
+		 */
+		update(data?: any): Promise<any>;
+
+		/**
+		 * 删除
+		 */
+		delete(data?: any): Promise<any>;
+
+		/**
+		 * 分页查询
+		 */
+		page(data?: any): Promise<{
+			pagination: { size: number; page: number; total: number; [key: string]: any };
+			list: TaskLogOrbitControlAs02Entity[];
+			[key: string]: any;
+		}>;
+
+		/**
+		 * 列表查询
+		 */
+		list(data?: any): Promise<TaskLogOrbitControlAs02Entity[]>;
+
+		/**
+		 * 单个信息
+		 */
+		info(data?: any): Promise<TaskLogOrbitControlAs02Entity>;
+
+		/**
+		 * 新增
+		 */
+		add(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: {
+			update: string;
+			delete: string;
+			page: string;
+			list: string;
+			info: string;
+			add: string;
+		};
+
+		/**
+		 * 权限状态
+		 */
+		_permission: {
+			update: boolean;
+			delete: boolean;
+			page: boolean;
+			list: boolean;
+			info: boolean;
+			add: boolean;
+		};
+
+		request: Service["request"];
+	}
+
 	interface Task_logTransmit_as02 {
 		/**
 		 * 修改
@@ -2834,130 +3107,6 @@ declare namespace Eps {
 		 * 单个信息
 		 */
 		info(data?: any): Promise<TaskLogTransmitAs03Entity>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			update: string;
-			delete: string;
-			page: string;
-			list: string;
-			info: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			update: boolean;
-			delete: boolean;
-			page: boolean;
-			list: boolean;
-			info: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface Task_logHistory_transfer_as02 {
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: TaskLogHistoryTransferAs02Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<TaskLogHistoryTransferAs02Entity[]>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<TaskLogHistoryTransferAs02Entity>;
-
-		/**
-		 * 新增
-		 */
-		add(data?: any): Promise<any>;
-
-		/**
-		 * 权限标识
-		 */
-		permission: {
-			update: string;
-			delete: string;
-			page: string;
-			list: string;
-			info: string;
-			add: string;
-		};
-
-		/**
-		 * 权限状态
-		 */
-		_permission: {
-			update: boolean;
-			delete: boolean;
-			page: boolean;
-			list: boolean;
-			info: boolean;
-			add: boolean;
-		};
-
-		request: Service["request"];
-	}
-
-	interface Task_logHistory_transfer_as03 {
-		/**
-		 * 修改
-		 */
-		update(data?: any): Promise<any>;
-
-		/**
-		 * 删除
-		 */
-		delete(data?: any): Promise<any>;
-
-		/**
-		 * 分页查询
-		 */
-		page(data?: any): Promise<{
-			pagination: { size: number; page: number; total: number; [key: string]: any };
-			list: TaskLogHistoryTransferAs03Entity[];
-			[key: string]: any;
-		}>;
-
-		/**
-		 * 列表查询
-		 */
-		list(data?: any): Promise<TaskLogHistoryTransferAs03Entity[]>;
-
-		/**
-		 * 单个信息
-		 */
-		info(data?: any): Promise<TaskLogHistoryTransferAs03Entity>;
 
 		/**
 		 * 新增
@@ -3912,6 +4061,30 @@ declare namespace Eps {
 		request: Service["request"];
 	}
 
+	interface Orbit_controlAs02 {
+		/**
+		 * preview_excel
+		 */
+		preview_excel(data?: any): Promise<any>;
+
+		/**
+		 * submit_excel
+		 */
+		submit_excel(data?: any): Promise<any>;
+
+		/**
+		 * 权限标识
+		 */
+		permission: { preview_excel: string; submit_excel: string };
+
+		/**
+		 * 权限状态
+		 */
+		_permission: { preview_excel: boolean; submit_excel: boolean };
+
+		request: Service["request"];
+	}
+
 	interface PluginInfo {
 		/**
 		 * 安装插件
@@ -4474,12 +4647,13 @@ declare namespace Eps {
 			task_manage: Task_logTask_manage;
 			delete_as02: Task_logDelete_as02;
 			delete_as03: Task_logDelete_as03;
-			imaging_as02: Task_logImaging_as02;
-			imaging_as03: Task_logImaging_as03;
-			transmit_as02: Task_logTransmit_as02;
-			transmit_as03: Task_logTransmit_as03;
 			history_transfer_as02: Task_logHistory_transfer_as02;
 			history_transfer_as03: Task_logHistory_transfer_as03;
+			imaging_as02: Task_logImaging_as02;
+			imaging_as03: Task_logImaging_as03;
+			orbit_control_as02: Task_logOrbit_control_as02;
+			transmit_as02: Task_logTransmit_as02;
+			transmit_as03: Task_logTransmit_as03;
 		};
 		base: {
 			coding: BaseCoding;
@@ -4498,6 +4672,7 @@ declare namespace Eps {
 		demo: { goods: DemoGoods; tenant: DemoTenant };
 		dict: { info: DictInfo; type: DictType };
 		history: { task: HistoryTask };
+		orbit_control: { as02: Orbit_controlAs02 };
 		plugin: { info: PluginInfo };
 		recycle: { data: RecycleData };
 		rs_image_products: { product: Rs_image_productsProduct };
