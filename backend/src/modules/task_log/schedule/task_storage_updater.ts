@@ -10,6 +10,7 @@ import { TaskLogDeleteAs02Entity } from '../entity/delete_as02';
 import { TaskLogDeleteAs03Entity } from '../entity/delete_as03';
 import { TaskLogHistoryTransferAs02Entity } from '../entity/history_transfer_as02';
 import { TaskLogHistoryTransferAs03Entity } from '../entity/history_transfer_as03';
+import { TaskLogOrbitControlAs02Entity } from '../entity/orbit_control_as02';
 import { as02payloadtableEntity } from '../../star/entity/as02_payload_table/as02_payload_table';
 import { as03payloadtableEntity } from '../../star/entity/as03_payload_table/as03_payload_table';
 import { as02platformtableEntity } from '../../star/entity/as02_platform_table/as02_platform_table';
@@ -46,6 +47,7 @@ export class TaskStorageUpdater implements IJob {
   @InjectEntityModel(TaskLogDeleteAs03Entity) deleteAs03Repo: Repository<TaskLogDeleteAs03Entity>;
   @InjectEntityModel(TaskLogHistoryTransferAs02Entity) historyTransferAs02Repo: Repository<TaskLogHistoryTransferAs02Entity>;
   @InjectEntityModel(TaskLogHistoryTransferAs03Entity) historyTransferAs03Repo: Repository<TaskLogHistoryTransferAs03Entity>;
+  @InjectEntityModel(TaskLogOrbitControlAs02Entity) orbitControlAs02Repo: Repository<TaskLogOrbitControlAs02Entity>;
 
   async onTick() {
     this.logger.info('[task-storage-updater] tick at %s', new Date().toISOString());
@@ -55,6 +57,7 @@ export class TaskStorageUpdater implements IJob {
       await this.handleTransmit(now);
       await this.handleDelete(now);
       await this.handleHistoryTransfer(now);
+      await this.handleOrbitControl(now);
       await this.handlePlatform(now);
     } catch (err) {
       this.logger.error('[task-storage-updater] 定时执行失败: %s', err?.message, { stack: err?.stack });
@@ -403,6 +406,30 @@ export class TaskStorageUpdater implements IJob {
     } else {
       await this.historyTransferAs03Repo.save(task as any);
     }
+  }
+
+  private async handleOrbitControl(now: Date) {
+    const tasks = await this.orbitControlAs02Repo.find({
+      where: { status: In([0, 1, 2]), orbitEndTime: LessThanOrEqual(now) } as any,
+    });
+    await Promise.all(tasks.map((t) => this.markOrbitControlDone(t)));
+  }
+
+  private async markOrbitControlDone(task: TaskLogOrbitControlAs02Entity) {
+    task.status = 3;
+    (task as any).storageAppliedAt = new Date();
+    await this.orbitControlAs02Repo.save(task as any);
+    await this.logStorageUpdate({
+      tableName: this.orbitControlAs02Repo.metadata.tableName,
+      action: 'task_storage_updater.orbit_control',
+      target: { taskLogId: task.id },
+      change: { status: 3 },
+      dataSource: {
+        satellite: 'AS02',
+        orbitStartTime: (task as any).orbitStartTime,
+        orbitEndTime: (task as any).orbitEndTime,
+      },
+    });
   }
 
   private async logStorageUpdate(input: {

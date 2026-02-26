@@ -12,6 +12,7 @@ import { TaskLogDeleteAs02Entity } from '../../task_log/entity/delete_as02';
 import { TaskLogDeleteAs03Entity } from '../../task_log/entity/delete_as03';
 import { TaskLogHistoryTransferAs02Entity } from '../../task_log/entity/history_transfer_as02';
 import { TaskLogHistoryTransferAs03Entity } from '../../task_log/entity/history_transfer_as03';
+import { TaskLogOrbitControlAs02Entity } from '../../task_log/entity/orbit_control_as02';
 import { TaskConflictService } from './taskConflict';
 import { ILogger } from '@midwayjs/logger';
 import { AntennaShuchuanService } from '../../antenna_shuchuan/service/antenna_shuchuan';
@@ -19,7 +20,7 @@ import axios from 'axios';
 
 type ValidationResult = { ok: true } | { ok: false; errors: Array<{ field: string; message: string }> };
 
-type CommandType = 'image' | 'transfer' | 'delete' | 'history_transfer';
+type CommandType = 'image' | 'transfer' | 'delete' | 'history_transfer' | 'orbit_control';
 type Sat = 'AS02' | 'AS03';
 
 const TELECONTROL_TOKEN_URL =
@@ -76,6 +77,9 @@ export class CommandValidateService {
   @InjectEntityModel(TaskLogHistoryTransferAs03Entity)
   historyTransferLogAs03Repo: Repository<TaskLogHistoryTransferAs03Entity>;
 
+  @InjectEntityModel(TaskLogOrbitControlAs02Entity)
+  orbitControlLogAs02Repo: Repository<TaskLogOrbitControlAs02Entity>;
+
   private stationCache: { ts: number; names: string[] } | null = null;
   private tokenCache: { ts: number; token: string } | null = null;
 
@@ -85,7 +89,7 @@ export class CommandValidateService {
     const satellite: Sat = body?.satellite;
     const params = body?.params || {};
 
-    if (!type || !['image', 'transfer', 'delete', 'history_transfer'].includes(type)) {
+    if (!type || !['image', 'transfer', 'delete', 'history_transfer', 'orbit_control'].includes(type)) {
       errors.push({ field: 'type', message: 'type 必须为 image/transfer/delete' });
     }
     if (!satellite || !['AS02', 'AS03'].includes(satellite)) {
@@ -105,6 +109,9 @@ export class CommandValidateService {
         break;
       case 'history_transfer':
         await this.validateHistoryTransfer(satellite, params, errors);
+        break;
+      case 'orbit_control':
+        await this.validateOrbitControl(satellite, params, errors);
         break;
     }
 
@@ -187,6 +194,12 @@ export class CommandValidateService {
     const taskTime = taskTimeRaw ? new Date(taskTimeRaw) : this.extractCommandTime(type, params, satellite);
     if (!taskTime || Number.isNaN(taskTime.getTime())) {
       return { ok: false, errors: [{ field: 'time', message: '缂哄皯浠诲姟鏃堕棿' }] };
+    }
+    if (type === 'history_transfer') {
+      const currentName = String(params?.name || '').trim();
+      if (!currentName) {
+        params.name = this.buildHistoryTransferTaskName(taskTime);
+      }
     }
 
     try {
@@ -496,6 +509,38 @@ export class CommandValidateService {
     }
   }
 
+  private async validateOrbitControl(sat: Sat, p: any, errors: Array<{ field: string; message: string }>) {
+    if (sat !== 'AS02') {
+      errors.push({ field: 'satellite', message: 'orbit_control 当前仅支持 AS02' });
+      return;
+    }
+    const spacecraftCode = String(p?.spacecraftCode || '').toUpperCase();
+    if (spacecraftCode !== 'AS02') {
+      errors.push({ field: 'spacecraftCode', message: 'spacecraftCode 必须为 AS02' });
+    }
+    if (!this.pickString(p, ['templateId'])) {
+      errors.push({ field: 'templateId', message: 'templateId 不能为空' });
+    }
+    if (!this.pickString(p, ['folderId'])) {
+      errors.push({ field: 'folderId', message: 'folderId 不能为空' });
+    }
+    const startSec = this.parseUnixTimestampSeconds(p?.start);
+    const endSec = this.parseUnixTimestampSeconds(p?.end);
+    if (startSec == null) {
+      errors.push({ field: 'start', message: 'start 必须为秒级时间戳' });
+    }
+    if (endSec == null) {
+      errors.push({ field: 'end', message: 'end 必须为秒级时间戳' });
+    }
+    if (startSec != null && endSec != null && endSec <= startSec) {
+      errors.push({ field: 'end', message: 'end 必须大于 start' });
+    }
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (startSec != null && startSec < nowSec) {
+      errors.push({ field: 'start', message: 'start 不能早于当前时间' });
+    }
+  }
+
   // Helpers
   private parseDate(val: any): number | null {
     if (val == null || val === '') return null;
@@ -661,6 +706,11 @@ export class CommandValidateService {
   }
   /** 提取命令的主要时间字段，用于冲突校验与记录 */
   private extractCommandTime(type: CommandType, params: any, sat?: Sat): Date | null {
+    if (type === 'orbit_control') {
+      const startSec = this.parseUnixTimestampSeconds(params?.start);
+      if (startSec != null) return new Date(startSec * 1000);
+      return null;
+    }
     // AS03 成像：优先取开始时间；若仅有 tf，则按默认成像时长（或 imageTime）反推开始时间，避免使用结束时间写库
     if (type === 'image' && sat === 'AS03') {
       const startKeys = ['startAt', 't0', 'start_time', 'startTime', 'imagingTime'];
@@ -696,6 +746,14 @@ export class CommandValidateService {
   }
 
   /** 成功校验后写入任务记录表（不同类型/星分流） */
+  private parseUnixTimestampSeconds(value: any): number | null {
+    if (value == null || value === '') return null;
+    const n = Number(String(value).trim());
+    if (!Number.isFinite(n)) return null;
+    const sec = Math.trunc(n);
+    return sec > 0 ? sec : null;
+  }
+
   private async saveTaskLog(sat: Sat, type: CommandType, params: any, time: Date, commandChainId?: any) {
     const taskLogMeta = this.getTaskLogMeta(params);
     const forecastMeta = taskLogMeta?.forecast || taskLogMeta?.imageForecast || taskLogMeta?.image || {};
@@ -998,6 +1056,47 @@ export class CommandValidateService {
             entity.status = 0;
             await this.historyTransferLogAs03Repo.save(entity);
           }
+        }
+        break;
+      case 'orbit_control':
+        if (sat !== 'AS02') return;
+        {
+          const orbitMeta = taskLogMeta?.orbitControl || {};
+          const exist = await this.findExistingLog(this.orbitControlLogAs02Repo, 'taskExecutionTime', sat, time, 1000);
+          if (exist) {
+            if (commandChainId) {
+              const merged = this.mergeCommandChainIds((exist as any).commandChainId, commandChainId);
+              await this.orbitControlLogAs02Repo.update(
+                { id: (exist as any).id } as any,
+                { commandChainId: merged } as any
+              );
+            }
+            return;
+          }
+          const startSec =
+            this.pickNumberFromSources([orbitMeta, taskLogMeta, params], ['orbitStartTime', 'start']) ??
+            this.parseUnixTimestampSeconds(params?.start) ??
+            Math.trunc(time.getTime() / 1000);
+          const endSec =
+            this.pickNumberFromSources([orbitMeta, taskLogMeta, params], ['orbitEndTime', 'end']) ??
+            this.parseUnixTimestampSeconds(params?.end);
+          const entity = new TaskLogOrbitControlAs02Entity();
+          entity.satelliteCode = sat;
+          entity.taskExecutionTime = time;
+          entity.orbitStartTime = new Date(Number(startSec) * 1000);
+          entity.orbitEndTime = new Date(Number(endSec || startSec) * 1000);
+          entity.durationSeconds = Number(
+            this.pickNumberFromSources([orbitMeta, taskLogMeta, params], ['durationSeconds', 'duration']) ??
+              (Number(endSec || startSec) - Number(startSec))
+          );
+          entity.templateId = this.pickString(params, ['templateId']);
+          entity.folderId = this.pickString(params, ['folderId']);
+          entity.taskName = this.pickString(params, ['name']);
+          entity.sourceFileName = this.pickStringFromSources([orbitMeta, taskLogMeta], ['sourceFileName']);
+          entity.batchId = this.pickStringFromSources([orbitMeta, taskLogMeta], ['batchId']);
+          entity.commandChainId = commandChainId ? String(commandChainId) : this.pickString(params, ['commandChainId']);
+          entity.status = 0;
+          await this.orbitControlLogAs02Repo.save(entity);
         }
         break;
     }
@@ -1336,6 +1435,18 @@ export class CommandValidateService {
       ''
     );
     return cleaned.trim();
+  }
+
+  private buildHistoryTransferTaskName(taskTime: Date): string {
+    return `平台历史文件转存任务${this.formatLocalDateTime(taskTime)}`;
+  }
+
+  private formatLocalDateTime(input: Date): string {
+    const d = new Date(input);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
+      d.getMinutes()
+    )}:${pad(d.getSeconds())}`;
   }
 
   private mergeCommandChainIds(current: string | undefined | null, incoming: string | string[]): string {

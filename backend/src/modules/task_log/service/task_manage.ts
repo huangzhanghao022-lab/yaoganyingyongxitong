@@ -12,6 +12,7 @@ import { TaskLogDeleteAs02Entity } from '../entity/delete_as02';
 import { TaskLogDeleteAs03Entity } from '../entity/delete_as03';
 import { TaskLogHistoryTransferAs02Entity } from '../entity/history_transfer_as02';
 import { TaskLogHistoryTransferAs03Entity } from '../entity/history_transfer_as03';
+import { TaskLogOrbitControlAs02Entity } from '../entity/orbit_control_as02';
 import { as02payloadtableEntity } from '../../star/entity/as02_payload_table/as02_payload_table';
 import { as02platformtableEntity } from '../../star/entity/as02_platform_table/as02_platform_table';
 import { as03payloadtableEntity } from '../../star/entity/as03_payload_table/as03_payload_table';
@@ -76,6 +77,9 @@ export class TaskLogTaskManageService extends BaseService {
   @InjectEntityModel(TaskLogHistoryTransferAs03Entity)
   taskLogHistoryTransferAs03Entity: Repository<TaskLogHistoryTransferAs03Entity>;
 
+  @InjectEntityModel(TaskLogOrbitControlAs02Entity)
+  taskLogOrbitControlAs02Entity: Repository<TaskLogOrbitControlAs02Entity>;
+
   @InjectEntityModel(as02payloadtableEntity)
   as02PayloadEntity: Repository<as02payloadtableEntity>;
 
@@ -114,11 +118,15 @@ export class TaskLogTaskManageService extends BaseService {
       const type = String(param?.type || '').toLowerCase();
       if (
         parsedTimes.length &&
-        (type === 'imaging' || type === 'transfer' || type === 'delete' || type === 'history_transfer')
+        (type === 'imaging' ||
+          type === 'transfer' ||
+          type === 'delete' ||
+          type === 'history_transfer' ||
+          type === 'orbit_control')
       ) {
         return this.deleteByTimes(
           satellite,
-          type as 'imaging' | 'transfer' | 'delete' | 'history_transfer',
+          type as 'imaging' | 'transfer' | 'delete' | 'history_transfer' | 'orbit_control',
           parsedTimes
         );
       }
@@ -141,7 +149,7 @@ export class TaskLogTaskManageService extends BaseService {
 
   private async deleteByTimes(
     satellite: string,
-    type: 'imaging' | 'transfer' | 'delete' | 'history_transfer',
+    type: 'imaging' | 'transfer' | 'delete' | 'history_transfer' | 'orbit_control',
     times: Date[]
   ): Promise<{ count: number; warnings?: string[]; telecontrolDeletes?: TelecontrolDeleteResult[] }> {
     const repo = satellite === 'AS03' ? this.taskAs03Entity : this.taskAs02Entity;
@@ -299,7 +307,7 @@ export class TaskLogTaskManageService extends BaseService {
           }
           deleted += logCount;
         }
-      } else {
+      } else if (type === 'history_transfer') {
         if (satellite === 'AS03') {
           try {
             telecontrolDeletes.push(
@@ -349,6 +357,26 @@ export class TaskLogTaskManageService extends BaseService {
           }
           deleted += rows.length;
         }
+      } else {
+        try {
+          telecontrolDeletes.push(
+            ...(await this.deleteTelecontrolChainsByTime(
+              this.taskLogOrbitControlAs02Entity,
+              'taskExecutionTime',
+              time,
+              'commandChainId',
+              1000,
+              { ignoreStatusSkip: true }
+            ))
+          );
+        } catch (err: any) {
+          warnings.push(`AS02 轨控链删除异常（已忽略）：${err?.message || err}`);
+        }
+        const count = await this.deleteOrbitControlLogsAs02(time);
+        if (!count) {
+          warnings.push(`AS02 轨控日志未找到，仍继续删除任务记录：${time.toISOString?.() ?? String(time)}`);
+        }
+        deleted += count;
       }
     }
     const base = { count: deleted };
@@ -474,14 +502,16 @@ export class TaskLogTaskManageService extends BaseService {
 
   private async deleteTelecontrolChainsFromRows<T extends { status?: number }>(
     rows: T[],
-    field: keyof T & string
+    field: keyof T & string,
+    options?: { ignoreStatusSkip?: boolean }
   ): Promise<TelecontrolDeleteResult[]> {
     const ids = new Set<string>();
     let skippedByStatus = 0;
     let emptyIdRows = 0;
+    const ignoreStatusSkip = !!options?.ignoreStatusSkip;
     for (const row of rows) {
       const status = Number((row as any)?.status);
-      if (CHAIN_DELETE_SKIP_STATUSES.has(status)) {
+      if (!ignoreStatusSkip && CHAIN_DELETE_SKIP_STATUSES.has(status)) {
         skippedByStatus += 1;
         continue;
       }
@@ -499,6 +529,7 @@ export class TaskLogTaskManageService extends BaseService {
       JSON.stringify({
         rows: rows.length,
         skippedByStatus,
+        ignoreStatusSkip,
         emptyIdRows,
         totalIds: ids.size,
         ids: Array.from(ids),
@@ -577,7 +608,8 @@ export class TaskLogTaskManageService extends BaseService {
     timeField: keyof T & string,
     time: Date,
     idField: keyof T & string,
-    toleranceMs = 1000
+    toleranceMs = 1000,
+    options?: { ignoreStatusSkip?: boolean }
   ): Promise<TelecontrolDeleteResult[]> {
     const { start, end } = this.buildTimeRange(time, toleranceMs);
     this.logger?.info?.(
@@ -593,7 +625,7 @@ export class TaskLogTaskManageService extends BaseService {
       this.logger?.warn?.('[task-manage] telecontrol delete scan empty: %s', String(time));
       return [];
     }
-    return this.deleteTelecontrolChainsFromRows(rows, idField);
+    return this.deleteTelecontrolChainsFromRows(rows, idField, options);
   }
 
   private async fetchTelecontrolToken(): Promise<string> {
@@ -711,6 +743,17 @@ export class TaskLogTaskManageService extends BaseService {
     this.assertDeletableLogStatus(rows as any, 'delete');
     await this.taskLogHistoryTransferAs03Entity.delete({ taskExecutionTime: Between(start, end) } as any);
     return rows;
+  }
+
+  private async deleteOrbitControlLogsAs02(taskTime: Date): Promise<number> {
+    const { start, end } = this.buildTimeRange(taskTime);
+    const rows = await this.taskLogOrbitControlAs02Entity.find({
+      where: { taskExecutionTime: Between(start, end) } as any,
+    });
+    if (!rows.length) return 0;
+    this.assertDeletableLogStatus(rows as any, 'delete');
+    await this.taskLogOrbitControlAs02Entity.delete({ taskExecutionTime: Between(start, end) } as any);
+    return rows.length;
   }
 
   private async deleteTransferLogsAs02(

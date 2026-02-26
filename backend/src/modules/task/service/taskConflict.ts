@@ -9,8 +9,9 @@ import { TaskLogDeleteAs02Entity } from '../../task_log/entity/delete_as02';
 import { TaskLogDeleteAs03Entity } from '../../task_log/entity/delete_as03';
 import { TaskLogHistoryTransferAs02Entity } from '../../task_log/entity/history_transfer_as02';
 import { TaskLogHistoryTransferAs03Entity } from '../../task_log/entity/history_transfer_as03';
+import { TaskLogOrbitControlAs02Entity } from '../../task_log/entity/orbit_control_as02';
 
-type TaskType = 'image' | 'transfer' | 'delete' | 'history_transfer';
+type TaskType = 'image' | 'transfer' | 'delete' | 'history_transfer' | 'orbit_control';
 type Sat = 'AS02' | 'AS03';
 
 type CheckInput = {
@@ -52,22 +53,27 @@ export class TaskConflictService {
   @InjectEntityModel(TaskLogHistoryTransferAs03Entity)
   historyTransferAs03Repo: Repository<TaskLogHistoryTransferAs03Entity>;
 
-  // 轨控任务暂未建模，先预留规则常量，后续接入轨控任务表时启用。
+  @InjectEntityModel(TaskLogOrbitControlAs02Entity)
+  orbitControlAs02Repo: Repository<TaskLogOrbitControlAs02Entity>;
+
+  // 兼容历史代码保留；当前轨控任务已建模，实际冲突判断使用 intervalMatrix。
   private readonly trackControlGapMin = 60;
 
   private readonly intervalMatrix: Record<Sat, Record<TaskType, Record<TaskType, number>>> = {
     AS02: {
-      image: { image: 95, transfer: 80, delete: 30, history_transfer: 30 },
-      transfer: { image: 80, transfer: 15, delete: 30, history_transfer: 30 },
-      delete: { image: 30, transfer: 30, delete: 30, history_transfer: 30 },
-      history_transfer: { image: 30, transfer: 30, delete: 30, history_transfer: 30 },
+      image: { image: 95, transfer: 80, delete: 30, history_transfer: 30, orbit_control: 120 },
+      transfer: { image: 80, transfer: 15, delete: 30, history_transfer: 30, orbit_control: 60 },
+      delete: { image: 30, transfer: 30, delete: 30, history_transfer: 30, orbit_control: 60 },
+      history_transfer: { image: 30, transfer: 30, delete: 30, history_transfer: 30, orbit_control: 60 },
+      orbit_control: { image: 120, transfer: 60, delete: 60, history_transfer: 60, orbit_control: 60 },
     },
     AS03: {
-      image: { image: 180, transfer: 180, delete: 30, history_transfer: 30 },
-      transfer: { image: 180, transfer: 180, delete: 30, history_transfer: 30 },
-      delete: { image: 30, transfer: 30, delete: 30, history_transfer: 30 },
+      image: { image: 180, transfer: 180, delete: 30, history_transfer: 30, orbit_control: 120 },
+      transfer: { image: 180, transfer: 180, delete: 30, history_transfer: 30, orbit_control: 60 },
+      delete: { image: 30, transfer: 30, delete: 30, history_transfer: 30, orbit_control: 60 },
       // 预留，当前 AS03 平台转存任务尚未设计。
-      history_transfer: { image: 30, transfer: 30, delete: 30, history_transfer: 30 },
+      history_transfer: { image: 30, transfer: 30, delete: 30, history_transfer: 30, orbit_control: 60 },
+      orbit_control: { image: 120, transfer: 60, delete: 60, history_transfer: 60, orbit_control: 60 },
     },
   };
 
@@ -76,6 +82,7 @@ export class TaskConflictService {
     transfer: '数传任务',
     delete: '固存删除任务',
     history_transfer: '平台转存任务',
+    orbit_control: '轨控任务',
   };
 
   async check(input: CheckInput): Promise<ConflictResult | null> {
@@ -102,7 +109,6 @@ export class TaskConflictService {
       }
     }
 
-    // 轨控任务冲突预留：轨控任务表未接入前不执行实际检查，仅保留规则常量供后续使用。
     void this.trackControlGapMin;
     return null;
   }
@@ -133,6 +139,13 @@ export class TaskConflictService {
       histories.forEach(r => {
         if (r?.taskExecutionTime && notCancelled(r.status)) {
           list.push({ type: 'history_transfer', time: new Date(r.taskExecutionTime) });
+        }
+      });
+
+      const orbits = await this.orbitControlAs02Repo.find({ where: { satelliteCode: sat } });
+      orbits.forEach(r => {
+        if (r?.taskExecutionTime && notCancelled(r.status)) {
+          list.push({ type: 'orbit_control', time: new Date(r.taskExecutionTime) });
         }
       });
     } else {
