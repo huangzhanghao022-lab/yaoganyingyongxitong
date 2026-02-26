@@ -1,15 +1,15 @@
-<template>
+﻿<template>
 	<div class="one-click-page">
 		<el-card shadow="never" class="mb16">
 			<template #header>
 				<div class="card-header">
-					<span>一键规划模块</span>
+					<span>涓€閿鍒掓ā鍧?/span>
 					<el-space>
 						<el-date-picker
 							v-model="form.date"
 							type="date"
 							:clearable="false"
-							placeholder="选择日期"
+							placeholder="閫夋嫨鏃ユ湡"
 							format="YYYY-MM-DD"
 							value-format="x"
 							style="width: 160px"
@@ -18,23 +18,23 @@
 							<el-option label="AS02" value="AS02" />
 							<el-option label="AS03" value="AS03" />
 						</el-select>
-						<el-button type="primary" :loading="loading" @click="runOneClickPlan">一键规划</el-button>
+						<el-button type="primary" :loading="loading" @click="runOneClickPlan">涓€閿鍒?/el-button>
 						<el-button
 							type="success"
 							:loading="submitting"
 							:disabled="!timeline.length"
 							@click="openSubmitSummaryDialog"
 						>
-							提交规划
+							鎻愪氦瑙勫垝
 						</el-button>
 					</el-space>
 				</div>
 			</template>
 
 			<el-space :size="12" style="margin-top: 8px; flex-wrap: wrap;">
-				<el-checkbox v-model="taskSwitches.imaging">规划成像</el-checkbox>
-				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.transfer">规划数传</el-checkbox>
-				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.delete">规划固存删除</el-checkbox>
+				<el-checkbox v-model="taskSwitches.imaging">瑙勫垝鎴愬儚</el-checkbox>
+				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.transfer">瑙勫垝鏁颁紶</el-checkbox>
+				<el-checkbox v-if="form.satellite === 'AS02'" v-model="taskSwitches.delete">瑙勫垝鍥哄瓨鍒犻櫎</el-checkbox>
 			</el-space>
 			<el-space v-if="planningProgress.visible" :size="12" style="margin-top: 8px; flex-wrap: wrap;">
 				<el-progress :percentage="planningProgress.percent" :status="planningProgress.status" style="min-width: 260px" />
@@ -53,21 +53,21 @@
 			<br />
 			<el-space :size="12" style="margin-top: 8px; flex-wrap: wrap;">
 				<el-space align="center">
-					<span class="field-label">成像开始时间：</span>
+					<span class="field-label">鎴愬儚寮€濮嬫椂闂达細</span>
 					<el-date-picker
 						v-model="form.rangeStart"
 						type="datetime"
-						placeholder="选择开始时间"
+						placeholder="閫夋嫨寮€濮嬫椂闂?
 						value-format="x"
 						style="width: 200px"
 					/>
 				</el-space>
 				<el-space align="center">
-					<span class="field-label">成像结束时间：</span>
+					<span class="field-label">鎴愬儚缁撴潫鏃堕棿锛?/span>
 					<el-date-picker
 						v-model="form.rangeEnd"
 						type="datetime"
-						placeholder="选择结束时间"
+						placeholder="閫夋嫨缁撴潫鏃堕棿"
 						value-format="x"
 						style="width: 200px"
 					/>
@@ -78,12 +78,12 @@
 			<br />
 			<el-space :size="12" style="margin-top: 8px; flex-wrap: wrap;">
 				<el-space align="center">
-					<span class="field-label">是否重新加载表：</span>
-					<el-checkbox v-model="reloadTableFlag">重新加载表</el-checkbox>
+					<span class="field-label">鏄惁閲嶆柊鍔犺浇琛細</span>
+					<el-checkbox v-model="reloadTableFlag">閲嶆柊鍔犺浇琛?/el-checkbox>
 				</el-space>
 				
 				<el-space align="center">
-					<span class="field-label">绝对延时起始号：</span>
+					<span class="field-label">缁濆寤舵椂璧峰鍙凤細</span>
 					<el-input-number
 						v-model="absStartSeq"
 						:min="1"
@@ -95,7 +95,7 @@
 				</el-space>
 
 				<el-space align="center">
-					<span class="field-label">成像任务数量：</span>
+					<span class="field-label">鎴愬儚浠诲姟鏁伴噺锛?/span>
 					<el-input-number
 						v-model="imagingTaskCount"
 						:min="1"
@@ -107,7 +107,7 @@
 				</el-space>
 
 				<el-space v-if="form.satellite === 'AS02'" align="center">
-					<span class="field-label">数传任务数量：</span>
+					<span class="field-label">鏁颁紶浠诲姟鏁伴噺锛?/span>
 					<el-input-number
 						v-model="transferTaskCount"
 						:min="1"
@@ -119,7 +119,7 @@
 				</el-space>
 
 				<el-space align="center">
-					<span class="field-label">云量上限(%)：</span>
+					<span class="field-label">浜戦噺涓婇檺(%)锛?/span>
 					<el-input-number
 						v-model="cloudLimit"
 						:min="0"
@@ -131,7 +131,7 @@
 				</el-space>
 
 				<el-space align="center">
-					<span class="field-label">侧摆角上限(°)：</span>
+					<span class="field-label">渚ф憜瑙掍笂闄?掳)锛?/span>
 					<el-input-number
 						v-model="rollLimitAbs"
 						:min="0"
@@ -150,33 +150,33 @@
 	<el-card shadow="never">
 		<template #header>
 			<div class="card-header">
-				<span>任务执行时间轴</span>
+				<span>浠诲姟鎵ц鏃堕棿杞?/span>
 				<span class="card-actions" v-if="timeline.length">
-					<el-tag type="success" effect="plain">共 {{ timeline.length }} 个</el-tag>
+					<el-tag type="success" effect="plain">鍏?{{ timeline.length }} 涓?/el-tag>
 					<el-space>
-						<el-button size="small" type="primary" plain @click="openEditDialog">调整任务</el-button>
+						<el-button size="small" type="primary" plain @click="openEditDialog">璋冩暣浠诲姟</el-button>
 					</el-space>
 				</span>
 				</div>
 			</template>
 
 		<div v-if="timeline.length" class="timeline-chart" ref="chartRef"></div>
-		<el-empty v-else description="暂无任务" :image-size="120" />
+		<el-empty v-else description="鏆傛棤浠诲姟" :image-size="120" />
 	</el-card>
-	<el-button v-if="submissionSummary" type="primary" plain @click="openSubmitSummaryDialog">查看任务摘要</el-button>
-	<el-button v-if="timeline.length" type="info" plain @click="sequenceDialogVisible = true">查看时序图</el-button>
+	<el-button v-if="submissionSummary" type="primary" plain @click="openSubmitSummaryDialog">鏌ョ湅浠诲姟鎽樿</el-button>
+	<el-button v-if="timeline.length" type="info" plain @click="sequenceDialogVisible = true">鏌ョ湅鏃跺簭鍥?/el-button>
 
-	<el-dialog v-model="submissionDialogVisible" title="任务摘要" width="720px" :append-to-body="true">
+	<el-dialog v-model="submissionDialogVisible" title="浠诲姟鎽樿" width="720px" :append-to-body="true">
 		<div class="summary-text">{{ submissionSummary }}</div>
 		<template #footer>
 			<el-space>
-				<el-button @click="submissionDialogVisible = false">取消</el-button>
-				<el-button type="primary" :loading="submitting" @click="submitPlannedTasks">确认提交</el-button>
+				<el-button @click="submissionDialogVisible = false">鍙栨秷</el-button>
+				<el-button type="primary" :loading="submitting" @click="submitPlannedTasks">纭鎻愪氦</el-button>
 			</el-space>
 		</template>
 	</el-dialog>
 
-	<el-dialog v-model="sequenceDialogVisible" title="任务时序" width="760px" :append-to-body="true">
+	<el-dialog v-model="sequenceDialogVisible" title="浠诲姟鏃跺簭" width="760px" :append-to-body="true">
 		<el-timeline style="max-height: 480px; overflow: auto;">
 			<el-timeline-item
 				v-for="item in sequenceItems"
@@ -184,28 +184,28 @@
 				:timestamp="item.time"
 				:type="item.type"
 			>
-				<div class="seq-title">{{ item.name || "任务" }}</div>
+				<div class="seq-title">{{ item.name || "浠诲姟" }}</div>
 				<div class="seq-meta">{{ item.meta || "-" }}</div>
 			</el-timeline-item>
 		</el-timeline>
 		<template #footer>
-			<el-button type="primary" @click="sequenceDialogVisible = false">关闭</el-button>
+			<el-button type="primary" @click="sequenceDialogVisible = false">鍏抽棴</el-button>
 		</template>
 	</el-dialog>
 
-	<el-dialog v-model="editDialogVisible" title="调整任务" width="820px" :append-to-body="true">
+	<el-dialog v-model="editDialogVisible" title="璋冩暣浠诲姟" width="820px" :append-to-body="true">
 		<el-space style="margin-bottom: 8px;">
 			<el-button size="small" type="primary" plain @click="openTransferPickDialog">
-				新增数传任务
+				鏂板鏁颁紶浠诲姟
 			</el-button>
 		</el-space>
 		<el-table :data="editableTasks" border height="520px" style="width: 100%;">
-			<el-table-column prop="name" label="名称" min-width="120">
+			<el-table-column prop="name" label="鍚嶇О" min-width="120">
 				<template #default="{ row }">
 					<el-input v-model="row.name" />
 				</template>
 			</el-table-column>
-			<el-table-column prop="startTsValue" label="开始时间" min-width="180">
+			<el-table-column prop="startTsValue" label="寮€濮嬫椂闂? min-width="180">
 				<template #default="{ row }">
 					<el-date-picker
 						v-model="row.startTsValue"
@@ -215,30 +215,30 @@
 					/>
 				</template>
 			</el-table-column>
-			<el-table-column prop="metaFields" label="描述" min-width="260">
+			<el-table-column prop="metaFields" label="鎻忚堪" min-width="260">
 				<template #default="{ row }">
 					<div class="meta-fields">
 						<div v-if="row.type === 'data'" class="meta-item file-inline">
-							<span class="meta-sep" style="white-space: nowrap;">文件号：</span>
-							<el-input v-model="row.fileInput" placeholder="例如 65,73,81,89" />
+							<span class="meta-sep" style="white-space: nowrap;">鏂囦欢鍙凤細</span>
+							<el-input v-model="row.fileInput" placeholder="渚嬪 65,73,81,89" />
 						</div>
 						<div v-else-if="row.type === 'info'" class="meta-item">
-							<span class="meta-sep" style="white-space: nowrap;">记录文件号：</span>
-							<el-input v-model="row.storageSlot" placeholder="如 225" />
+							<span class="meta-sep" style="white-space: nowrap;">璁板綍鏂囦欢鍙凤細</span>
+							<el-input v-model="row.storageSlot" placeholder="濡?225" />
 						</div>
 						<div v-else-if="row.type === 'delete'" class="meta-item file-inline">
-							<span class="meta-sep" style="white-space: nowrap;">删除文件：</span>
-							<el-input v-model="row.deleteRange" placeholder="如 41-72" />
+							<span class="meta-sep" style="white-space: nowrap;">鍒犻櫎鏂囦欢锛?/span>
+							<el-input v-model="row.deleteRange" placeholder="濡?41-72" />
 						</div>
 					</div>
 				</template>
 			</el-table-column>
-			<el-table-column prop="type" label="类型" width="90">
+			<el-table-column prop="type" label="绫诲瀷" width="90">
 				<template #default="{ row }">
 					<el-tag size="small">{{ row.type }}</el-tag>
 				</template>
 			</el-table-column>
-			<el-table-column prop="_deleted" label="操作" width="140">
+			<el-table-column prop="_deleted" label="鎿嶄綔" width="140">
 				<template #default="{ row }">
 					<div class="action-buttons">
 						<el-button
@@ -248,7 +248,7 @@
 							text
 							@click="openTransferFilePickDialog(row)"
 						>
-							选择固存文件
+							閫夋嫨鍥哄瓨鏂囦欢
 						</el-button>
 						<el-button
 							size="small"
@@ -256,7 +256,7 @@
 							text
 							@click="toggleDelete(row)"
 						>
-							{{ row._deleted ? "撤销" : "删除" }}
+							{{ row._deleted ? "鎾ら攢" : "鍒犻櫎" }}
 						</el-button>
 					</div>
 				</template>
@@ -264,32 +264,32 @@
 		</el-table>
 		<template #footer>
 			<el-space>
-				<el-button @click="editDialogVisible = false">取消</el-button>
-				<el-button type="primary" @click="applyTaskEdits">保存</el-button>
+				<el-button @click="editDialogVisible = false">鍙栨秷</el-button>
+				<el-button type="primary" @click="applyTaskEdits">淇濆瓨</el-button>
 			</el-space>
 		</template>
 	</el-dialog>
 
-	<el-dialog v-model="transferPickDialog.visible" title="新增数传任务" width="720px" :append-to-body="true">
+	<el-dialog v-model="transferPickDialog.visible" title="鏂板鏁颁紶浠诲姟" width="720px" :append-to-body="true">
 		<el-table :data="transferPickDialog.list" height="360px" style="width: 100%;" v-loading="transferPickDialog.loading">
-			<el-table-column label="选择" width="70">
+			<el-table-column label="閫夋嫨" width="70">
 				<template #default="{ row }">
 					<el-radio v-model="transferPickDialog.selectedKey" :label="transferPickKey(row)">
 						<span></span>
 					</el-radio>
 				</template>
 			</el-table-column>
-			<el-table-column label="轨次开始" min-width="160">
+			<el-table-column label="杞ㄦ寮€濮? min-width="160">
 				<template #default="{ row }">
 					{{ formatDisplay(new Date(row.beginTime)) }}
 				</template>
 			</el-table-column>
-			<el-table-column label="轨次结束" min-width="160">
+			<el-table-column label="杞ㄦ缁撴潫" min-width="160">
 				<template #default="{ row }">
 					{{ row.endTime ? formatDisplay(new Date(row.endTime)) : "-" }}
 				</template>
 			</el-table-column>
-			<el-table-column label="天线" min-width="120">
+			<el-table-column label="澶╃嚎" min-width="120">
 				<template #default="{ row }">
 					{{ TELECONTROL_ANTENNA_MAP.get(String(row.antennaId ?? "")) || row.antennaId || "-" }}
 				</template>
@@ -297,24 +297,24 @@
 		</el-table>
 		<template #footer>
 			<el-space>
-				<el-button @click="transferPickDialog.visible = false">取消</el-button>
+				<el-button @click="transferPickDialog.visible = false">鍙栨秷</el-button>
 				<el-button type="primary" :disabled="!transferPickDialog.selectedKey" @click="confirmAddTransferTask">
-					添加
+					娣诲姞
 				</el-button>
 			</el-space>
 		</template>
 	</el-dialog>
 
-	<el-dialog v-model="transferFilePickDialog.visible" title="选择固存文件" width="860px" :append-to-body="true">
+	<el-dialog v-model="transferFilePickDialog.visible" title="閫夋嫨鍥哄瓨鏂囦欢" width="860px" :append-to-body="true">
 		<el-alert
 			type="info"
 			show-icon
 			:closable="false"
 			style="margin-bottom: 12px"
-			description="自动按当前卫星拉取载荷与平台固存表状态，支持多选"
+			description="鑷姩鎸夊綋鍓嶅崼鏄熸媺鍙栬浇鑽蜂笌骞冲彴鍥哄瓨琛ㄧ姸鎬侊紝鏀寔澶氶€?
 		/>
 		<el-tabs v-model="transferFilePickDialog.activeTab">
-			<el-tab-pane label="载荷固存表" name="payload">
+			<el-tab-pane label="杞借嵎鍥哄瓨琛? name="payload">
 				<el-table
 					:data="transferFilePickDialog.payload"
 					:border="true"
@@ -324,9 +324,9 @@
 					@selection-change="rows => (transferFilePickDialog.selectedPayload = rows)"
 				>
 					<el-table-column type="selection" width="48" />
-					<el-table-column prop="display" label="目标/文件" min-width="180" show-overflow-tooltip />
-					<el-table-column prop="startFileNo" label="开始文件号" width="120" />
-					<el-table-column label="状态" width="120">
+					<el-table-column prop="display" label="鐩爣/鏂囦欢" min-width="180" show-overflow-tooltip />
+					<el-table-column prop="startFileNo" label="寮€濮嬫枃浠跺彿" width="120" />
+					<el-table-column label="鐘舵€? width="120">
 						<template #default="{ row }">
 							<el-tag
 								v-if="row.status != null"
@@ -340,14 +340,14 @@
 							<span v-else>-</span>
 						</template>
 					</el-table-column>
-					<el-table-column label="任务执行时间" min-width="150">
+					<el-table-column label="浠诲姟鎵ц鏃堕棿" min-width="150">
 						<template #default="{ row }">
 							{{ row.executionTime ? formatDisplay(new Date(row.executionTime)) : "-" }}
 						</template>
 					</el-table-column>
 				</el-table>
 			</el-tab-pane>
-			<el-tab-pane label="平台固存表" name="platform">
+			<el-tab-pane label="骞冲彴鍥哄瓨琛? name="platform">
 				<el-table
 					:data="transferFilePickDialog.platform"
 					:border="true"
@@ -357,9 +357,9 @@
 					@selection-change="rows => (transferFilePickDialog.selectedPlatform = rows)"
 				>
 					<el-table-column type="selection" width="48" />
-					<el-table-column prop="display" label="目标/文件" min-width="180" show-overflow-tooltip />
-					<el-table-column prop="startFileNo" label="开始文件号" width="120" />
-					<el-table-column label="状态" width="120">
+					<el-table-column prop="display" label="鐩爣/鏂囦欢" min-width="180" show-overflow-tooltip />
+					<el-table-column prop="startFileNo" label="寮€濮嬫枃浠跺彿" width="120" />
+					<el-table-column label="鐘舵€? width="120">
 						<template #default="{ row }">
 							<el-tag
 								v-if="row.status != null"
@@ -373,7 +373,7 @@
 							<span v-else>-</span>
 						</template>
 					</el-table-column>
-					<el-table-column label="任务执行时间" min-width="150">
+					<el-table-column label="浠诲姟鎵ц鏃堕棿" min-width="150">
 						<template #default="{ row }">
 							{{ row.executionTime ? formatDisplay(new Date(row.executionTime)) : "-" }}
 						</template>
@@ -383,50 +383,50 @@
 		</el-tabs>
 		<template #footer>
 			<el-space>
-				<el-tag type="info">载荷已选 {{ transferFilePickDialog.selectedPayload.length }} 条</el-tag>
-				<el-tag type="info">平台已选 {{ transferFilePickDialog.selectedPlatform.length }} 条</el-tag>
+				<el-tag type="info">杞借嵎宸查€?{{ transferFilePickDialog.selectedPayload.length }} 鏉?/el-tag>
+				<el-tag type="info">骞冲彴宸查€?{{ transferFilePickDialog.selectedPlatform.length }} 鏉?/el-tag>
 				<el-button
 					type="primary"
 					:disabled="!transferFilePickDialog.selectedPayload.length && !transferFilePickDialog.selectedPlatform.length"
 					@click="confirmTransferFilePick"
 				>
-					确认
+					纭
 				</el-button>
-				<el-button @click="transferFilePickDialog.visible = false">关闭</el-button>
+				<el-button @click="transferFilePickDialog.visible = false">鍏抽棴</el-button>
 			</el-space>
 		</template>
 	</el-dialog>
 
-	<el-dialog v-model="highSelectDialog.visible" title="高优先级目标选择" width="880px" :append-to-body="true">
+	<el-dialog v-model="highSelectDialog.visible" title="楂樹紭鍏堢骇鐩爣閫夋嫨" width="880px" :append-to-body="true">
 		<el-table :data="highSelectDialog.list" height="420px" style="width: 100%;">
-			<el-table-column label="选择" width="80">
+			<el-table-column label="閫夋嫨" width="80">
 				<template #default="{ row }">
 					<el-checkbox :model-value="highSelectDialog.selected.has(highSelectKey(row))" @change="(val: any) => toggleHighSelectRow(row, Boolean(val))" />
 				</template>
 			</el-table-column>
-			<el-table-column prop="name" label="名称" min-width="160" />
-			<el-table-column label="开始时间" min-width="180">
+			<el-table-column prop="name" label="鍚嶇О" min-width="160" />
+			<el-table-column label="寮€濮嬫椂闂? min-width="180">
 				<template #default="{ row }">
 					{{ formatDisplay(new Date(row.startTs)) }}
 				</template>
 			</el-table-column>
-			<el-table-column prop="cloud" label="云量(%)" width="90" />
-			<el-table-column label="侧摆角" width="120">
+			<el-table-column prop="cloud" label="浜戦噺(%)" width="90" />
+			<el-table-column label="渚ф憜瑙? width="120">
 				<template #default="{ row }">
 					{{ pickRollAngle(row) }}
 				</template>
 			</el-table-column>
-			<el-table-column prop="priority" label="优先级" width="90" />
+			<el-table-column prop="priority" label="浼樺厛绾? width="90" />
 		</el-table>
 		<div style="margin-top:8px; color: var(--el-text-color-regular); font-size: 13px;">
-			已选目标：{{ highSelectDialog.list.filter((row) => highSelectDialog.selected.has(highSelectKey(row))).map((row) => row.name || row.targetName || 'Task').join('，') || '暂无' }}
+			宸查€夌洰鏍囷細{{ highSelectDialog.list.filter((row) => highSelectDialog.selected.has(highSelectKey(row))).map((row) => row.name || row.targetName || 'Task').join('锛?) || '鏆傛棤' }}
 		</div>
 		<template #footer>
 			<div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-				<span style="color: var(--el-text-color-regular);">已选 {{ highSelectedCount }} 个 / 可选 {{ highSelectDialog.list.length }}</span>
+				<span style="color: var(--el-text-color-regular);">宸查€?{{ highSelectedCount }} 涓?/ 鍙€?{{ highSelectDialog.list.length }}</span>
 				<el-space>
-					<el-button @click="cancelHighPrioritySelect">取消</el-button>
-					<el-button type="primary" @click="confirmHighPrioritySelect">确认</el-button>
+					<el-button @click="cancelHighPrioritySelect">鍙栨秷</el-button>
+					<el-button type="primary" @click="confirmHighPrioritySelect">纭</el-button>
 				</el-space>
 			</div>
 		</template>
@@ -513,7 +513,7 @@ type TargetPayload = {
 	priority: number;
 };
 
-// 默认日期：北京时间次日 00:00
+// 榛樿鏃ユ湡锛氬寳浜椂闂存鏃?00:00
 const tomorrow = (() => {
 	const d = new Date();
 	d.setHours(0, 0, 0, 0);
@@ -522,14 +522,14 @@ const tomorrow = (() => {
 })();
 const defaultStart = (() => {
 	const d = new Date();
-	d.setHours(13, 0, 0, 0); // 当日 13:00
-	d.setDate(d.getDate() + 1); // 次日 13:00
+	d.setHours(13, 0, 0, 0); // 褰撴棩 13:00
+	d.setDate(d.getDate() + 1); // 娆℃棩 13:00
 	return d.getTime();
 })();
 const defaultEnd = (() => {
 	const d = new Date(defaultStart);
-	d.setDate(d.getDate() + 1); // 次次日 00:00
-	d.setHours(13, 0, 0, 0); // 次次日 13:00
+	d.setDate(d.getDate() + 1); // 娆℃鏃?00:00
+	d.setHours(13, 0, 0, 0); // 娆℃鏃?13:00
 	return d.getTime();
 })();
 const form = ref({ satellite: "AS02", date: tomorrow, rangeStart: defaultStart, rangeEnd: defaultEnd });
@@ -537,9 +537,9 @@ const { service } = useCool();
 const loading = ref(false);
 const submitting = ref(false);
 const timeline = ref<TimelineItem[]>([]);
-// 时间轴/数传/删除使用顶部日期的固定窗口（当日 00:00 ~ 次日 13:00）
+// 鏃堕棿杞?鏁颁紶/鍒犻櫎浣跨敤椤堕儴鏃ユ湡鐨勫浐瀹氱獥鍙ｏ紙褰撴棩 00:00 ~ 娆℃棩 13:00锛?
 const planRange = computed(() => buildDefaultRange(form.value.date));
-// 成像预报可使用自定义开始/结束时间
+// 鎴愬儚棰勬姤鍙娇鐢ㄨ嚜瀹氫箟寮€濮?缁撴潫鏃堕棿
 const imagingRange = computed(() => buildRange(form.value.date));
 const rangeText = computed(() => `${formatDisplay(planRange.value.start)} ~ ${formatDisplay(planRange.value.end)}`);
 const submissionSummary = ref("");
@@ -623,7 +623,7 @@ const transferFilePickDialog = reactive<{
 const ONE_CLICK_PLAN_CACHE_KEY = "one_click_plan_cache_v1";
 const ONE_CLICK_PLAN_RELOAD_FLAG = "__one_click_plan_reload_handled";
 const UID_EPOCH = new Date("2025-01-01T00:00:00Z").getTime();
-// 高优先级人工挑选弹窗状态
+// 楂樹紭鍏堢骇浜哄伐鎸戦€夊脊绐楃姸鎬?
 const highSelectDialog = reactive<{
 	visible: boolean;
 	list: any[];
@@ -637,7 +637,7 @@ const highSelectDialog = reactive<{
 });
 const highSelectedCount = computed(() => highSelectDialog.selected.size);
 
-// 根据卫星切换设置成像任务数量默认值
+// 鏍规嵁鍗槦鍒囨崲璁剧疆鎴愬儚浠诲姟鏁伴噺榛樿鍊?
 watch(
 	() => form.value.satellite,
 	(sat) => {
@@ -707,8 +707,8 @@ function summarizePicked(list: any[], extraFilter: (t: any) => boolean, poolForG
 	if (!filtered.length) return "";
 	const names = filtered.map((r) => r.name || r.targetName || "Task");
 	const unique = Array.from(new Set(names));
-	const shown = unique.slice(0, 10).join("，");
-	const more = unique.length > 10 ? ` 等 ${unique.length} 个` : "";
+	const shown = unique.slice(0, 10).join("锛?);
+	const more = unique.length > 10 ? ` 绛?${unique.length} 涓猔 : "";
 	return shown + more;
 }
 
@@ -744,10 +744,10 @@ function updateSelectionPreview(source: any[], isFinal = false) {
 			? [...manualHigh, ...previewBase.filter((p) => !manualTs.has(Number(p.startTs ?? parseStartTime(p))))].slice(0, imagingExpect)
 			: previewBase;
 	const names = Array.from(new Set(preview.map((p) => p.name || p.targetName || "Task")));
-	const shown = names.slice(0, 10).join("，");
-	const more = names.length > 10 ? ` 等 ${names.length} 个` : "";
-	const label = isFinal ? "已规划目标" : "当前已选目标";
-	planningSelection.value = names.length ? [`${label}：${shown}${more}`] : [];
+	const shown = names.slice(0, 10).join("锛?);
+	const more = names.length > 10 ? ` 绛?${names.length} 涓猔 : "";
+	const label = isFinal ? "宸茶鍒掔洰鏍? : "褰撳墠宸查€夌洰鏍?;
+	planningSelection.value = names.length ? [`${label}锛?{shown}${more}`] : [];
 }
 
 function reorderStorageSlots(tasks: any[]) {
@@ -923,7 +923,7 @@ watch(timeline, async () => {
 });
 
 function buildRange(dateValue?: number | Date) {
-	// 以 form 中的自定义时间为主，否则按默认规则
+	// 浠?form 涓殑鑷畾涔夋椂闂翠负涓伙紝鍚﹀垯鎸夐粯璁よ鍒?
 	if (form.value.rangeStart && form.value.rangeEnd) {
 		const start = new Date(form.value.rangeStart);
 		const end = new Date(form.value.rangeEnd);
@@ -934,12 +934,12 @@ function buildRange(dateValue?: number | Date) {
 
 function buildDefaultRange(dateValue?: number | Date) {
 	const base = dateValue ? new Date(dateValue) : new Date();
-	base.setHours(0, 0, 0, 0); // 当日 0 点
+	base.setHours(0, 0, 0, 0); // 褰撴棩 0 鐐?
 	const start = new Date(base);
-	start.setHours(13, 0, 0, 0); // 选中日期 13:00
+	start.setHours(13, 0, 0, 0); // 閫変腑鏃ユ湡 13:00
 	const end = new Date(base);
-	end.setDate(end.getDate() + 1); // 次日
-	end.setHours(13, 0, 0, 0); // 次日 13:00
+	end.setDate(end.getDate() + 1); // 娆℃棩
+	end.setHours(13, 0, 0, 0); // 娆℃棩 13:00
 	return { start, end };
 }
 
@@ -1067,11 +1067,11 @@ async function openTransferPickDialog() {
 		all.sort((a, b) => a.beginTime - b.beginTime);
 		transferPickDialog.list = all;
 		if (!all.length) {
-			ElMessage.warning("当前日期范围内未找到轨次");
+			ElMessage.warning("褰撳墠鏃ユ湡鑼冨洿鍐呮湭鎵惧埌杞ㄦ");
 		}
 	} catch (err) {
 		console.warn("[one-click-plan] fetch telecontrol passes failed", err);
-		ElMessage.error("加载轨次失败");
+		ElMessage.error("鍔犺浇杞ㄦ澶辫触");
 	} finally {
 		transferPickDialog.loading = false;
 	}
@@ -1080,7 +1080,7 @@ async function openTransferPickDialog() {
 function confirmAddTransferTask() {
 	const chosen = transferPickDialog.list.find((item) => item.key === transferPickDialog.selectedKey);
 	if (!chosen) {
-		ElMessage.warning("请选择轨次");
+		ElMessage.warning("璇烽€夋嫨杞ㄦ");
 		return;
 	}
 	const startTs = chosen.beginTime + 60 * 1000;
@@ -1116,14 +1116,14 @@ function confirmAddTransferTask() {
 }
 
 const storageStatusDict: Record<number, string> = {
-	0: "空",
-	1: "待写入",
-	2: "已写入待数传",
-	3: "已数传待反演",
-	4: "解析有问题",
-	5: "已重传待反演",
-	6: "已数传待删除",
-	7: "已安排数传",
+	0: "绌?,
+	1: "寰呭啓鍏?,
+	2: "宸插啓鍏ュ緟鏁颁紶",
+	3: "宸叉暟浼犲緟鍙嶆紨",
+	4: "瑙ｆ瀽鏈夐棶棰?,
+	5: "宸查噸浼犲緟鍙嶆紨",
+	6: "宸叉暟浼犲緟鍒犻櫎",
+	7: "宸插畨鎺掓暟浼?,
 };
 
 type StorageTagStyle = { type?: "info" | "warning" | "danger" | "success" | "primary"; color?: string };
@@ -1173,7 +1173,7 @@ function mapStorageRow(item: Record<string, any>): StorageRow {
 		display,
 		startFileNo: String(startFileNo ?? "-") || "-",
 		status,
-		statusLabel: status != null ? (storageStatusDict[status] || `状态${status}`) : "-",
+		statusLabel: status != null ? (storageStatusDict[status] || `鐘舵€?{status}`) : "-",
 		executionTime,
 		raw: item,
 	};
@@ -1213,7 +1213,7 @@ async function openTransferFilePickDialog(row: any) {
 	try {
 		const satellite = form.value.satellite;
 		if (!satellite) {
-			ElMessage.warning("请先选择卫星");
+			ElMessage.warning("璇峰厛閫夋嫨鍗槦");
 			return;
 		}
 		const tablePair = satellite === "AS02" ? { payload: 0, platform: 1 } : { payload: 2, platform: 3 };
@@ -1232,7 +1232,7 @@ async function openTransferFilePickDialog(row: any) {
 	}
 	} catch (err) {
 		console.warn("[one-click-plan] fetch transfer storage rows failed", err);
-		ElMessage.error("加载固存文件失败");
+		ElMessage.error("鍔犺浇鍥哄瓨鏂囦欢澶辫触");
 	} finally {
 		transferFilePickDialog.loading = false;
 	}
@@ -1248,7 +1248,7 @@ function confirmTransferFilePick() {
 		.filter((n) => Number.isFinite(n));
 	const selected = normalizeTransferNumbers([...payloadNums, ...platformNums]);
 	if (!selected.length) {
-		ElMessage.warning("请至少选择一个固存文件");
+		ElMessage.warning("璇疯嚦灏戦€夋嫨涓€涓浐瀛樻枃浠?);
 		return;
 	}
 	if (target) {
@@ -1263,12 +1263,12 @@ function parseMetaFields(meta: string | undefined): Array<{ label: string; value
 	if (!meta) return [];
 	return meta.split("|").map((part) => {
 		const p = part.trim();
-		const [label, ...rest] = p.split("：");
+		const [label, ...rest] = p.split("锛?);
 		if (rest.length === 0) {
 			const [labelEn, ...restEn] = p.split(":");
 			return { label: (labelEn || "").trim(), value: restEn.join(":").trim() };
 		}
-		return { label: label.trim(), value: rest.join("：").trim() };
+		return { label: label.trim(), value: rest.join("锛?).trim() };
 	});
 }
 
@@ -1311,13 +1311,13 @@ function parseTransferFileInput(text: string): {
 		}
 	};
 	for (const token of tokens) {
-		if (token.startsWith("载荷:")) {
+		if (token.startsWith("杞借嵎:")) {
 			current = "payload";
 			hasTyped = true;
 			pushNumbers("payload", token.slice(3));
 			continue;
 		}
-		if (token.startsWith("平台:")) {
+		if (token.startsWith("骞冲彴:")) {
 			current = "platform";
 			hasTyped = true;
 			pushNumbers("platform", token.slice(3));
@@ -1399,13 +1399,13 @@ function buildTransferFileText(
 	}
 	const parts: string[] = [];
 	if (payload.length) {
-		parts.push(`载荷:${payload[0]}`);
+		parts.push(`杞借嵎:${payload[0]}`);
 		for (let i = 1; i < payload.length; i++) {
 			parts.push(String(payload[i]));
 		}
 	}
 	if (platform.length) {
-		parts.push(`平台:${platform[0]}`);
+		parts.push(`骞冲彴:${platform[0]}`);
 		for (let i = 1; i < platform.length; i++) {
 			parts.push(String(platform[i]));
 		}
@@ -1550,7 +1550,7 @@ function confirmHighPrioritySelect() {
 			.filter((x): x is { item: any; ts: number } => Boolean(x))
 			.sort((a, b) => a.ts - b.ts);
 		if (normalized.length !== chosen.length) {
-			ElMessage.error("选中目标成像时间缺失，无法校验");
+			ElMessage.error("閫変腑鐩爣鎴愬儚鏃堕棿缂哄け锛屾棤娉曟牎楠?);
 			return;
 		}
 		for (let i = 1; i < normalized.length; i += 1) {
@@ -1560,9 +1560,9 @@ function confirmHighPrioritySelect() {
 				const prevName = prev.item?.name || prev.item?.targetName || "Task";
 				const curName = cur.item?.name || cur.item?.targetName || "Task";
 				ElMessage.error(
-					`成像时间冲突：${prevName} @${formatDisplay(new Date(prev.ts))} 与 ${curName} @${formatDisplay(
+					`鎴愬儚鏃堕棿鍐茬獊锛?{prevName} @${formatDisplay(new Date(prev.ts))} 涓?${curName} @${formatDisplay(
 						new Date(cur.ts)
-					)} 间隔不足`
+					)} 闂撮殧涓嶈冻`
 				);
 				return;
 			}
@@ -1589,7 +1589,7 @@ async function runOneClickPlan() {
 	planningProgress.visible = true;
 	planningProgress.status = undefined;
 	planningProgress.percent = 5;
-	planningProgress.text = "准备资源";
+	planningProgress.text = "鍑嗗璧勬簮";
 	planningSelection.value = [];
 	try {
 		const token = await getToken();
@@ -1609,7 +1609,7 @@ async function runOneClickPlan() {
 		const rollLimitVal = Number(rollLimitAbs.value) || 10;
 		const filterByCloudRoll = (arr: any[]) =>
 			arr.filter((r) => {
-				if (r?.__manualHigh) return true; // 人工挑选的高优先级放行
+				if (r?.__manualHigh) return true; // 浜哄伐鎸戦€夌殑楂樹紭鍏堢骇鏀捐
 				const cloudOk = r.cloud == null || r.cloud <= cloudLimitVal;
 				if (!cloudOk) return false;
 				const rollNum = Number(pickRollAngle(r));
@@ -1658,7 +1658,7 @@ async function runOneClickPlan() {
 			if (dataTasks.length) items = items.concat(dataTasks);
 			if (deleteTasks.length) items = items.concat(deleteTasks);
 			if (!items.length) {
-				throw new Error("未生成可用任务");
+				throw new Error("鏈敓鎴愬彲鐢ㄤ换鍔?);
 			}
 			items = items
 				.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0))
@@ -1667,7 +1667,7 @@ async function runOneClickPlan() {
 			if (taskSwitches.transfer && form.value.satellite === "AS02") {
 				const expected = Math.max(1, Number(transferTaskCount.value) || 1);
 				if (dataTasks.length < expected) {
-					notes.push(`数传任务期望 ${expected} 次，实际生成 ${dataTasks.length} 次。`);
+					notes.push(`鏁颁紶浠诲姟鏈熸湜 ${expected} 娆★紝瀹為檯鐢熸垚 ${dataTasks.length} 娆°€俙);
 				}
 			}
 			planningNotes.value = notes;
@@ -1675,21 +1675,21 @@ async function runOneClickPlan() {
 			planPreviewText.value = buildSubmissionSummaryText();
 			planningProgress.percent = 100;
 			planningProgress.status = "success";
-			planningProgress.text = "规划完成";
+			planningProgress.text = "瑙勫垝瀹屾垚";
 			return;
 		}
 
 		if (taskSwitches.imaging) {
 			planningProgress.percent = 20;
-			planningProgress.text = "加载目标与星历";
+			planningProgress.text = "鍔犺浇鐩爣涓庢槦鍘?;
 
 			const targetRes = await fetchAllTargets(form.value.satellite);
-			if (!targetRes.targets.length) throw new Error("未获取到目标库数据");
+			if (!targetRes.targets.length) throw new Error("鏈幏鍙栧埌鐩爣搴撴暟鎹?);
 			priorityMap = targetRes.priorityMap;
 			const ephemeris = await fetchOrbitElementsForSatellite(form.value.satellite, token);
 			orbitElements.value = ephemeris;
 
-			// 预先计算数传/删除预留时间窗口，供低优先级筛选使用
+			// 棰勫厛璁＄畻鏁颁紶/鍒犻櫎棰勭暀鏃堕棿绐楀彛锛屼緵浣庝紭鍏堢骇绛涢€変娇鐢?
 			const countFeasible = () => {
 				const cloudFiltered = forecastPool.filter((r) => {
 					if (r?.__manualHigh) return true;
@@ -1755,7 +1755,7 @@ async function runOneClickPlan() {
 			};
 
 			planningProgress.percent = 40;
-			planningProgress.text = "预报高优先级";
+			planningProgress.text = "棰勬姤楂樹紭鍏堢骇";
 
 			const high = targetRes.targets.filter((t) => (t.priority ?? 99) <= 1);
 			const mid = targetRes.targets.filter((t) => (t.priority ?? 99) === 2);
@@ -1798,7 +1798,7 @@ async function runOneClickPlan() {
 					})
 					.filter((x): x is any => Boolean(x));
 			};
-			// 预报高优先级，人工挑选
+			// 棰勬姤楂樹紭鍏堢骇锛屼汉宸ユ寫閫?
 			const highRes = await forecast(high);
 			const pickedHigh = await openHighPrioritySelect(highRes, imagingExpect);
 			pickedHigh.forEach((r) => (r.__manualHigh = true));
@@ -1808,13 +1808,13 @@ async function runOneClickPlan() {
 				chosen: pickedHigh.map((p) => `${p.name || p.targetName || "Task"} @${formatDisplay(new Date(p.startTs))}`),
 			});
 			planningProgress.percent = 55;
-			planningProgress.text = "高优先级挑选完成";
+			planningProgress.text = "楂樹紭鍏堢骇鎸戦€夊畬鎴?;
 			updateSelectionPreview(forecastPool);
 			let approxPicked = countFeasible();
 
-			// 若未满足数量，预报中优先级自动选
+			// 鑻ユ湭婊¤冻鏁伴噺锛岄鎶ヤ腑浼樺厛绾ц嚜鍔ㄩ€?
 			if (approxPicked < imagingExpect && mid.length) {
-				planningProgress.text = "预报中优先级";
+				planningProgress.text = "棰勬姤涓紭鍏堢骇";
 				const midRes = await forecast(mid);
 				const highSeed = filterByCloudRoll(forecastPool).filter((r) => (r.priority ?? 99) <= 1);
 				const midResFiltered = midRes.filter((cand) => {
@@ -1833,9 +1833,9 @@ async function runOneClickPlan() {
 				updateSelectionPreview(forecastPool);
 			}
 
-			// 若不足，则低优先级 10 条一批，逐批预报直到够或耗尽
+			// 鑻ヤ笉瓒筹紝鍒欎綆浼樺厛绾?10 鏉′竴鎵癸紝閫愭壒棰勬姤鐩村埌澶熸垨鑰楀敖
 			if (approxPicked < imagingExpect && low.length) {
-				planningProgress.text = "低优先级预报进行中";
+				planningProgress.text = "浣庝紭鍏堢骇棰勬姤杩涜涓?;
 				for (let i = 0; i < low.length && approxPicked < imagingExpect; i += 10) {
 					const batchNo = Math.floor(i / 10) + 1;
 					const batch = low.slice(i, i + 10);
@@ -1863,12 +1863,12 @@ async function runOneClickPlan() {
 					);
 					const prog = 70 + Math.floor((i + batch.length) / Math.max(low.length, 1) * 20);
 					planningProgress.percent = Math.min(90, prog);
-					planningProgress.text = `预报低优先级批次 ${batchNo} 完成`;
+					planningProgress.text = `棰勬姤浣庝紭鍏堢骇鎵规 ${batchNo} 瀹屾垚`;
 					updateSelectionPreview(forecastPool);
 				}
 				lowForecasted.ran = true;
 				console.log("[one-click-plan] low priority loop end", { totalForecasted: forecastPool.length, approxPicked });
-				planningProgress.text = "低优先级预报完成";
+				planningProgress.text = "浣庝紭鍏堢骇棰勬姤瀹屾垚";
 			}
 		} else {
 			orbitElements.value = null;
@@ -1876,13 +1876,13 @@ async function runOneClickPlan() {
 
 		let imagingLimit = imagingExpect;
 
-		// 固存可用槽位限制成像数量
+		// 鍥哄瓨鍙敤妲戒綅闄愬埗鎴愬儚鏁伴噺
 		if (taskSwitches.imaging) {
 			const slotName = form.value.satellite === "AS02" ? 0 : 2;
 			try {
 				const slots = await fetchEmptySlots(slotName, imagingLimit);
 				if (slots.length < imagingLimit) {
-					notes.push(`固存可用槽位 ${slots.length} 个，少于期望成像 ${imagingLimit} 个，已自动缩减。`);
+					notes.push(`鍥哄瓨鍙敤妲戒綅 ${slots.length} 涓紝灏戜簬鏈熸湜鎴愬儚 ${imagingLimit} 涓紝宸茶嚜鍔ㄧ缉鍑忋€俙);
 					imagingLimit = slots.length;
 				}
 			} catch (err) {
@@ -1890,7 +1890,7 @@ async function runOneClickPlan() {
 			}
 		}
 		if (imagingLimit <= 0) {
-			notes.push("固存可用槽位为 0，未生成成像任务。");
+			notes.push("鍥哄瓨鍙敤妲戒綅涓?0锛屾湭鐢熸垚鎴愬儚浠诲姟銆?);
 		}
 		const cloudFiltered = forecastPool.filter((r) => {
 			if (r?.__manualHigh) return true;
@@ -1907,7 +1907,7 @@ async function runOneClickPlan() {
 			.filter((cand) => {
 				const ts = Number(cand.startTs);
 				if (!Number.isFinite(ts)) return false;
-				// 按间隔先行剔除与高/中及预留窗口冲突的低优先级
+				// 鎸夐棿闅斿厛琛屽墧闄や笌楂?涓強棰勭暀绐楀彛鍐茬獊鐨勪綆浼樺厛绾?
 				for (const h of highMidFiltered) {
 					const hv = Number(h?.startTs ?? h?.start_ts ?? h?.time);
 					if (Number.isFinite(hv) && Math.abs(ts - hv) < gapMs) return false;
@@ -1924,26 +1924,26 @@ async function runOneClickPlan() {
 			low: lowFiltered.length,
 			gapMs,
 		});
-		// gapMs 已在前面定义
+		// gapMs 宸插湪鍓嶉潰瀹氫箟
 		const noonTs = new Date(planRange.value.start);
 		noonTs.setHours(12, 0, 0, 0);
 
 			let picked: any[] = [];
 
 		if (taskSwitches.imaging) {
-			// 统一使用 reserved/gap 规则选取，保证选中即满足全部条件
+			// 缁熶竴浣跨敤 reserved/gap 瑙勫垯閫夊彇锛屼繚璇侀€変腑鍗虫弧瓒冲叏閮ㄦ潯浠?
 			const manualHigh = highMidFiltered.filter((r) => r?.__manualHigh);
 			const highFirst = selectWithGap(highMidFiltered, imagingLimit, gapMs, reservedSlots, manualHigh);
 			const remain = Math.max(0, imagingLimit - highFirst.length);
 			const conflictBases = highFirst.length ? highFirst : highMidFiltered;
-			// 低优先级只用于补齐，先剔除与高/中冲突的候选（按成像间隔），再逐个检查间隔
+			// 浣庝紭鍏堢骇鍙敤浜庤ˉ榻愶紝鍏堝墧闄や笌楂?涓啿绐佺殑鍊欓€夛紙鎸夋垚鍍忛棿闅旓級锛屽啀閫愪釜妫€鏌ラ棿闅?
 			const highTsSet = new Set(highFirst.map((x) => x.startTs));
 			const rawLowPool = lowFiltered
 				.filter((x) => !highTsSet.has(x.startTs))
 				.filter((cand) => {
 					const ts = Number(cand.startTs);
 					if (!Number.isFinite(ts)) return false;
-					// 与高/中和预留窗口做一次冲突校验（成像-成像/成像-数传间隔）
+					// 涓庨珮/涓拰棰勭暀绐楀彛鍋氫竴娆″啿绐佹牎楠岋紙鎴愬儚-鎴愬儚/鎴愬儚-鏁颁紶闂撮殧锛?
 					for (const h of conflictBases) {
 						const hv = Number(h?.startTs ?? h?.start_ts ?? h?.time);
 						if (Number.isFinite(hv) && Math.abs(ts - hv) < gapMs) return false;
@@ -1958,7 +1958,7 @@ async function runOneClickPlan() {
 			const lowPool = rawLowPool.filter((cand) => {
 				const ts = Number(cand.startTs);
 				if (!Number.isFinite(ts)) return false;
-				return okGap(ts, highFirst, reservedSlots, gapMs); // 预先用高/中校验
+				return okGap(ts, highFirst, reservedSlots, gapMs); // 棰勫厛鐢ㄩ珮/涓牎楠?
 			});
 			const pickedLow: any[] = [];
 			if (remain > 0) {
@@ -1970,7 +1970,7 @@ async function runOneClickPlan() {
 					if (pickedLow.length >= remain) break;
 					const ts = Number(cand.startTs);
 					if (!Number.isFinite(ts)) continue;
-					if (!okGap(ts, pickedLow, reservedSlots, gapMs)) continue; // 与已选低不冲突
+					if (!okGap(ts, pickedLow, reservedSlots, gapMs)) continue; // 涓庡凡閫変綆涓嶅啿绐?
 					pickedLow.push(cand);
 					console.log("[one-click-plan] low pick", `${cand.name} @${formatDisplay(new Date(ts))}`);
 				}
@@ -2003,7 +2003,7 @@ async function runOneClickPlan() {
 				console.log("[one-click-plan] no tasks selected after applying gap/cloud/roll filters; pool size", rollFiltered.length);
 			}
 
-			// 如果仍不足，输出低优先级候选的间隔详情，便于确认为何未补足
+			// 濡傛灉浠嶄笉瓒筹紝杈撳嚭浣庝紭鍏堢骇鍊欓€夌殑闂撮殧璇︽儏锛屼究浜庣‘璁や负浣曟湭琛ヨ冻
 			if (picked.length < imagingLimit && lowFiltered.length) {
 				const detail = lowFiltered.map((c) => {
 					const ts = Number(c.startTs);
@@ -2033,18 +2033,18 @@ async function runOneClickPlan() {
 				gapMs
 			);
 			notes.push(
-				`满足间隔/预留时间的候选不足（可选 ${feasible} 个，期望 ${imagingLimit} 个），可能需放宽间隔或时间窗口。`
+				`婊¤冻闂撮殧/棰勭暀鏃堕棿鐨勫€欓€変笉瓒筹紙鍙€?${feasible} 涓紝鏈熸湜 ${imagingLimit} 涓級锛屽彲鑳介渶鏀惧闂撮殧鎴栨椂闂寸獥鍙ｃ€俙
 			);
 		}
 
-			// 按成像时间先后重新分配固存号（时间早的分配更小的固存号）
+			// 鎸夋垚鍍忔椂闂村厛鍚庨噸鏂板垎閰嶅浐瀛樺彿锛堟椂闂存棭鐨勫垎閰嶆洿灏忕殑鍥哄瓨鍙凤級
 			reorderStorageSlots(picked);
 
-		// 展示最终选中的目标点
+		// 灞曠ず鏈€缁堥€変腑鐨勭洰鏍囩偣
 		updateSelectionPreview(picked, true);
 		if (taskSwitches.imaging && picked.length < imagingLimit) {
 			notes.push(
-				`成像任务期望 ${imagingExpect} 个（受固存限制后 ${imagingLimit} 个），实际生成 ${picked.length} 个，可能因云量/间隔/预留时间限制。`
+				`鎴愬儚浠诲姟鏈熸湜 ${imagingExpect} 涓紙鍙楀浐瀛橀檺鍒跺悗 ${imagingLimit} 涓級锛屽疄闄呯敓鎴?${picked.length} 涓紝鍙兘鍥犱簯閲?闂撮殧/棰勭暀鏃堕棿闄愬埗銆俙
 			);
 		}
 
@@ -2084,12 +2084,12 @@ async function runOneClickPlan() {
 		}
 		if (deleteTasks.length) items = [...items, ...deleteTasks];
 
-		// 预览固存槽并丰富展示信息
+		// 棰勮鍥哄瓨妲藉苟涓板瘜灞曠ず淇℃伅
 		const imagingItems = items.filter((it) => it.type !== "data" && it.type !== "delete").sort((a, b) => a.startTs - b.startTs);
 		if (imagingItems.length) {
 			try {
 				if (form.value.satellite === "AS02") {
-					// AS02 规划阶段仍可自动分配空闲固存号，方便排期，但不强制校验；提交时再按任务上的 storageSlot 写入
+					// AS02 瑙勫垝闃舵浠嶅彲鑷姩鍒嗛厤绌洪棽鍥哄瓨鍙凤紝鏂逛究鎺掓湡锛屼絾涓嶅己鍒舵牎楠岋紱鎻愪氦鏃跺啀鎸変换鍔′笂鐨?storageSlot 鍐欏叆
 					const slots = await fetchEmptySlots(0, imagingItems.length);
 					for (let i = 0; i < imagingItems.length; i++) {
 						const raw = imagingItems[i].raw || {};
@@ -2101,7 +2101,7 @@ async function runOneClickPlan() {
 						}
 					}
 				} else {
-					// AS03 仍按空闲槽顺序预览
+					// AS03 浠嶆寜绌洪棽妲介『搴忛瑙?
 					const slots = await fetchEmptySlots(2, imagingItems.length);
 					for (let i = 0; i < imagingItems.length; i++) {
 						const slot = slots[i];
@@ -2111,17 +2111,17 @@ async function runOneClickPlan() {
 					}
 				}
 			} catch (err) {
-				console.warn("[one-click-plan] 预览固存槽失败", err);
+				console.warn("[one-click-plan] 棰勮鍥哄瓨妲藉け璐?, err);
 				throw err;
 			}
 		}
 		items = items.map((it) => ({ ...it, meta: buildMeta(it) }));
 		timeline.value = items;
-		// 规划提示
+		// 瑙勫垝鎻愮ず
 		if (taskSwitches.transfer && form.value.satellite === "AS02") {
 			const expected = Math.max(1, Number(transferTaskCount.value) || 1);
 			if (dataTasks.length < expected) {
-				notes.push(`数传任务期望 ${expected} 次，实际生成 ${dataTasks.length} 次。`);
+				notes.push(`鏁颁紶浠诲姟鏈熸湜 ${expected} 娆★紝瀹為檯鐢熸垚 ${dataTasks.length} 娆°€俙);
 			}
 		}
 		planningNotes.value = notes;
@@ -2129,11 +2129,11 @@ async function runOneClickPlan() {
 		planPreviewText.value = buildSubmissionSummaryText();
 		planningProgress.percent = 100;
 		planningProgress.status = "success";
-		planningProgress.text = "规划完成";
+		planningProgress.text = "瑙勫垝瀹屾垚";
 	} catch (err: any) {
 		ElMessage.error(err?.message || "Plan failed");
 		planningProgress.status = "exception";
-		planningProgress.text = err?.message || "规划失败";
+		planningProgress.text = err?.message || "瑙勫垝澶辫触";
 	} finally {
 		loading.value = false;
 		setTimeout(() => {
@@ -2149,7 +2149,7 @@ function updateChart() {
 	const startMs = start.getTime();
 	const endMs = end.getTime();
 
-	// 排序并计算相邻间隔
+	// 鎺掑簭骞惰绠楃浉閭婚棿闅?
 	const sorted = [...timeline.value].sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
 	const data: any[] = [];
 	const gapLines: Array<{ coords: number[][]; gap: number }> = [];
@@ -2204,7 +2204,7 @@ function updateChart() {
 				const d = p.data;
 				if (!d || !d.name) return "";
 				const gapText =
-					d.gapMinutes != null ? `<div style="color:#606266;font-weight:600;">时间间隔: ${d.gapMinutes} min</div>` : "";
+					d.gapMinutes != null ? `<div style="color:#606266;font-weight:600;">鏃堕棿闂撮殧: ${d.gapMinutes} min</div>` : "";
 				return `
 					<div style="min-width:180px;">
 						<div style="font-weight:600;margin-bottom:4px;">${d.name}</div>
@@ -2323,13 +2323,13 @@ function parseStartTime(row: any): number | null {
 
 function mapTaskType(task: any): TimelineItem["type"] {
 	const name = String(task?.name || "").toLowerCase();
-	if (name.includes("数传")) return "data";
+	if (name.includes("鏁颁紶")) return "data";
 	return "info";
 }
 
 function parseCloudPercent(v: any): number | null {
 	if (v == null || v === "") return null;
-	const s = String(v).trim().replace("％", "%");
+	const s = String(v).trim().replace("锛?, "%");
 	if (s.endsWith("%")) {
 		const n = Number(s.slice(0, -1));
 		return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null;
@@ -2515,7 +2515,7 @@ async function getToken(): Promise<string> {
 	});
 	const data = await resp.json();
 	const token = data?.data?.token;
-	if (!token) throw new Error("获取登录 token 失败");
+	if (!token) throw new Error("鑾峰彇鐧诲綍 token 澶辫触");
 	return token;
 }
 
@@ -2559,7 +2559,7 @@ async function fetchOrbitElementsForSatellite(satellite: string | undefined, tok
 		if (!Array.isArray(list) || !list.length) return null;
 		return list[0]?.orbitElements ?? null;
 	} catch (err) {
-		console.warn("[one-click-plan] 获取星历失败", err);
+		console.warn("[one-click-plan] 鑾峰彇鏄熷巻澶辫触", err);
 		return null;
 	}
 }
@@ -2679,7 +2679,7 @@ async function fetchPendingFiles(satellite: "AS02" | "AS03", statuses: number[] 
 	for (const status of statuses) {
 		let page = 1;
 		const size = 200;
-		// 遍历分页，防止接口只返回部分
+		// 閬嶅巻鍒嗛〉锛岄槻姝㈡帴鍙ｅ彧杩斿洖閮ㄥ垎
 		while (true) {
 			const res = await api.page({ page, size, name, status, sort: "startFileNo", order: "ASC" });
 			const list = res?.list || res?.data?.list || [];
@@ -2765,8 +2765,8 @@ async function buildDataTransTasks(
 			}))
 		);
 		if (!records?.length || limit <= 0) return [];
-		const thresholdEvening = new Date(`${dateStr}T17:00:00+08:00`).getTime(); // 北京 17:00
-		const thresholdMorning = new Date(`${dateStr}T08:00:00+08:00`).getTime(); // 北京 08:00
+		const thresholdEvening = new Date(`${dateStr}T17:00:00+08:00`).getTime(); // 鍖椾含 17:00
+		const thresholdMorning = new Date(`${dateStr}T08:00:00+08:00`).getTime(); // 鍖椾含 08:00
 		const sorted = [...records].sort((a, b) => (a.beginTime ?? 0) - (b.beginTime ?? 0));
 		const eveningPass = sorted.find((r) => (r.beginTime ?? 0) >= thresholdEvening);
 		const morningPass = sorted.find((r) => (r.beginTime ?? 0) >= thresholdMorning);
@@ -2792,7 +2792,7 @@ async function buildDataTransTasks(
 			const startTs = slotBegin + 60 * 1000; // +1min
 			if (startTs < start.getTime() || startTs > end.getTime()) continue;
 
-			// 仅取待写入/待数传状态 2
+			// 浠呭彇寰呭啓鍏?寰呮暟浼犵姸鎬?2
 			const pendingRaw = await fetchPendingFiles("AS02", [2]);
 			console.log("[one-click-plan] pending files raw", pendingRaw.map((p) => p.start));
 			const pending = pendingRaw.filter((p) => !excludeStarts.has(p.start));
@@ -2800,12 +2800,12 @@ async function buildDataTransTasks(
 				"[one-click-plan] pending after exclude",
 				{ exclude: Array.from(excludeStarts), kept: pending.map((p) => p.start) }
 			);
-			// 单次数传最多 4 个文件
+			// 鍗曟鏁颁紶鏈€澶?4 涓枃浠?
 			const pendingLimited = pending.slice(0, 4);
 			if (pending.length < 3) {
 				console.log("[one-click-plan] skip transfer, pending <3");
 				notes?.push(
-					`数传轨次 ${formatDisplay(new Date(startTs))} 跳过：可用文件数 ${pending.length} < 3（状态2且排除已用后）`
+					`鏁颁紶杞ㄦ ${formatDisplay(new Date(startTs))} 璺宠繃锛氬彲鐢ㄦ枃浠舵暟 ${pending.length} < 3锛堢姸鎬?涓旀帓闄ゅ凡鐢ㄥ悗锛塦
 				);
 				continue;
 			}
@@ -2813,10 +2813,10 @@ async function buildDataTransTasks(
 			console.log("[one-click-plan] transfer groups", groups);
 			const filesText = pendingLimited.length ? `Files: ${pendingLimited.map((p) => p.start).join(", ")}` : "Files: -";
 			const antennaId = pass.antennaId ?? (pass as any)?.antenna_id ?? null;
-			const resetSeq = tasks.length === 0 ? Boolean(reloadTableFlag.value) : false; // 首个按勾选，其余固定 false
+			const resetSeq = tasks.length === 0 ? Boolean(reloadTableFlag.value) : false; // 棣栦釜鎸夊嬀閫夛紝鍏朵綑鍥哄畾 false
 			tasks.push({
 				id: `data-${startTs}`,
-				name: "数传任务",
+				name: "鏁颁紶浠诲姟",
 				type: "data",
 				time: formatDisplay(new Date(startTs)),
 				meta: `Antenna: ${antennaId ?? "-"} | ${filesText}`,
@@ -2848,7 +2848,7 @@ async function buildDeleteTasks(start: Date, end: Date): Promise<TimelineItem[]>
 		const sat: "AS02" | "AS03" = "AS02";
 		const files = await fetchDeletableFiles(sat);
 		if (!files.length) return [];
-		// 次日早晨窗口（默认 07:00 开始，6h 窗口）
+		// 娆℃棩鏃╂櫒绐楀彛锛堥粯璁?07:00 寮€濮嬶紝6h 绐楀彛锛?
 		const base = new Date(start.getTime() + 24 * 60 * 60 * 1000);
 		base.setHours(7, 0, 0, 0);
 		const windowStart = base.getTime();
@@ -2870,7 +2870,7 @@ async function buildDeleteTasks(start: Date, end: Date): Promise<TimelineItem[]>
 		}
 		if (chosen < windowStart || chosen > windowEnd) return [];
 
-		// 按连续块分组（start + 8 视为连续）
+		// 鎸夎繛缁潡鍒嗙粍锛坰tart + 8 瑙嗕负杩炵画锛?
 		const sorted = [...files].sort((a, b) => a.start - b.start);
 		const groups: PendingFile[][] = [];
 		let current: PendingFile[] = [];
@@ -2892,14 +2892,14 @@ async function buildDeleteTasks(start: Date, end: Date): Promise<TimelineItem[]>
 		const tasks: TimelineItem[] = [];
 		for (let i = 0; i < groups.length; i++) {
 			const g = groups[i];
-			if (g.length < 4) continue; // 仅规划连续 4 个及以上
+			if (g.length < 4) continue; // 浠呰鍒掕繛缁?4 涓強浠ヤ笂
 			const deleteStart = g[0].start;
 			const deleteEnd = g[g.length - 1].start + 7;
-			const ts = chosen + i * 60 * 60 * 1000; // 间隔 1h
+			const ts = chosen + i * 60 * 60 * 1000; // 闂撮殧 1h
 			if (ts > windowEnd) break;
 			tasks.push({
 				id: `delete-${ts}-${deleteStart}-${deleteEnd}`,
-				name: "固存删除任务",
+				name: "鍥哄瓨鍒犻櫎浠诲姟",
 				type: "delete",
 				time: formatDisplay(new Date(ts)),
 				meta: `Delete: ${deleteStart}-${deleteEnd}`,
@@ -3001,39 +3001,39 @@ function buildMeta(item: TimelineItem): string {
 		const hasType = groups.some((g: any) => g?.type);
 		const fileText = String(item.raw?.fileText ?? "").trim();
 		if (fileText) {
-			parts.push(`数传文件: ${fileText}`);
+			parts.push(`鏁颁紶鏂囦欢: ${fileText}`);
 		} else if (item.files?.length) {
-			parts.push(`数传文件: ${item.files.join(",")}`);
+			parts.push(`鏁颁紶鏂囦欢: ${item.files.join(",")}`);
 		}
 		const formatRange = (g: any) => `${g.start}-${g.end}(${g.duration || g.time || ""}s)`;
-		const payloadRanges = groups.filter((g: any) => g?.type !== "platform").map(formatRange).join("，");
-		const platformRanges = groups.filter((g: any) => g?.type === "platform").map(formatRange).join("，");
+		const payloadRanges = groups.filter((g: any) => g?.type !== "platform").map(formatRange).join("锛?);
+		const platformRanges = groups.filter((g: any) => g?.type === "platform").map(formatRange).join("锛?);
 		if (hasType) {
-			if (payloadRanges) parts.push(`载荷范围: ${payloadRanges}`);
-			if (platformRanges) parts.push(`平台范围: ${platformRanges}`);
+			if (payloadRanges) parts.push(`杞借嵎鑼冨洿: ${payloadRanges}`);
+			if (platformRanges) parts.push(`骞冲彴鑼冨洿: ${platformRanges}`);
 		} else if (payloadRanges) {
-			parts.push(`范围: ${payloadRanges}`);
+			parts.push(`鑼冨洿: ${payloadRanges}`);
 		}
 		if (item.antennaId) {
 			const antennaName = TELECONTROL_ANTENNA_MAP.get(String(item.antennaId)) || item.antennaId;
-			parts.push(`数传站: ${antennaName}`);
+			parts.push(`鏁颁紶绔? ${antennaName}`);
 		}
-		return parts.join(" | ") || "数传任务";
+		return parts.join(" | ") || "鏁颁紶浠诲姟";
 	}
 	if (item.type === "delete") {
 		if (item.raw?.startFile != null && item.raw?.endFile != null) {
-			parts.push(`删除文件: ${item.raw.startFile}-${item.raw.endFile}`);
+			parts.push(`鍒犻櫎鏂囦欢: ${item.raw.startFile}-${item.raw.endFile}`);
 		} else if (item.deleteFiles?.length) {
-			parts.push(`删除文件: ${item.deleteFiles.join(",")}`);
+			parts.push(`鍒犻櫎鏂囦欢: ${item.deleteFiles.join(",")}`);
 		}
-		return parts.join(" | ") || "固存删除任务";
+		return parts.join(" | ") || "鍥哄瓨鍒犻櫎浠诲姟";
 	}
-	if (item.cloud != null) parts.push(`云量: ${item.cloud}%`);
-	if (item.priority != null) parts.push(`优先级: ${item.priority}`);
-	if (item.rollText) parts.push(`侧摆角: ${item.rollText}`);
-	if (item.solarText) parts.push(`太阳角: ${item.solarText}`);
-	if (item.storageSlot) parts.push(`记录文件号: ${item.storageSlot}`);
-	return parts.join(" | ") || "任务";
+	if (item.cloud != null) parts.push(`浜戦噺: ${item.cloud}%`);
+	if (item.priority != null) parts.push(`浼樺厛绾? ${item.priority}`);
+	if (item.rollText) parts.push(`渚ф憜瑙? ${item.rollText}`);
+	if (item.solarText) parts.push(`澶槼瑙? ${item.solarText}`);
+	if (item.storageSlot) parts.push(`璁板綍鏂囦欢鍙? ${item.storageSlot}`);
+	return parts.join(" | ") || "浠诲姟";
 }
 
 async function fetchEmptySlots(name: number, expect: number): Promise<any[]> {
@@ -3150,8 +3150,8 @@ async function postTemplate(
 	} as any);
 	const result = (res as any)?.data ?? res;
 	if (result?.ok === false && Array.isArray(result?.errors)) {
-		const msg = result.errors.map((e: any) => `${e.field}: ${e.message}`).join("锛?");
-		throw new Error(msg || "鎸囦护鍙傛暟鏍￠獙/鎻愪氦澶辫触");
+		const msg = result.errors.map((e: any) => `${e.field}: ${e.message}`).join("閿?");
+		throw new Error(msg || "閹稿洣鎶ら崣鍌涙殶閺嶏繝鐛?閹绘劒姘︽径杈Е");
 	}
 	return result?.data ?? result;
 }
@@ -3174,12 +3174,12 @@ function parseTransferRangesFromText(text: string): { payload: Range[]; platform
 		}
 	};
 	for (const token of tokens) {
-		if (token.startsWith("载荷:")) {
+		if (token.startsWith("杞借嵎:")) {
 			current = "payload";
 			pushRange("payload", token.slice(3));
 			continue;
 		}
-		if (token.startsWith("平台:")) {
+		if (token.startsWith("骞冲彴:")) {
 			current = "platform";
 			pushRange("platform", token.slice(3));
 			continue;
@@ -3253,11 +3253,11 @@ async function validateCommandRequest(type: "image" | "transfer" | "delete", sat
 		} as any);
 		const result = (res as any)?.data ?? res;
 		if (result?.ok === false && Array.isArray(result?.errors)) {
-			const msg = result.errors.map((e: any) => `${e.field}: ${e.message}`).join("；");
-			throw new Error(msg || "指令参数校验未通过");
+			const msg = result.errors.map((e: any) => `${e.field}: ${e.message}`).join("锛?);
+			throw new Error(msg || "鎸囦护鍙傛暟鏍￠獙鏈€氳繃");
 		}
 	} catch (err: any) {
-		throw new Error(err?.message || "指令参数校验失败");
+		throw new Error(err?.message || "鎸囦护鍙傛暟鏍￠獙澶辫触");
 	}
 }
 
@@ -3284,12 +3284,12 @@ async function resolveAntennaGeoById(
 	token: string
 ): Promise<{ longitude: number; latitude: number; altitude: number; name: string }> {
 	if (!antennaId) {
-		throw new Error("数传天线缺少 antennaId");
+		throw new Error("鏁颁紶澶╃嚎缂哄皯 antennaId");
 	}
 	const idStr = String(antennaId);
 	const mappedName = TELECONTROL_ANTENNA_MAP.get(idStr);
 	if (!mappedName) {
-		throw new Error(`未找到天线 ${idStr} 的名称映射`);
+		throw new Error(`鏈壘鍒板ぉ绾?${idStr} 鐨勫悕绉版槧灏刞);
 	}
 	if (antennaGeoCache.has(mappedName)) {
 		return antennaGeoCache.get(mappedName)!;
@@ -3304,7 +3304,7 @@ async function resolveAntennaGeoById(
 				String(item?.stationId) === idStr
 		) ?? null;
 	if (!hit) {
-		throw new Error(`未在天线列表中找到 ${mappedName}`);
+		throw new Error(`鏈湪澶╃嚎鍒楄〃涓壘鍒?${mappedName}`);
 	}
 	const geo = {
 		longitude: Number(hit?.config?.geographicLocation?.longitude ?? hit?.longitude ?? hit?.long ?? 0) || 0,
@@ -3355,13 +3355,13 @@ function buildTransferBody(
 ) {
 	if (satellite === "AS03") {
 		if (groups.length > 6) {
-			throw new Error("AS03 数传分组最多支持 6 组");
+			throw new Error("AS03 鏁颁紶鍒嗙粍鏈€澶氭敮鎸?6 缁?);
 		}
 		const base: Record<string, any> = {
 			spacecraftCode: "AS03",
 			templateId: AS03_TRANSFER_TEMPLATE_ID,
 			folderId: AS03_TRANSFER_FOLDER_ID,
-			name: `${geo?.name || "数传"}数传任务-${formatBeijingTime(t0Iso)}`,
+			name: `${geo?.name || "鏁颁紶"}鏁颁紶浠诲姟-${formatBeijingTime(t0Iso)}`,
 			station: String(geo?.name ?? ""),
 			stationName: String(geo?.name ?? ""),
 			start_seq: String(startSeq),
@@ -3393,7 +3393,7 @@ function buildTransferBody(
 			if (duration > 0) totalDuration += duration;
 		});
 		if (totalDuration > 0) {
-			base.duration = String(totalDuration);
+			base.duration = String(totalDuration + 5);
 		}
 		return base;
 	}
@@ -3402,7 +3402,7 @@ function buildTransferBody(
 		spacecraftCode: "AS02",
 		templateId: TRANSFER_TEMPLATE_ID,
 		folderId: TRANSFER_FOLDER_ID,
-		name: `${geo?.name || "数传"}数传任务-${formatBeijingTime(t0Iso)}`,
+		name: `${geo?.name || "鏁颁紶"}鏁颁紶浠诲姟-${formatBeijingTime(t0Iso)}`,
 		station: String(geo?.name ?? ""),
 		stationName: String(geo?.name ?? ""),
 		start_seq: String(startSeq),
@@ -3435,7 +3435,7 @@ function buildTransferBody(
 	});
 	base.duration = String(totalDuration || "");
 
-	// 补齐空字段
+	// 琛ラ綈绌哄瓧娈?
 	for (let i = 1; i <= 8; i++) {
 		base[`start_file${i}`] = base[`start_file${i}`] || "";
 		base[`end_file${i}`] = base[`end_file${i}`] || "";
@@ -3453,7 +3453,7 @@ function buildDeleteBody(range: { start: number; end: number }, startTimeIso: st
 		spacecraftCode: "AS02",
 		templateId: DELETE_TEMPLATE_AS02,
 		folderId: AS02_IMAGING_FOLDER,
-		name: `固存删除任务-${formatBeijingTime(startTimeIso)}`,
+		name: `鍥哄瓨鍒犻櫎浠诲姟-${formatBeijingTime(startTimeIso)}`,
 		start_file: String(range.start ?? ""),
 		end_file: String(range.end ?? ""),
 		start_seq: String(startSeq),
@@ -3478,7 +3478,7 @@ async function submitAs03ImagingTask(
 			spacecraftCode: "AS03",
 			templateId: AS03_IMAGING_TEMPLATES[0],
 			folderId: AS03_IMAGING_FOLDER,
-			name: `1.${item.name || "成像任务"}-焦面断电-${formatBeijingTime(item.startTs)}`,
+			name: `1.${item.name || "鎴愬儚浠诲姟"}-鐒﹂潰鏂數-${formatBeijingTime(item.startTs)}`,
 			reset_seq: resetSeq,
 			start_seq: String(baseSeq),
 			tf: endIso,
@@ -3488,7 +3488,7 @@ async function submitAs03ImagingTask(
 			spacecraftCode: "AS03",
 			templateId: AS03_IMAGING_TEMPLATES[1],
 			folderId: AS03_IMAGING_FOLDER,
-			name: `2.${item.name || "成像任务"}-制冷机启动${formatBeijingTime(item.startTs)}`,
+			name: `2.${item.name || "鎴愬儚浠诲姟"}-鍒跺喎鏈哄惎鍔?{formatBeijingTime(item.startTs)}`,
 			t0: startIso,
 			start_seq: String(baseSeq + 14),
 			fileStart: String(slot?.startFileNo ?? slot?.start_file_no ?? ""),
@@ -3497,7 +3497,7 @@ async function submitAs03ImagingTask(
 			spacecraftCode: "AS03",
 			templateId: AS03_IMAGING_TEMPLATES[2],
 			folderId: AS03_IMAGING_FOLDER,
-			name: `3.${item.name || "成像任务"}-成像序列+转姿态GNSS转存-${formatBeijingTime(item.startTs)}`,
+			name: `3.${item.name || "鎴愬儚浠诲姟"}-鎴愬儚搴忓垪+杞Э鎬丟NSS杞瓨-${formatBeijingTime(item.startTs)}`,
 			start_seq: String(baseSeq + 47),
 			t0: startIso,
 			tf: endIso,
@@ -3513,12 +3513,12 @@ async function submitAs03ImagingTask(
 	try {
 		await updateFixedStorageSlot(2, slot, item, { imagingTime: startIso, executingTime: startIso });
 		await updateFixedStorageSlot(3, platformSlot, item, {
-			fileName: `${item.name || "成像任务"}`,
+			fileName: `${item.name || "鎴愬儚浠诲姟"}`,
 			executingTime: startIso,
 			imagingTime: startIso,
 		});
 	} catch (err) {
-		console.warn("[one-click-plan] 回填 AS03 固存失败", err);
+		console.warn("[one-click-plan] 鍥炲～ AS03 鍥哄瓨澶辫触", err);
 	}
 	return baseSeq + AS03_IMAGING_SEQ_CONSUME - 1;
 }
@@ -3529,13 +3529,13 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		.sort((a, b) => (a.startTs ?? 0) - (b.startTs ?? 0));
 	if (!imaging.length) return;
 
-	// 先为本次成像任务生成并缓存 UID，供固存回填/任务落库/数传关联复用
+	// 鍏堜负鏈鎴愬儚浠诲姟鐢熸垚骞剁紦瀛?UID锛屼緵鍥哄瓨鍥炲～/浠诲姟钀藉簱/鏁颁紶鍏宠仈澶嶇敤
 	imaging.forEach((item) => ensureImagingUid(item));
 
 	if (satellite === "AS02") {
 		let slots = await fetchEmptySlots(0, imaging.length);
 		if (slots.length < imaging.length) {
-			throw new Error(`AS02 固存空槽不足，需 ${imaging.length} 个，现有 ${slots.length} 个`);
+			throw new Error(`AS02 鍥哄瓨绌烘Ы涓嶈冻锛岄渶 ${imaging.length} 涓紝鐜版湁 ${slots.length} 涓猔);
 		}
 		const usedSlot = new Set<number>();
 		let success = 0;
@@ -3552,19 +3552,19 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 			let slot = slots[i];
 			if (Number.isFinite(desired)) {
 				let hit = slots.find((s: any) => Number(s?.startFileNo ?? s?.start_file_no) === desired);
-				// 若当前缓存列表未找到，实时再查一次
+				// 鑻ュ綋鍓嶇紦瀛樺垪琛ㄦ湭鎵惧埌锛屽疄鏃跺啀鏌ヤ竴娆?
 				if (!hit || usedSlot.has(desired)) {
 					slots = await fetchEmptySlots(0, Math.max(imaging.length, 100));
 					hit = slots.find((s: any) => Number(s?.startFileNo ?? s?.start_file_no) === desired);
 				}
 				if (!hit || usedSlot.has(desired)) {
-					throw new Error(`记录文件号 ${desired} 未空闲或已被使用，无法提交`);
+					throw new Error(`璁板綍鏂囦欢鍙?${desired} 鏈┖闂叉垨宸茶浣跨敤锛屾棤娉曟彁浜);
 				}
 				slot = hit;
 			}
 			const slotNo = Number(slot?.startFileNo ?? slot?.start_file_no);
 			if (!Number.isFinite(slotNo)) {
-				throw new Error(`未找到可用固存号供任务 ${item.name} 使用`);
+				throw new Error(`鏈壘鍒板彲鐢ㄥ浐瀛樺彿渚涗换鍔?${item.name} 浣跨敤`);
 			}
 			usedSlot.add(slotNo);
 			const startIso = toIsoString(item.startTs);
@@ -3574,7 +3574,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 				spacecraftCode: "AS02",
 				templateId: AS02_IMAGING_TEMPLATE,
 				folderId: AS02_IMAGING_FOLDER,
-				name: `${item.name || "成像任务"}-${formatBeijingTime(item.startTs)}`,
+				name: `${item.name || "鎴愬儚浠诲姟"}-${formatBeijingTime(item.startTs)}`,
 				scanMode: "0x02",
 				rollAng: pickRollAngle(item.raw ?? item),
 				solarAng: mapSolarAngleCode(pickSolarAngle(item.raw ?? item)),
@@ -3588,10 +3588,10 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 			try {
 				await updateFixedStorageSlot(0, slot, item, { imagingTime: startIso, executingTime: startIso });
 			} catch (err) {
-				console.warn("[one-click-plan] 回填 AS02 固存失败", err);
+				console.warn("[one-click-plan] 鍥炲～ AS02 鍥哄瓨澶辫触", err);
 			}
 		}
-		ElMessage.success(`AS02 成像任务提交成功 ${success}/${imaging.length}`);
+		ElMessage.success(`AS02 鎴愬儚浠诲姟鎻愪氦鎴愬姛 ${success}/${imaging.length}`);
 		return;
 	}
 
@@ -3599,10 +3599,10 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 	const slots = await fetchEmptySlots(2, imaging.length);
 	const platformSlots = await fetchEmptySlots(3, imaging.length);
 	if (slots.length < imaging.length) {
-		throw new Error(`AS03 载荷固存空槽不足，需 ${imaging.length} 个，现有 ${slots.length} 个`);
+		throw new Error(`AS03 杞借嵎鍥哄瓨绌烘Ы涓嶈冻锛岄渶 ${imaging.length} 涓紝鐜版湁 ${slots.length} 涓猔);
 	}
 	if (platformSlots.length < imaging.length) {
-		throw new Error(`AS03 平台固存空槽不足，需 ${imaging.length} 个，现有 ${platformSlots.length} 个`);
+		throw new Error(`AS03 骞冲彴鍥哄瓨绌烘Ы涓嶈冻锛岄渶 ${imaging.length} 涓紝鐜版湁 ${platformSlots.length} 涓猔);
 	}
 	let success = 0;
 	let currentSeq = Number(absStartSeq.value) || 3;
@@ -3616,7 +3616,7 @@ async function submitImagingTasks(token: string, satellite: "AS02" | "AS03") {
 		resetSeq = false;
 		success += 1;
 	}
-	ElMessage.success(`AS03 成像任务提交成功 ${success}/${imaging.length}`);
+	ElMessage.success(`AS03 鎴愬儚浠诲姟鎻愪氦鎴愬姛 ${success}/${imaging.length}`);
 }
 
 async function submitDataTransferTask(
@@ -3636,12 +3636,12 @@ async function submitDataTransferTask(
 		}
 	}
 	if (!groups.length || (pending && pending.length < 3)) {
-		throw new Error(satellite === "AS03" ? "AS03 数传任务缺少固存文件" : "待数传文件不足或分组失败");
+		throw new Error(satellite === "AS03" ? "AS03 鏁颁紶浠诲姟缂哄皯鍥哄瓨鏂囦欢" : "寰呮暟浼犳枃浠朵笉瓒虫垨鍒嗙粍澶辫触");
 	}
 	const t0Iso = toIsoString(task.startTs || task.teleBegin || Date.now());
 	const t0Beijing = formatBeijingTime(task.startTs || task.teleBegin || Date.now());
 	if (!t0Iso) {
-		throw new Error("数传开始时间无效");
+		throw new Error("鏁颁紶寮€濮嬫椂闂存棤鏁?);
 	}
 	const geo = await resolveAntennaGeoById(task.antennaId, token);
 	const startSeqRaw = task.raw?.startSeq ?? task.raw?.start_seq ?? startSeqOverride;
@@ -3653,7 +3653,7 @@ async function submitDataTransferTask(
 	const consumption = satellite === "AS03" ? groups.length + 5 : groups.length + 2;
 	const lastSeq = startSeq + consumption - 1;
 
-	// 数传回填：依据文件号 -> 固存 -> imagingUid -> 任务记录表
+	// 鏁颁紶鍥炲～锛氫緷鎹枃浠跺彿 -> 鍥哄瓨 -> imagingUid -> 浠诲姟璁板綍琛?
 	try {
 		const transferUid = generateImagingUid();
 		const transferName = resolveTransferStation(task);
@@ -3668,7 +3668,7 @@ async function submitDataTransferTask(
 		console.warn("[one-click-plan] sync transfer info failed", err);
 	}
 
-	// 固存状态：提交成功即标记为“已安排数传”(7)
+	// 鍥哄瓨鐘舵€侊細鎻愪氦鎴愬姛鍗虫爣璁颁负鈥滃凡瀹夋帓鏁颁紶鈥?7)
 	try {
 		const sat = (task.raw?.satellite || task.raw?.spacecraftCode || form.value?.satellite || "AS02") as
 			| "AS02"
@@ -3679,7 +3679,7 @@ async function submitDataTransferTask(
 		console.warn("[one-click-plan] update storage status after transfer failed", err);
 	}
 
-	ElMessage.success("数传任务提交成功");
+	ElMessage.success("鏁颁紶浠诲姟鎻愪氦鎴愬姛");
 	return lastSeq;
 }
 
@@ -3690,7 +3690,7 @@ function resolveTransferStation(task: TimelineItem): string {
 		(task?.antennaId ? TELECONTROL_ANTENNA_MAP.get(String(task.antennaId)) : "") ||
 		"";
 	const trimmed = String(name || "").trim();
-	// transferName 字段后端长度为 50，防止超长
+	// transferName 瀛楁鍚庣闀垮害涓?50锛岄槻姝㈣秴闀?
 	return trimmed ? trimmed.slice(0, 48) : "-";
 }
 
@@ -3704,7 +3704,7 @@ function parseStartNosFromMeta(meta: string | undefined | null): number[] {
 async function submitDeleteTasks(token: string, baseSeq: number | null) {
 	const tasks = timeline.value.filter((item) => item.type === "delete").sort((a, b) => a.startTs - b.startTs);
 	if (!tasks.length) return;
-	let currentSeq = baseSeq != null ? baseSeq + 1 : Number(absStartSeq.value) || 3; // if transfer existed, start after它; else默认
+	let currentSeq = baseSeq != null ? baseSeq + 1 : Number(absStartSeq.value) || 3; // if transfer existed, start after瀹? else榛樿
 	for (const task of tasks) {
 		const files = task.raw?.startFile ? null : await fetchDeletableFiles("AS02");
 		const deleteStart = Number(task.raw?.startFile ?? (files?.[0]?.start));
@@ -3713,11 +3713,11 @@ async function submitDeleteTasks(token: string, baseSeq: number | null) {
 				(files && files.length ? Math.max(...files.map((f) => Number(f.end ?? f.start + 7))) : NaN)
 		);
 		if (!Number.isFinite(deleteStart) || !Number.isFinite(deleteEnd)) {
-			throw new Error("删除文件号异常");
+			throw new Error("鍒犻櫎鏂囦欢鍙峰紓甯?);
 		}
 		const startIso = toIsoString(task.startTs ?? Date.now());
 		if (!startIso) {
-			throw new Error("删除任务开始时间无效");
+			throw new Error("鍒犻櫎浠诲姟寮€濮嬫椂闂存棤鏁?);
 		}
 		const body = buildDeleteBody({ start: deleteStart, end: deleteEnd }, startIso, currentSeq);
 		await postTemplate(body, token, "delete", startIso);
@@ -3725,7 +3725,7 @@ async function submitDeleteTasks(token: string, baseSeq: number | null) {
 		const consumption = 3 + (Number.isFinite(fileCount) ? fileCount : 1);
 		currentSeq += consumption;
 	}
-	ElMessage.success("固存删除任务提交成功");
+	ElMessage.success("鍥哄瓨鍒犻櫎浠诲姟鎻愪氦鎴愬姛");
 }
 
 async function fetchFixedStorageByStartList(starts: number[], names: number[]): Promise<any[]> {
@@ -3761,7 +3761,7 @@ async function syncTransferToTasks(
 	const svc = satellite === "AS03" ? (service as any)?.task?.as03 : (service as any)?.task?.as02;
 	if (!svc?.page || !svc?.update) return;
 
-	// 汇总候选起始号：显式文件列表 + 分组的 start/end + 连续块推导（步长 8，仅限有 count 的场景）
+	// 姹囨€诲€欓€夎捣濮嬪彿锛氭樉寮忔枃浠跺垪琛?+ 鍒嗙粍鐨?start/end + 杩炵画鍧楁帹瀵硷紙姝ラ暱 8锛屼粎闄愭湁 count 鐨勫満鏅級
 	const startSet = new Set<number>();
 	const pushNum = (n: number) => {
 		if (Number.isFinite(n)) startSet.add(Number(n));
@@ -3797,7 +3797,7 @@ async function syncTransferToTasks(
 	}
 
 	if (!uidSet.size) {
-		console.warn("[one-click-plan] 未在固存记录中找到 imagingUid，跳过数传回填");
+		console.warn("[one-click-plan] 鏈湪鍥哄瓨璁板綍涓壘鍒?imagingUid锛岃烦杩囨暟浼犲洖濉?);
 		return;
 	}
 
@@ -3822,7 +3822,7 @@ async function syncTransferToTasks(
 
 function openSubmitSummaryDialog() {
 	if (!timeline.value.length) {
-		ElMessage.warning("请先生成时间轴任务");
+		ElMessage.warning("璇峰厛鐢熸垚鏃堕棿杞翠换鍔?);
 		return;
 	}
 	submissionSummary.value = buildSubmissionSummaryText();
@@ -3862,7 +3862,7 @@ async function submitPlannedTasks() {
 	}
 	submissionDialogVisible.value = false;
 	if (!timeline.value.length) {
-		ElMessage.warning("请先生成时间轴任务");
+		ElMessage.warning("璇峰厛鐢熸垚鏃堕棿杞翠换鍔?);
 		return;
 	}
 	const satellite = form.value.satellite as "AS02" | "AS03";
@@ -3889,10 +3889,10 @@ async function submitPlannedTasks() {
 				slots = await fetchEmptySlots(2, imagingTasks.length);
 				platformSlots = await fetchEmptySlots(3, imagingTasks.length);
 				if (slots.length < imagingTasks.length) {
-					throw new Error(`AS03 载荷固存空槽不足，需 ${imagingTasks.length} 个，现有 ${slots.length} 个`);
+					throw new Error(`AS03 杞借嵎鍥哄瓨绌烘Ы涓嶈冻锛岄渶 ${imagingTasks.length} 涓紝鐜版湁 ${slots.length} 涓猔);
 				}
 				if (platformSlots.length < imagingTasks.length) {
-					throw new Error(`AS03 平台固存空槽不足，需 ${imagingTasks.length} 个，现有 ${platformSlots.length} 个`);
+					throw new Error(`AS03 骞冲彴鍥哄瓨绌烘Ы涓嶈冻锛岄渶 ${imagingTasks.length} 涓紝鐜版湁 ${platformSlots.length} 涓猔);
 				}
 			}
 			let imagingIndex = 0;
@@ -3902,7 +3902,7 @@ async function submitPlannedTasks() {
 				if (task.type === "data") {
 					const startTs = resolveTaskStartTs(task);
 					if (!Number.isFinite(startTs)) {
-						throw new Error("数传任务开始时间无效");
+						throw new Error("鏁颁紶浠诲姟寮€濮嬫椂闂存棤鏁?);
 					}
 					task.raw = { ...(task.raw || {}), resetSeq, startSeq: currentSeq };
 					const lastSeq = await submitDataTransferTask(token, task, currentSeq, resetSeq);
@@ -3946,9 +3946,9 @@ async function submitPlannedTasks() {
 		} catch (err) {
 			console.warn("[one-click-plan] append daily plan summary failed", err);
 		}
-		ElMessage.success("提交成功");
+		ElMessage.success("鎻愪氦鎴愬姛");
 	} catch (err: any) {
-		ElMessage.error(err?.message || String(err) || "提交失败");
+		ElMessage.error(err?.message || String(err) || "鎻愪氦澶辫触");
 	} finally {
 		submitting.value = false;
 	}
@@ -3965,8 +3965,8 @@ function buildSubmissionSummaryText(): string {
 			const monthDay = formatMonthDay(it.startTs);
 			const priorityText = formatNumberText(it.raw?.priority ?? it.priority, 0);
 			const priority = priorityText && priorityText !== "--" ? priorityText : "1";
-			const scanMode = "直通"; // AS02 默认直通
-			const cameraState = "双相机";
+			const scanMode = "鐩撮€?; // AS02 榛樿鐩撮€?
+			const cameraState = "鍙岀浉鏈?;
 			const lonText = formatNumberText(
 				it.raw?.long ?? it.raw?.longitude ?? it.raw?.lon ?? it.raw?.area_lon ?? it.raw?.areaLon,
 				4
@@ -3990,15 +3990,15 @@ function buildSubmissionSummaryText(): string {
 				);
 				const alt = altText && altText !== "--" ? altText : "0";
 				const tf = formatDisplay(new Date(it.endTs ?? it.startTs));
-				const imageKind = "推扫成像";
-				const fileRef = slot ? `记录文件号${slot}。` : "记录文件号未知。";
+				const imageKind = "鎺ㄦ壂鎴愬儚";
+				const fileRef = slot ? `璁板綍鏂囦欢鍙?{slot}銆俙 : "璁板綍鏂囦欢鍙锋湭鐭ャ€?;
 				lines.push(
-					`${idx + 1}.上注${monthDay} ${it.name}目标点任务：\n` +
-						`${priority}级目标，目标点为\n` +
-						`${it.name}，经度${lon}，纬度${lat}，高度${alt}m，云量${cloud}，侧摆角${roll}，\n` +
-						`太阳高度角${sun}，${imageKind}成像时间${startTime}~${tf}，${fileRef}\n` +
-						`预报星历：${orbitText}\n` +
-						`预报方法：姿轨控新方法`
+					`${idx + 1}.涓婃敞${monthDay} ${it.name}鐩爣鐐逛换鍔★細\n` +
+						`${priority}绾х洰鏍囷紝鐩爣鐐逛负\n` +
+						`${it.name}锛岀粡搴?{lon}锛岀含搴?{lat}锛岄珮搴?{alt}m锛屼簯閲?{cloud}锛屼晶鎽嗚${roll}锛孿n` +
+						`澶槼楂樺害瑙?{sun}锛?{imageKind}鎴愬儚鏃堕棿${startTime}~${tf}锛?{fileRef}\n` +
+						`棰勬姤鏄熷巻锛?{orbitText}\n` +
+						`棰勬姤鏂规硶锛氬Э杞ㄦ帶鏂版柟娉昤
 				);
 			} else {
 				const startNum = Number(slot);
@@ -4007,12 +4007,12 @@ function buildSubmissionSummaryText(): string {
 						? `${startNum}~${startNum + 7}(${scanMode})`
 						: `${slot}`;
 				lines.push(
-					`${idx + 1}.上注${monthDay} ${it.name}目标点任务：\n` +
-						`${priority}级目标 ${scanMode}推扫成像任务，${cameraState}成像，目标点为\n` +
-						`${it.name}，经度${lon}，纬度${lat}，云量${cloud}，侧摆角${roll}，\n` +
-						`太阳高度角${sun}，成像时间${startTime}，记录文件号${fileRange}。\n` +
-						`预报星历：${orbitText}\n` +
-						`预报方法：姿轨控新方法`
+					`${idx + 1}.涓婃敞${monthDay} ${it.name}鐩爣鐐逛换鍔★細\n` +
+						`${priority}绾х洰鏍?${scanMode}鎺ㄦ壂鎴愬儚浠诲姟锛?{cameraState}鎴愬儚锛岀洰鏍囩偣涓篭n` +
+						`${it.name}锛岀粡搴?{lon}锛岀含搴?{lat}锛屼簯閲?{cloud}锛屼晶鎽嗚${roll}锛孿n` +
+						`澶槼楂樺害瑙?{sun}锛屾垚鍍忔椂闂?{startTime}锛岃褰曟枃浠跺彿${fileRange}銆俓n` +
+						`棰勬姤鏄熷巻锛?{orbitText}\n` +
+						`棰勬姤鏂规硶锛氬Э杞ㄦ帶鏂版柟娉昤
 				);
 			}
 		});
@@ -4024,7 +4024,7 @@ function buildSubmissionSummaryText(): string {
 			const time = formatDisplay(new Date(task.startTs));
 			const ranges =
 				task.raw?.groups?.length
-					? task.raw.groups.map((g: any) => `${g.start}-${g.end}`).join("，")
+					? task.raw.groups.map((g: any) => `${g.start}-${g.end}`).join("锛?)
 					: task.files?.join(",") || "-";
 			const station =
 				task.raw?.stationName ||
@@ -4032,7 +4032,7 @@ function buildSubmissionSummaryText(): string {
 				(task.antennaId ? TELECONTROL_ANTENNA_MAP.get(String(task.antennaId)) : "-") ||
 				"-";
 			lines.push(
-				`${lines.length + 1}.上注数传任务，数传站：${station}，开始下数时间：${time}，数传文件号：载荷${ranges}`
+				`${lines.length + 1}.涓婃敞鏁颁紶浠诲姟锛屾暟浼犵珯锛?{station}锛屽紑濮嬩笅鏁版椂闂达細${time}锛屾暟浼犳枃浠跺彿锛氳浇鑽?{ranges}`
 			);
 		});
 	}
@@ -4044,13 +4044,13 @@ function buildSubmissionSummaryText(): string {
 			const start = it.raw?.startFile ?? "-";
 			const end = it.raw?.endFile ?? "-";
 			lines.push(
-				`${lines.length + 1}.上注载荷固存删除任务，删除文件号${start}~${end}，任务执行时间：${time}`
+				`${lines.length + 1}.涓婃敞杞借嵎鍥哄瓨鍒犻櫎浠诲姟锛屽垹闄ゆ枃浠跺彿${start}~${end}锛屼换鍔℃墽琛屾椂闂达細${time}`
 			);
 		});
 	}
 
 	if (planningNotes.value.length) {
-		lines.push(`提示：\n${planningNotes.value.map((n, idx) => `${idx + 1}) ${n}`).join("\n")}`);
+		lines.push(`鎻愮ず锛歕n${planningNotes.value.map((n, idx) => `${idx + 1}) ${n}`).join("\n")}`);
 	}
 
 	return lines.join("\n\n");
@@ -4066,8 +4066,8 @@ function buildSubmissionSummaryForTasks(tasks: TimelineItem[], orbitText: string
 			const monthDay = formatMonthDay(it.startTs);
 			const priorityText = formatNumberText(it.raw?.priority ?? it.priority, 0);
 			const priority = priorityText && priorityText !== "--" ? priorityText : "1";
-			const scanMode = "直通";
-			const cameraState = "双相机";
+			const scanMode = "鐩撮€?;
+			const cameraState = "鍙岀浉鏈?;
 			const lonText = formatNumberText(
 				it.raw?.long ?? it.raw?.longitude ?? it.raw?.lon ?? it.raw?.area_lon ?? it.raw?.areaLon,
 				4
@@ -4091,15 +4091,15 @@ function buildSubmissionSummaryForTasks(tasks: TimelineItem[], orbitText: string
 				);
 				const alt = altText && altText !== "--" ? altText : "0";
 				const tf = formatDisplay(new Date(it.endTs ?? it.startTs));
-				const imageKind = "推扫成像";
-				const fileRef = slot ? `记录文件号${slot}。` : "记录文件号未知。";
+				const imageKind = "鎺ㄦ壂鎴愬儚";
+				const fileRef = slot ? `璁板綍鏂囦欢鍙?{slot}銆俙 : "璁板綍鏂囦欢鍙锋湭鐭ャ€?;
 				lines.push(
-					`${idx + 1}.上注${monthDay} ${it.name}目标点任务：\n` +
-						`${priority}级目标，目标点为\n` +
-						`${it.name}，经度${lon}，纬度${lat}，高度${alt}m，云量${cloud}，侧摆角${roll}，\n` +
-						`太阳高度角${sun}，${imageKind}成像时间${startTime}~${tf}，${fileRef}\n` +
-						`预报星历：${orbitText}\n` +
-						`预报方法：姿轨控新方法`
+					`${idx + 1}.涓婃敞${monthDay} ${it.name}鐩爣鐐逛换鍔★細\n` +
+						`${priority}绾х洰鏍囷紝鐩爣鐐逛负\n` +
+						`${it.name}锛岀粡搴?{lon}锛岀含搴?{lat}锛岄珮搴?{alt}m锛屼簯閲?{cloud}锛屼晶鎽嗚${roll}锛孿n` +
+						`澶槼楂樺害瑙?{sun}锛?{imageKind}鎴愬儚鏃堕棿${startTime}~${tf}锛?{fileRef}\n` +
+						`棰勬姤鏄熷巻锛?{orbitText}\n` +
+						`棰勬姤鏂规硶锛氬Э杞ㄦ帶鏂版柟娉昤
 				);
 			} else {
 				const startNum = Number(slot);
@@ -4108,12 +4108,12 @@ function buildSubmissionSummaryForTasks(tasks: TimelineItem[], orbitText: string
 						? `${startNum}~${startNum + 7}(${scanMode})`
 						: `${slot}`;
 				lines.push(
-					`${idx + 1}.上注${monthDay} ${it.name}目标点任务：\n` +
-						`${priority}级目标 ${scanMode}推扫成像任务，${cameraState}成像，目标点为\n` +
-						`${it.name}，经度${lon}，纬度${lat}，云量${cloud}，侧摆角${roll}，\n` +
-						`太阳高度角${sun}，成像时间${startTime}，记录文件号${fileRange}。\n` +
-						`预报星历：${orbitText}\n` +
-						`预报方法：姿轨控新方法`
+					`${idx + 1}.涓婃敞${monthDay} ${it.name}鐩爣鐐逛换鍔★細\n` +
+						`${priority}绾х洰鏍?${scanMode}鎺ㄦ壂鎴愬儚浠诲姟锛?{cameraState}鎴愬儚锛岀洰鏍囩偣涓篭n` +
+						`${it.name}锛岀粡搴?{lon}锛岀含搴?{lat}锛屼簯閲?{cloud}锛屼晶鎽嗚${roll}锛孿n` +
+						`澶槼楂樺害瑙?{sun}锛屾垚鍍忔椂闂?{startTime}锛岃褰曟枃浠跺彿${fileRange}銆俓n` +
+						`棰勬姤鏄熷巻锛?{orbitText}\n` +
+						`棰勬姤鏂规硶锛氬Э杞ㄦ帶鏂版柟娉昤
 				);
 			}
 		});
@@ -4125,7 +4125,7 @@ function buildSubmissionSummaryForTasks(tasks: TimelineItem[], orbitText: string
 			const time = formatDisplay(new Date(task.startTs));
 			const ranges =
 				task.raw?.groups?.length
-					? task.raw.groups.map((g: any) => `${g.start}-${g.end}`).join("，")
+					? task.raw.groups.map((g: any) => `${g.start}-${g.end}`).join("锛?)
 					: task.files?.join(",") || "-";
 			const station =
 				task.raw?.stationName ||
@@ -4133,7 +4133,7 @@ function buildSubmissionSummaryForTasks(tasks: TimelineItem[], orbitText: string
 				(task.antennaId ? TELECONTROL_ANTENNA_MAP.get(String(task.antennaId)) : "-") ||
 				"-";
 			lines.push(
-				`${lines.length + 1}.上注数传任务，数传站：${station}，开始下数时间：${time}，数传文件号：载荷${ranges}`
+				`${lines.length + 1}.涓婃敞鏁颁紶浠诲姟锛屾暟浼犵珯锛?{station}锛屽紑濮嬩笅鏁版椂闂达細${time}锛屾暟浼犳枃浠跺彿锛氳浇鑽?{ranges}`
 			);
 		});
 	}
@@ -4145,7 +4145,7 @@ function buildSubmissionSummaryForTasks(tasks: TimelineItem[], orbitText: string
 			const start = it.raw?.startFile ?? "-";
 			const end = it.raw?.endFile ?? "-";
 			lines.push(
-				`${lines.length + 1}.上注载荷固存删除任务，删除文件号${start}~${end}，任务执行时间：${time}`
+				`${lines.length + 1}.涓婃敞杞借嵎鍥哄瓨鍒犻櫎浠诲姟锛屽垹闄ゆ枃浠跺彿${start}~${end}锛屼换鍔℃墽琛屾椂闂达細${time}`
 			);
 		});
 	}
@@ -4209,8 +4209,8 @@ async function ensureDailyPlanByDate(token: string, satellite: "AS02" | "AS03", 
 		return [];
 	}
 	if (!records.length) return [];
-	const defaultInfo = "1.卫星状态监视\n2.下传GNSS和延遥";
-	const dutyOfficerRaw = dutyOfficers.length ? dutyOfficers.join("。") : "-";
+	const defaultInfo = "1.鍗槦鐘舵€佺洃瑙哱n2.涓嬩紶GNSS鍜屽欢閬?;
+	const dutyOfficerRaw = dutyOfficers.length ? dutyOfficers.join("銆?) : "-";
 	const dutyOfficer = dutyOfficerRaw.length > 50 ? dutyOfficerRaw.slice(0, 50) : dutyOfficerRaw;
 	const payloads = records
 		.map((r: any) => {
@@ -4311,7 +4311,7 @@ async function appendSummaryToDailyPlan(token: string) {
 	}
 }
 
-// 生成 imaging UID 并推送
+// 鐢熸垚 imaging UID 骞舵帹閫?
 async function recordImagingUids() {
 	const svc = form.value.satellite === "AS03" ? (service as any)?.task?.as03 : (service as any)?.task?.as02;
 	if (!svc?.page || !svc?.update) return;
@@ -4321,7 +4321,7 @@ async function recordImagingUids() {
 		it.raw = it.raw || {};
 		it.raw.imagingUid = uid;
 	}
-	// 逐条更新 task 表
+	// 閫愭潯鏇存柊 task 琛?
 	for (const it of imaging) {
 		const uid = it.raw?.imagingUid;
 		if (!uid) continue;
@@ -4532,12 +4532,12 @@ function padBase36(value: number, length: number): string {
 
 <style scoped>
 .one-click-page {
-	padding: 8px 8px 96px; /* 与其他页面一致，给底部留空间 */
+	padding: 8px 8px 96px; /* 涓庡叾浠栭〉闈竴鑷达紝缁欏簳閮ㄧ暀绌洪棿 */
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
 	box-sizing: border-box;
-	min-height: 100vh;      /* 由外层滚动 */
+	min-height: 100vh;      /* 鐢卞灞傛粴鍔?*/
 	height: auto;
 	overflow: visible;
 }
@@ -4579,3 +4579,4 @@ function padBase36(value: number, length: number): string {
 }
 
 </style>
+
