@@ -1,4 +1,4 @@
-<template>
+﻿<template>
 	<div class="one-click-page">
 		<el-card shadow="never" class="mb16">
 			<template #header>
@@ -3393,7 +3393,7 @@ function buildTransferBody(
 			if (duration > 0) totalDuration += duration;
 		});
 		if (totalDuration > 0) {
-			base.duration = String(totalDuration);
+			base.duration = String(totalDuration+5);
 		}
 		return base;
 	}

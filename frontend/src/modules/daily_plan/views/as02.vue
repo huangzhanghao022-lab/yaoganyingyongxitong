@@ -962,7 +962,7 @@ function extractImagingBlocks(text: string): ImagingBlock[] {
 		const current = lines[i]?.trim();
 		if (!current) continue;
 		if (!/经度/.test(current) || !/纬度/.test(current)) continue;
-		let detailLine = current;
+		const detailLine = current;
 		let timeLine = "";
 		if (/记录文件号/.test(current)) {
 			timeLine = current;

@@ -1207,7 +1207,7 @@ function buildTransferBody(groups: IntegratedGroup[]): Record<string, string> {
 		});
 
 		if (accumulatedDuration > 0) {
-			body.duration = String(accumulatedDuration);
+			body.duration = String(accumulatedDuration+5);
 		}
 
 		return body;
