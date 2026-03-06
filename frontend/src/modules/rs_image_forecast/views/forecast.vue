@@ -124,11 +124,16 @@
       <template #header>
         <div class="card-header">
           <span>成像预报结果</span>
-          <el-tag type="success">{{ apiResponse?.message || '成功' }}</el-tag>
+          <el-space :size="8">
+            <el-button size="small" @click="toggleRollLimit">
+              {{ rollLimitOnly ? '显示全部目标' : '仅显示侧摆角<30°' }}
+            </el-button>
+            <el-tag type="success">{{ apiResponse?.message || '成功' }}</el-tag>
+          </el-space>
         </div>
       </template>
       <el-table
-        :data="apiResponse?.result || []"
+        :data="forecastDisplayList"
         size="small"
         :fit="true"     
         class="results-table"
@@ -162,8 +167,8 @@
         <el-table-column prop="startAtBeijing" label="开始时间" min-width="160" show-overflow-tooltip /> <!-- 弹性列之二 -->
         <el-table-column prop="endAtBeijing" label="结束时间" min-width="160" show-overflow-tooltip />
         <el-table-column label="选择" width="50">
-          <template #default="{ $index }">
-            <el-checkbox v-model="selectedMap[$index]" />
+          <template #default="{ row }">
+            <el-checkbox v-model="selectedMap[row.__rowIndex]" />
           </template>
         </el-table-column>
 
@@ -172,8 +177,8 @@
           v-if="!isAS03"
           label="起始文件号"
           width="120">
-          <template #default="{ $index }">
-            <el-input v-model="startFileNoMap[$index]" size="small" placeholder="请输入" />
+          <template #default="{ row }">
+            <el-input v-model="startFileNoMap[row.__rowIndex]" size="small" placeholder="请输入" />
           </template>
         </el-table-column>
 
@@ -182,16 +187,16 @@
           v-if="isAS03"
           :label="startLabel"
           width="120">
-          <template #default="{ $index }">
-            <el-input v-model="startFileNoMap[$index]" size="small" placeholder="请输入" />
+          <template #default="{ row }">
+            <el-input v-model="startFileNoMap[row.__rowIndex]" size="small" placeholder="请输入" />
           </template>
         </el-table-column>
         <el-table-column
           v-if="isAS03"
           label="是否重新加载表"
           width="120">
-          <template #default="{ $index }">
-            <el-select v-model="reloadMap[$index]" size="small" style="width: 100%">
+          <template #default="{ row }">
+            <el-select v-model="reloadMap[row.__rowIndex]" size="small" style="width: 100%">
               <el-option label="是" value=true />
               <el-option label="否" value=false />
             </el-select>
@@ -747,6 +752,7 @@ function persistForecastCache() {
 const jsonPreview = ref('');
 const posting = ref(false);
 const apiResponse = ref<any | null>(null);
+const rollLimitOnly = ref(false);
 const orbitElements = ref<OrbitElements | null>(null);
 const submissionNotice = reactive<SubmissionNotice>({
   visible: false,
@@ -765,6 +771,18 @@ const startLabel = computed(() => (isAS03.value ? '起始绝对延时指令号' 
 const selectedMap = reactive<Record<number, boolean>>({});
 const startFileNoMap = reactive<Record<number, string>>({});
 const reloadMap = reactive<Record<number, string>>({}); // 0=��, 1=�񣬽� AS03 ʹ��
+
+const forecastDisplayList = computed(() => {
+  const list: any[] = Array.isArray(apiResponse.value?.result) ? apiResponse.value.result : [];
+  const indexed = list.map((row, index) => ({ ...row, __rowIndex: index }));
+  if (!rollLimitOnly.value) {
+    return indexed;
+  }
+  return indexed.filter((row) => {
+    const roll = pickRollAngleNumber(row);
+    return roll != null && Math.abs(roll) < 30;
+  });
+});
 
 const finishForecastRestore = restoreForecastCache();
 
@@ -1357,6 +1375,21 @@ function resolveModeLabel(raw: any, fallback?: string): string {
 function toNumberOrNull(value: any): number | null {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+}
+
+function pickRollAngleNumber(row: any): number | null {
+  const value = prefer(
+    row?.roll_angle,
+    row?.rollAng,
+    row?.rollAngle,
+    row?.roll_angle_value,
+    row?.side_swipe_angle
+  );
+  return toNumberOrNull(value);
+}
+
+function toggleRollLimit() {
+  rollLimitOnly.value = !rollLimitOnly.value;
 }
 
 function resolveCloudPercentValue(row: any): number | string | null {

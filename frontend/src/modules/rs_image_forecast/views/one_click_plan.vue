@@ -398,7 +398,7 @@
 	</el-dialog>
 
 	<el-dialog v-model="highSelectDialog.visible" title="高优先级目标选择" width="880px" :append-to-body="true">
-		<el-table :data="highSelectDialog.list" height="420px" style="width: 100%;">
+		<el-table :data="highSelectDisplayList" height="420px" style="width: 100%;">
 			<el-table-column label="选择" width="80">
 				<template #default="{ row }">
 					<el-checkbox :model-value="highSelectDialog.selected.has(highSelectKey(row))" @change="(val: any) => toggleHighSelectRow(row, Boolean(val))" />
@@ -423,8 +423,11 @@
 		</div>
 		<template #footer>
 			<div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-				<span style="color: var(--el-text-color-regular);">已选 {{ highSelectedCount }} 个 / 可选 {{ highSelectDialog.list.length }}</span>
+				<span style="color: var(--el-text-color-regular);">已选 {{ highSelectedCount }} 个 / 可选 {{ highSelectDisplayList.length }}</span>
 				<el-space>
+					<el-button @click="toggleHighRollLimit">
+						{{ highSelectRollLimitOnly ? '显示全部目标' : '仅显示侧摆角<30°' }}
+					</el-button>
 					<el-button @click="cancelHighPrioritySelect">取消</el-button>
 					<el-button type="primary" @click="confirmHighPrioritySelect">确认</el-button>
 				</el-space>
@@ -636,6 +639,14 @@ const highSelectDialog = reactive<{
 	resolve: null,
 });
 const highSelectedCount = computed(() => highSelectDialog.selected.size);
+const highSelectRollLimitOnly = ref(false);
+const highSelectDisplayList = computed(() => {
+	if (!highSelectRollLimitOnly.value) return highSelectDialog.list;
+	return highSelectDialog.list.filter((row) => {
+		const rollNum = Number(pickRollAngle(row));
+		return Number.isFinite(rollNum) && Math.abs(rollNum) < 30;
+	});
+});
 
 // 根据卫星切换设置成像任务数量默认值
 watch(
@@ -1523,11 +1534,15 @@ function toggleHighSelectRow(item: any, checked: boolean) {
 	if (checked) highSelectDialog.selected.add(key);
 	else highSelectDialog.selected.delete(key);
 }
+function toggleHighRollLimit() {
+	highSelectRollLimitOnly.value = !highSelectRollLimitOnly.value;
+}
 
 function openHighPrioritySelect(list: any[], expect: number): Promise<any[]> {
 	if (!Array.isArray(list) || !list.length) return Promise.resolve([]);
 	highSelectDialog.list = [...list].sort((a, b) => Number(a?.startTs ?? 0) - Number(b?.startTs ?? 0));
 	highSelectDialog.selected = new Set();
+	highSelectRollLimitOnly.value = false;
 	highSelectDialog.visible = true;
 	return new Promise((resolve) => {
 		highSelectDialog.resolve = resolve;
@@ -4579,3 +4594,4 @@ function padBase36(value: number, length: number): string {
 }
 
 </style>
+
